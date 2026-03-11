@@ -19,7 +19,11 @@ interface TaskDetailSheetProps {
 }
 
 export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetailSheetProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const pt = language === 'pt-BR';
+  const { teams } = useTeams();
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const { members } = useTeamMembers(selectedTeamId || null);
 
   if (!task) return null;
 
