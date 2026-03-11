@@ -89,6 +89,7 @@ export const translations = {
     weeklyPlanning: 'Weekly Planning',
     projects: 'Projects',
     metrics: 'Metrics',
+    gamification: 'Achievements',
     settings: 'Settings',
     
     // Quadrants
