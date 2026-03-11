@@ -24,6 +24,8 @@ import {
   SheetHeader,
   SheetTitle,
 } from '@/components/ui/sheet';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { TeamDashboard } from '@/components/TeamDashboard';
 import {
   Users,
   Plus,
@@ -208,7 +210,7 @@ function JoinByCode() {
 }
 
 function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => void }) {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const pt = language === 'pt-BR';
   const { user } = useAuth();
   const { members, updateMemberRole, removeMember } = useTeamMembers(team?.id ?? null);
@@ -280,7 +282,13 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
               )}
             </SheetHeader>
 
-            <div className="mt-6 space-y-6">
+            <Tabs defaultValue="members" className="mt-6">
+              <TabsList className="w-full">
+                <TabsTrigger value="members" className="flex-1">{pt ? 'Membros' : 'Members'}</TabsTrigger>
+                <TabsTrigger value="dashboard" className="flex-1">{t('teamDashboard')}</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="members" className="space-y-6 mt-4">
               {/* Members */}
               <div>
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
@@ -446,7 +454,12 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
                   </Button>
                 </div>
               )}
-            </div>
+              </TabsContent>
+
+              <TabsContent value="dashboard" className="mt-4">
+                <TeamDashboard teamId={team.id} />
+              </TabsContent>
+            </Tabs>
           </>
         )}
       </SheetContent>
