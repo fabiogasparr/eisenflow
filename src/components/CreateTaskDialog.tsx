@@ -27,9 +27,14 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
   const [urgency, setUrgency] = useState(3);
   const [importance, setImportance] = useState(3);
   const [tags, setTags] = useState('');
+  const [assignedTo, setAssignedTo] = useState<string>('');
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [classifying, setClassifying] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<{ quadrant: Quadrant; urgency: number; importance: number } | null>(null);
+
+  const { teams } = useTeams();
+  const { members } = useTeamMembers(selectedTeamId || null);
 
   const handleClassify = async () => {
     if (!title || !onClassifyWithAI) return;
