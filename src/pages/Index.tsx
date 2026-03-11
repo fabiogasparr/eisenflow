@@ -95,10 +95,16 @@ export default function Index() {
               <span className="w-1/2 text-center">{t('notUrgent')}</span>
             </div>
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="gap-2 shadow-lg">
-            <Plus className="h-4 w-4" />
-            {t('addTask')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setFocusOpen(true)} className="gap-2">
+              <Target className="h-4 w-4" />
+              {language === 'pt-BR' ? 'Modo Foco' : 'Focus Mode'}
+            </Button>
+            <Button onClick={() => setCreateOpen(true)} className="gap-2 shadow-lg">
+              <Plus className="h-4 w-4" />
+              {t('addTask')}
+            </Button>
+          </div>
         </div>
 
         {/* Matrix Grid */}
