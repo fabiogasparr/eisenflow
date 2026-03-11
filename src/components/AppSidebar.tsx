@@ -25,6 +25,7 @@ export function AppSidebar() {
 
   const items = [
     { title: t('matrix'), url: '/', icon: Grid3X3 },
+    { title: t('weeklyPlanning'), url: '/weekly', icon: CalendarDays },
     { title: t('projects'), url: '/projects', icon: FolderKanban },
     { title: t('metrics'), url: '/metrics', icon: BarChart3 },
     { title: t('settings'), url: '/settings', icon: Settings },
