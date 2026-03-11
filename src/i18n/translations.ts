@@ -4,6 +4,7 @@ export const translations = {
   'pt-BR': {
     // Nav
     matrix: 'Matriz',
+    weeklyPlanning: 'Planejamento Semanal',
     projects: 'Projetos',
     metrics: 'Métricas',
     settings: 'Configurações',
@@ -84,6 +85,7 @@ export const translations = {
   en: {
     // Nav
     matrix: 'Matrix',
+    weeklyPlanning: 'Weekly Planning',
     projects: 'Projects',
     metrics: 'Metrics',
     settings: 'Settings',
