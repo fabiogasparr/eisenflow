@@ -153,6 +153,9 @@ export default function Gamification() {
           </CardContent>
         </Card>
 
+        {/* Weekly Ranking */}
+        <WeeklyRankingCard />
+
         {/* Activity stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <StatMini icon="✅" value={stats.total_tasks_completed} label={pt ? 'Concluídas' : 'Completed'} />
