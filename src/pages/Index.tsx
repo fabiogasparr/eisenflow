@@ -15,7 +15,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Index() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask } = useTasks();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
