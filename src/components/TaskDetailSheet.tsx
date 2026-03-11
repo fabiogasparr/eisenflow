@@ -1,10 +1,15 @@
+import { useState } from 'react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { QUADRANT_CONFIG, type Task } from '@/types/task';
-import { CheckCircle, Trash2, Play, Clock } from 'lucide-react';
+import { CheckCircle, Trash2, Play, Clock, UserPlus } from 'lucide-react';
 import { format } from 'date-fns';
+import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 
 interface TaskDetailSheetProps {
   task: Task | null;

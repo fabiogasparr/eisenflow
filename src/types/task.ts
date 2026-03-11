@@ -27,6 +27,7 @@ export interface CreateTaskInput {
   due_date?: string;
   estimated_time?: number;
   project_id?: string;
+  assigned_to?: string;
   tags?: string[];
   quadrant?: Quadrant;
   urgency?: number;
