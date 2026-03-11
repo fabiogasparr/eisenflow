@@ -2,3 +2,6 @@ project_id = "zmquepmvnelffcwvsuqv"
 
 [functions.classify-task]
 verify_jwt = false
+
+[functions.ai-task-chat]
+verify_jwt = false

@@ -83,6 +83,13 @@ export const translations = {
     notImportant: 'Não Importante',
     minutes: 'min',
     impact: 'Impacto',
+    aiChat: 'Chat IA',
+    aiChatDesc: 'Descreva tarefas em linguagem natural',
+    aiChatWelcome: 'Como posso ajudar?',
+    aiChatWelcomeDesc: 'Descreva um projeto ou tarefa e eu vou criar, classificar e atribuir automaticamente usando a Matriz de Eisenhower.',
+    aiChatPlaceholder: 'Descreva uma tarefa ou projeto...',
+    confirmTasks: 'Criar tarefas',
+    tasksCreatedSuccess: 'Tarefas criadas com sucesso!',
   },
   en: {
     // Nav
@@ -166,6 +173,13 @@ export const translations = {
     notImportant: 'Not Important',
     minutes: 'min',
     impact: 'Impact',
+    aiChat: 'AI Chat',
+    aiChatDesc: 'Describe tasks in natural language',
+    aiChatWelcome: 'How can I help?',
+    aiChatWelcomeDesc: 'Describe a project or task and I will automatically create, classify and assign using the Eisenhower Matrix.',
+    aiChatPlaceholder: 'Describe a task or project...',
+    confirmTasks: 'Create tasks',
+    tasksCreatedSuccess: 'Tasks created successfully!',
   },
 } as const;
 
