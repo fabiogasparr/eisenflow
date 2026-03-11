@@ -17,6 +17,7 @@ interface FocusModeProps {
 export function FocusMode({ open, onClose }: FocusModeProps) {
   const { t, language } = useLanguage();
   const { tasks, updateTask } = useTasks();
+  const { recordAction } = useGamification();
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [elapsed, setElapsed] = useState(0);
   const [running, setRunning] = useState(false);
