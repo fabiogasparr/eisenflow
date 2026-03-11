@@ -210,7 +210,7 @@ function JoinByCode() {
 }
 
 function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => void }) {
-  const { language } = useLanguage();
+  const { language, t } = useLanguage();
   const pt = language === 'pt-BR';
   const { user } = useAuth();
   const { members, updateMemberRole, removeMember } = useTeamMembers(team?.id ?? null);
