@@ -1,4 +1,4 @@
-import { Bell, CheckCheck, Trash2, Clock, UserPlus } from 'lucide-react';
+import { Bell, CheckCheck, Trash2, Clock, UserPlus, RefreshCw } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useReminders, type Reminder } from '@/hooks/useReminders';
 import { useNotifications, type DbNotification } from '@/hooks/useNotifications';
