@@ -34,6 +34,7 @@ export function AppHeader({ onSearch }: AppHeaderProps) {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <NotificationCenter />
         <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-muted-foreground">
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
