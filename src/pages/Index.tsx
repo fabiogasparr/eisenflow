@@ -142,11 +142,14 @@ export default function Index() {
           onUpdate={async (updates) => {
             if (selectedTask) {
               await updateTask.mutateAsync({ id: selectedTask.id, ...updates });
+              if (updates.status === 'completed') recordAction.mutate('complete');
+              if (updates.status === 'eliminated') recordAction.mutate('eliminate');
               setSelectedTask(null);
             }
           }}
           onDelete={async () => {
             if (selectedTask) {
+              if (selectedTask.quadrant === 'eliminate') recordAction.mutate('eliminate');
               await deleteTask.mutateAsync(selectedTask.id);
               setSelectedTask(null);
             }
