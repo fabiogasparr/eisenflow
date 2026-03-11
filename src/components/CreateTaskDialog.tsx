@@ -71,7 +71,8 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
         quadrant,
         urgency,
         importance,
-      });
+        assigned_to: assignedTo || undefined,
+      } as CreateTaskInput);
       // Reset
       setTitle('');
       setDescription('');
@@ -81,6 +82,8 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
       setUrgency(3);
       setImportance(3);
       setTags('');
+      setAssignedTo('');
+      setSelectedTeamId('');
       setAiSuggestion(null);
       onOpenChange(false);
     } finally {
