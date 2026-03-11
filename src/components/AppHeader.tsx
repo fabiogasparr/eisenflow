@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTheme } from '@/hooks/useTheme';
+import { NotificationCenter } from '@/components/NotificationCenter';
 import {
   DropdownMenu,
   DropdownMenuContent,
