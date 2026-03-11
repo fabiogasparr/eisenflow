@@ -14,7 +14,7 @@ export function AppLayout({ children, onSearch }: AppLayoutProps) {
         <AppSidebar />
         <div className="flex-1 flex flex-col">
           <AppHeader onSearch={onSearch} />
-          <main className="flex-1 overflow-auto">
+          <main className="flex-1 overflow-auto min-h-0">
             {children}
           </main>
         </div>
