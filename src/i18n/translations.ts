@@ -173,6 +173,13 @@ export const translations = {
     notImportant: 'Not Important',
     minutes: 'min',
     impact: 'Impact',
+    aiChat: 'AI Chat',
+    aiChatDesc: 'Describe tasks in natural language',
+    aiChatWelcome: 'How can I help?',
+    aiChatWelcomeDesc: 'Describe a project or task and I will automatically create, classify and assign using the Eisenhower Matrix.',
+    aiChatPlaceholder: 'Describe a task or project...',
+    confirmTasks: 'Create tasks',
+    tasksCreatedSuccess: 'Tasks created successfully!',
   },
 } as const;
 
