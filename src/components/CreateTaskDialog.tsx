@@ -8,6 +8,7 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Sparkles } from 'lucide-react';
 import { type Quadrant, type CreateTaskInput, QUADRANT_CONFIG } from '@/types/task';
+import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 
 interface CreateTaskDialogProps {
   open: boolean;
@@ -17,7 +18,7 @@ interface CreateTaskDialogProps {
 }
 
 export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithAI }: CreateTaskDialogProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
@@ -26,9 +27,14 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
   const [urgency, setUrgency] = useState(3);
   const [importance, setImportance] = useState(3);
   const [tags, setTags] = useState('');
+  const [assignedTo, setAssignedTo] = useState<string>('');
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [classifying, setClassifying] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<{ quadrant: Quadrant; urgency: number; importance: number } | null>(null);
+
+  const { teams } = useTeams();
+  const { members } = useTeamMembers(selectedTeamId || null);
 
   const handleClassify = async () => {
     if (!title || !onClassifyWithAI) return;
@@ -65,7 +71,8 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
         quadrant,
         urgency,
         importance,
-      });
+        assigned_to: assignedTo || undefined,
+      } as CreateTaskInput);
       // Reset
       setTitle('');
       setDescription('');
@@ -75,6 +82,8 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
       setUrgency(3);
       setImportance(3);
       setTags('');
+      setAssignedTo('');
+      setSelectedTeamId('');
       setAiSuggestion(null);
       onOpenChange(false);
     } finally {
@@ -146,6 +155,36 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
             <Label>{t('taskTags')}</Label>
             <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tag1, tag2, tag3" />
           </div>
+
+          {/* Assign to team member */}
+          {teams.length > 0 && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{language === 'pt-BR' ? 'Time' : 'Team'}</Label>
+                <Select value={selectedTeamId} onValueChange={(v) => { setSelectedTeamId(v); setAssignedTo(''); }}>
+                  <SelectTrigger><SelectValue placeholder={language === 'pt-BR' ? 'Selecionar time' : 'Select team'} /></SelectTrigger>
+                  <SelectContent>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>{language === 'pt-BR' ? 'Atribuir a' : 'Assign to'}</Label>
+                <Select value={assignedTo} onValueChange={setAssignedTo} disabled={!selectedTeamId}>
+                  <SelectTrigger><SelectValue placeholder={language === 'pt-BR' ? 'Selecionar membro' : 'Select member'} /></SelectTrigger>
+                  <SelectContent>
+                    {members.map((m) => (
+                      <SelectItem key={m.user_id} value={m.user_id}>
+                        {m.profile?.display_name || (language === 'pt-BR' ? 'Usuário' : 'User')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">

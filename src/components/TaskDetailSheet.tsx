@@ -1,10 +1,15 @@
+import { useState } from 'react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { QUADRANT_CONFIG, type Task } from '@/types/task';
-import { CheckCircle, Trash2, Play, Clock } from 'lucide-react';
+import { CheckCircle, Trash2, Play, Clock, UserPlus } from 'lucide-react';
 import { format } from 'date-fns';
+import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 
 interface TaskDetailSheetProps {
   task: Task | null;
@@ -14,7 +19,11 @@ interface TaskDetailSheetProps {
 }
 
 export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetailSheetProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const pt = language === 'pt-BR';
+  const { teams } = useTeams();
+  const [selectedTeamId, setSelectedTeamId] = useState<string>('');
+  const { members } = useTeamMembers(selectedTeamId || null);
 
   if (!task) return null;
 
@@ -65,6 +74,44 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
             <div className="rounded-lg bg-secondary p-3 text-sm">
               <p className="text-muted-foreground">{t('impact')}</p>
               <p className="font-semibold text-lg">{task.impact_score}/100</p>
+            </div>
+          )}
+
+          {/* Delegate / Assign */}
+          {teams.length > 0 && (
+            <div className="space-y-3 pt-3 border-t">
+              <p className="text-sm font-semibold flex items-center gap-2">
+                <UserPlus className="h-4 w-4" />
+                {pt ? 'Delegar tarefa' : 'Assign task'}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Select value={selectedTeamId} onValueChange={(v) => setSelectedTeamId(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={pt ? 'Time' : 'Team'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={task.assigned_to || ''}
+                  onValueChange={(v) => onUpdate({ assigned_to: v })}
+                  disabled={!selectedTeamId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={pt ? 'Membro' : 'Member'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((m) => (
+                      <SelectItem key={m.user_id} value={m.user_id}>
+                        {m.profile?.display_name || (pt ? 'Usuário' : 'User')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           )}
 

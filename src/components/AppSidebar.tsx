@@ -1,4 +1,4 @@
-import { Grid3X3, FolderKanban, BarChart3, Settings, LogOut, Zap, CalendarDays, Trophy } from 'lucide-react';
+import { Grid3X3, FolderKanban, BarChart3, Settings, LogOut, Zap, CalendarDays, Trophy, Users } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
@@ -27,6 +27,7 @@ export function AppSidebar() {
     { title: t('matrix'), url: '/', icon: Grid3X3 },
     { title: t('weeklyPlanning'), url: '/weekly', icon: CalendarDays },
     { title: t('projects'), url: '/projects', icon: FolderKanban },
+    { title: t('teams'), url: '/teams', icon: Users },
     { title: t('metrics'), url: '/metrics', icon: BarChart3 },
     { title: t('gamification'), url: '/gamification', icon: Trophy },
     { title: t('settings'), url: '/settings', icon: Settings },
