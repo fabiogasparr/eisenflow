@@ -150,6 +150,7 @@ export function NotificationCenter() {
                 // DB notification
                 const notif = item.data;
                 const isDelegation = notif.type === 'task_delegated';
+                const isStatusChange = notif.type === 'task_status_changed';
                 return (
                   <button
                     key={`n-${notif.id}`}
@@ -160,6 +161,8 @@ export function NotificationCenter() {
                   >
                     {isDelegation ? (
                       <UserPlus className="h-4 w-4 shrink-0 text-accent-foreground" />
+                    ) : isStatusChange ? (
+                      <RefreshCw className="h-4 w-4 shrink-0 text-primary" />
                     ) : (
                       <Bell className="h-4 w-4 shrink-0 text-muted-foreground" />
                     )}
