@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect } from 'react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTasks } from '@/hooks/useTasks';
+import { useGamification } from '@/hooks/useGamification';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
