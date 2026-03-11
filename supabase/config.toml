@@ -1,1 +1,4 @@
 project_id = "zmquepmvnelffcwvsuqv"
+
+[functions.classify-task]
+verify_jwt = false
