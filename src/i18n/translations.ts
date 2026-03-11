@@ -8,6 +8,7 @@ export const translations = {
     projects: 'Projetos',
     metrics: 'Métricas',
     gamification: 'Conquistas',
+    teams: 'Times',
     settings: 'Configurações',
     
     // Quadrants
