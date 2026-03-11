@@ -9,7 +9,7 @@ import { FocusMode } from '@/components/FocusMode';
 import { useTasks } from '@/hooks/useTasks';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, Target } from 'lucide-react';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
