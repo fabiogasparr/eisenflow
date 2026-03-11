@@ -240,7 +240,7 @@ export default function AIChatPage() {
                           {t('confirmTasks')} ({msg.tasks.filter(t => t.selected).length})
                         </Button>
                       ) : (
-                        <div className="flex items-center gap-1.5 text-xs text-green-600 dark:text-green-400 mt-1">
+                        <div className="flex items-center gap-1.5 text-xs text-primary mt-1">
                           <CheckCircle2 className="h-3.5 w-3.5" />
                           {t('tasksCreatedSuccess')}
                         </div>
