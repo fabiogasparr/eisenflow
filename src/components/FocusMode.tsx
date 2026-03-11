@@ -32,12 +32,18 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     [doTasks, activeTaskId]
   );
 
-  // Timer
+  // Timer - record focus minutes every 60 seconds
   useEffect(() => {
     if (!running) return;
-    const interval = setInterval(() => setElapsed((e) => e + 1), 1000);
+    const interval = setInterval(() => {
+      setElapsed((e) => {
+        const next = e + 1;
+        if (next % 60 === 0) recordAction.mutate('focus_minutes');
+        return next;
+      });
+    }, 1000);
     return () => clearInterval(interval);
-  }, [running]);
+  }, [running, recordAction]);
 
   // Escape key
   useEffect(() => {
