@@ -13,6 +13,7 @@ import SettingsPage from "./pages/SettingsPage";
 import Auth from "./pages/Auth";
 import WeeklyPlanner from "./pages/WeeklyPlanner";
 import Gamification from "./pages/Gamification";
+import TeamsPage from "./pages/TeamsPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
