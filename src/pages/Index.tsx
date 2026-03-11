@@ -150,6 +150,8 @@ export default function Index() {
             }
           }}
         />
+
+        <FocusMode open={focusOpen} onClose={() => setFocusOpen(false)} />
       </div>
     </AppLayout>
   );
