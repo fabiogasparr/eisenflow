@@ -10,10 +10,12 @@ import { useTasks } from '@/hooks/useTasks';
 import { useGamification } from '@/hooks/useGamification';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
-import { Plus, Target } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { Plus, Target, Play } from 'lucide-react';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { QUADRANT_CONFIG } from '@/types/task';
 
 export default function Index() {
   const { t, language } = useLanguage();
@@ -41,12 +43,21 @@ export default function Index() {
     );
   }, [tasks, searchQuery]);
 
+  // Separate in-progress tasks from matrix tasks
+  const inProgressTasks = useMemo(() => {
+    return filteredTasks.filter((t) => t.status === 'in_progress');
+  }, [filteredTasks]);
+
+  const matrixTasks = useMemo(() => {
+    return filteredTasks.filter((t) => t.status !== 'in_progress');
+  }, [filteredTasks]);
+
   const tasksByQuadrant = useMemo(() => ({
-    do: filteredTasks.filter((t) => t.quadrant === 'do'),
-    schedule: filteredTasks.filter((t) => t.quadrant === 'schedule'),
-    delegate: filteredTasks.filter((t) => t.quadrant === 'delegate'),
-    eliminate: filteredTasks.filter((t) => t.quadrant === 'eliminate')
-  }), [filteredTasks]);
+    do: matrixTasks.filter((t) => t.quadrant === 'do'),
+    schedule: matrixTasks.filter((t) => t.quadrant === 'schedule'),
+    delegate: matrixTasks.filter((t) => t.quadrant === 'delegate'),
+    eliminate: matrixTasks.filter((t) => t.quadrant === 'eliminate')
+  }), [matrixTasks]);
 
   const handleDragStart = (event: DragStartEvent) => {
     const task = tasks.find((t) => t.id === event.active.id);
@@ -86,17 +97,19 @@ export default function Index() {
 
   const quadrants: Quadrant[] = ['do', 'schedule', 'delegate', 'eliminate'];
 
+  const QUADRANT_BORDER_COLORS: Record<string, string> = {
+    do: 'border-l-quadrant-do',
+    schedule: 'border-l-quadrant-schedule',
+    delegate: 'border-l-quadrant-delegate',
+    eliminate: 'border-l-quadrant-eliminate',
+  };
+
   return (
     <AppLayout onSearch={setSearchQuery}>
       <div className="p-4 md:p-6 h-full flex flex-col">
         {/* Header row */}
         <div className="flex items-center justify-between mb-4">
-          <div>
-            <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              
-              
-            </div>
-          </div>
+          <div />
           <div className="flex items-center gap-2">
             <Button variant="outline" onClick={() => setFocusOpen(true)} className="gap-2">
               <Target className="h-4 w-4" />
@@ -109,10 +122,46 @@ export default function Index() {
           </div>
         </div>
 
+        {/* In Progress Section */}
+        {inProgressTasks.length > 0 && (
+          <div className="mb-4 rounded-xl border-2 border-primary/30 bg-primary/5 overflow-hidden">
+            <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-primary/10">
+              <Play className="h-4 w-4 text-primary fill-primary" />
+              <h3 className="font-display text-sm font-bold text-primary">
+                {language === 'pt-BR' ? 'Em Andamento' : 'In Progress'}
+              </h3>
+              <span className="ml-auto rounded-full bg-primary/20 px-2 py-0.5 text-xs font-semibold text-primary">
+                {inProgressTasks.length}
+              </span>
+            </div>
+            <ScrollArea className="max-h-[180px]">
+              <div className="p-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+                {inProgressTasks.map((task) => {
+                  const config = QUADRANT_CONFIG[task.quadrant];
+                  const borderColor = QUADRANT_BORDER_COLORS[task.quadrant] ?? '';
+                  return (
+                    <div
+                      key={task.id}
+                      onClick={() => setSelectedTask(task)}
+                      className={`rounded-lg border-l-4 border bg-card p-2.5 shadow-sm hover:shadow-md transition-all cursor-pointer ${borderColor} ring-1 ring-primary/20`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm">{config.emoji}</span>
+                        <p className="text-sm font-medium leading-tight truncate flex-1">
+                          {task.title}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </ScrollArea>
+          </div>
+        )}
+
         {/* Matrix Grid */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-3">
-            {/* Row labels */}
             <div className="contents">
               {quadrants.map((q) =>
               <QuadrantDropZone
@@ -120,7 +169,6 @@ export default function Index() {
                 quadrant={q}
                 tasks={tasksByQuadrant[q]}
                 onTaskClick={setSelectedTask} />
-
               )}
             </div>
           </div>
@@ -134,7 +182,6 @@ export default function Index() {
           onOpenChange={setCreateOpen}
           onSubmit={handleCreateTask}
           onClassifyWithAI={classifyWithAI} />
-        
 
         <TaskDetailSheet
           task={selectedTask}
@@ -154,10 +201,8 @@ export default function Index() {
               setSelectedTask(null);
             }
           }} />
-        
 
         <FocusMode open={focusOpen} onClose={() => setFocusOpen(false)} />
       </div>
     </AppLayout>);
-
 }
