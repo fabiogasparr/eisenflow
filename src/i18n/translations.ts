@@ -4,6 +4,7 @@ export const translations = {
   'pt-BR': {
     // Nav
     matrix: 'Matriz',
+    weeklyPlanning: 'Planejamento Semanal',
     projects: 'Projetos',
     metrics: 'Métricas',
     settings: 'Configurações',
