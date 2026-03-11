@@ -5,22 +5,24 @@ import { QuadrantDropZone } from '@/components/QuadrantDropZone';
 import { TaskCard } from '@/components/TaskCard';
 import { CreateTaskDialog } from '@/components/CreateTaskDialog';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
+import { FocusMode } from '@/components/FocusMode';
 import { useTasks } from '@/hooks/useTasks';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
-import { Plus } from 'lucide-react';
+import { Plus, Target } from 'lucide-react';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 export default function Index() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask } = useTasks();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
+  const [focusOpen, setFocusOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
@@ -93,10 +95,16 @@ export default function Index() {
               <span className="w-1/2 text-center">{t('notUrgent')}</span>
             </div>
           </div>
-          <Button onClick={() => setCreateOpen(true)} className="gap-2 shadow-lg">
-            <Plus className="h-4 w-4" />
-            {t('addTask')}
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setFocusOpen(true)} className="gap-2">
+              <Target className="h-4 w-4" />
+              {language === 'pt-BR' ? 'Modo Foco' : 'Focus Mode'}
+            </Button>
+            <Button onClick={() => setCreateOpen(true)} className="gap-2 shadow-lg">
+              <Plus className="h-4 w-4" />
+              {t('addTask')}
+            </Button>
+          </div>
         </div>
 
         {/* Matrix Grid */}
@@ -142,6 +150,8 @@ export default function Index() {
             }
           }}
         />
+
+        <FocusMode open={focusOpen} onClose={() => setFocusOpen(false)} />
       </div>
     </AppLayout>
   );
