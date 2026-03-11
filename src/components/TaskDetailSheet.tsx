@@ -77,6 +77,44 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
             </div>
           )}
 
+          {/* Delegate / Assign */}
+          {teams.length > 0 && (
+            <div className="space-y-3 pt-3 border-t">
+              <p className="text-sm font-semibold flex items-center gap-2">
+                <UserPlus className="h-4 w-4" />
+                {pt ? 'Delegar tarefa' : 'Assign task'}
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <Select value={selectedTeamId} onValueChange={(v) => setSelectedTeamId(v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={pt ? 'Time' : 'Team'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={task.assigned_to || ''}
+                  onValueChange={(v) => onUpdate({ assigned_to: v })}
+                  disabled={!selectedTeamId}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={pt ? 'Membro' : 'Member'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {members.map((m) => (
+                      <SelectItem key={m.user_id} value={m.user_id}>
+                        {m.profile?.display_name || (pt ? 'Usuário' : 'User')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
           <div className="flex flex-col gap-2 pt-4 border-t">
             {task.status !== 'in_progress' && task.status !== 'completed' && (
               <Button
