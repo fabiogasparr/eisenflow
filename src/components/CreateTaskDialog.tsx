@@ -18,7 +18,7 @@ interface CreateTaskDialogProps {
 }
 
 export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithAI }: CreateTaskDialogProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [dueDate, setDueDate] = useState('');
