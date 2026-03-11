@@ -27,6 +27,7 @@ export function AppSidebar() {
     { title: t('matrix'), url: '/', icon: Grid3X3 },
     { title: t('weeklyPlanning'), url: '/weekly', icon: CalendarDays },
     { title: t('projects'), url: '/projects', icon: FolderKanban },
+    { title: t('teams'), url: '/teams', icon: Users },
     { title: t('metrics'), url: '/metrics', icon: BarChart3 },
     { title: t('gamification'), url: '/gamification', icon: Trophy },
     { title: t('settings'), url: '/settings', icon: Settings },
