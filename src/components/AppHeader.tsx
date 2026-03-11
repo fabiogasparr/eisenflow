@@ -1,8 +1,9 @@
-import { Search, Globe } from 'lucide-react';
+import { Search, Globe, Moon, Sun } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useLanguage } from '@/i18n/LanguageContext';
+import { useTheme } from '@/hooks/useTheme';
 import {
   DropdownMenu,
   DropdownMenuContent,
