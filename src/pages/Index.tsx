@@ -94,7 +94,7 @@ export default function Index() {
           <div>
             <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
               
-              <span className="w-1/2 text-center">{t('notUrgent')}</span>
+              
             </div>
           </div>
           <div className="flex items-center gap-2">
