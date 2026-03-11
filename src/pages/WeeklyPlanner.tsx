@@ -2,22 +2,32 @@ import { useState, useMemo } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTasks } from '@/hooks/useTasks';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
-import { ChevronLeft, ChevronRight, Clock, GripVertical } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
 import { format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, type Locale } from 'date-fns';
 import { ptBR, enUS } from 'date-fns/locale';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
-import { QUADRANT_CONFIG, type Task } from '@/types/task';
+import { type Task } from '@/types/task';
+
+const QUADRANT_BORDER_COLORS: Record<string, string> = {
+  do: 'border-l-quadrant-do',
+  schedule: 'border-l-quadrant-schedule',
+  delegate: 'border-l-quadrant-delegate',
+  eliminate: 'border-l-quadrant-eliminate',
+};
 
 function DraggableWeekTask({ task, onClick }: { task: Task; onClick: (t: Task) => void }) {
-  const config = QUADRANT_CONFIG[task.quadrant];
+  const { t } = useLanguage();
+  const borderColor = QUADRANT_BORDER_COLORS[task.quadrant] ?? '';
+  const isInProgress = task.status === 'in_progress';
+  const isCompleted = task.status === 'completed';
+
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: task.id,
     data: { task },
@@ -26,47 +36,36 @@ function DraggableWeekTask({ task, onClick }: { task: Task; onClick: (t: Task) =
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
-    opacity: isDragging ? 0.5 : 1,
+    opacity: isDragging ? 0.5 : isCompleted ? 0.6 : 1,
   };
 
   return (
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-start gap-2 rounded-lg border bg-card p-2.5 shadow-sm hover:shadow-md transition-all cursor-pointer ${
+      className={`group flex items-center gap-2 rounded-lg border-l-4 border bg-card p-2 shadow-sm hover:shadow-md transition-all cursor-pointer ${borderColor} ${
         isDragging ? 'ring-2 ring-primary z-50' : ''
-      }`}
+      } ${isInProgress ? 'ring-1 ring-primary/30' : ''}`}
       onClick={() => onClick(task)}
     >
       <button
         {...attributes}
         {...listeners}
-        className="mt-0.5 cursor-grab opacity-0 group-hover:opacity-60 transition-opacity shrink-0"
+        className="cursor-grab opacity-0 group-hover:opacity-60 transition-opacity shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+        <GripVertical className="h-3 w-3 text-muted-foreground" />
       </button>
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-1.5 mb-0.5">
-          <span className="text-xs">{config.emoji}</span>
-          <p className={`text-xs font-medium leading-tight truncate ${
-            task.status === 'completed' ? 'line-through text-muted-foreground' : ''
-          }`}>
-            {task.title}
-          </p>
-        </div>
-        <div className="flex items-center gap-1.5">
-          {task.estimated_time && (
-            <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground">
-              <Clock className="h-2.5 w-2.5" />
-              {task.estimated_time}min
-            </span>
-          )}
-          {task.tags?.slice(0, 1).map((tag) => (
-            <Badge key={tag} variant="secondary" className="text-[10px] px-1.5 py-0 h-4">{tag}</Badge>
-          ))}
-        </div>
-      </div>
+      <p className={`text-xs font-medium leading-tight truncate flex-1 ${
+        isCompleted ? 'line-through text-muted-foreground' : ''
+      }`}>
+        {task.title}
+      </p>
+      {isInProgress && (
+        <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
+          {t('inProgress') ?? '⏳'}
+        </span>
+      )}
     </div>
   );
 }
@@ -116,20 +115,12 @@ function DayColumn({
           </div>
         </SortableContext>
       </ScrollArea>
-      {tasks.length > 0 && (
-        <div className="px-3 py-1.5 border-t bg-muted/20 text-center">
-          <span className="text-[10px] text-muted-foreground">
-            {tasks.reduce((a, t) => a + (t.estimated_time ?? 0), 0)} min
-          </span>
-        </div>
-      )}
     </div>
   );
 }
 
-// Unscheduled tasks sidebar
-function UnscheduledPanel({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: (t: Task) => void }) {
-  const { t } = useLanguage();
+function BacklogPanel({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: (t: Task) => void }) {
+  const { t, language } = useLanguage();
   const { isOver, setNodeRef } = useDroppable({ id: 'unscheduled' });
 
   return (
@@ -141,7 +132,10 @@ function UnscheduledPanel({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: 
     >
       <div className="px-3 py-2 border-b bg-muted/30">
         <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          {t('schedule')} — {t('dragHint')}
+          Backlog
+        </p>
+        <p className="text-[10px] text-muted-foreground">
+          {language === 'pt-BR' ? 'Arraste para agendar' : 'Drag to schedule'}
         </p>
       </div>
       <ScrollArea className="p-2 max-h-[calc(100vh-220px)]">
@@ -180,24 +174,22 @@ export default function WeeklyPlanner() {
     return Array.from({ length: 7 }, (_, i) => addDays(currentWeekStart, i));
   }, [currentWeekStart]);
 
-  // Tasks with due_date that fall in this week
-  const scheduledTasks = useMemo(() => {
-    return tasks.filter((t) => t.quadrant === 'schedule' || t.due_date);
-  }, [tasks]);
-
+  // Distribute tasks by started_at or due_date
   const tasksByDay = useMemo(() => {
     const map: Record<string, Task[]> = {};
     weekDays.forEach((day) => {
       const key = format(day, 'yyyy-MM-dd');
-      map[key] = scheduledTasks.filter(
-        (t) => t.due_date && isSameDay(new Date(t.due_date), day)
-      );
+      map[key] = tasks.filter((t) => {
+        const dateStr = t.started_at || t.due_date;
+        return dateStr && isSameDay(new Date(dateStr), day);
+      });
     });
     return map;
-  }, [weekDays, scheduledTasks]);
+  }, [weekDays, tasks]);
 
-  const unscheduledTasks = useMemo(() => {
-    return tasks.filter((t) => (t.quadrant === 'schedule') && !t.due_date);
+  // Backlog: tasks without started_at AND without due_date
+  const backlogTasks = useMemo(() => {
+    return tasks.filter((t) => !t.started_at && !t.due_date && t.status !== 'completed' && t.status !== 'eliminated');
   }, [tasks]);
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -214,11 +206,10 @@ export default function WeeklyPlanner() {
     const targetId = over.id as string;
 
     if (targetId === 'unscheduled') {
-      updateTask.mutate({ id: taskId, due_date: null as any });
+      updateTask.mutate({ id: taskId, due_date: null as any, started_at: null as any });
     } else {
-      // It's a date string like 'yyyy-MM-dd'
       const targetDate = new Date(targetId + 'T09:00:00');
-      updateTask.mutate({ id: taskId, due_date: targetDate.toISOString(), quadrant: 'schedule' });
+      updateTask.mutate({ id: taskId, due_date: targetDate.toISOString() });
     }
   };
 
@@ -227,7 +218,6 @@ export default function WeeklyPlanner() {
   return (
     <AppLayout>
       <div className="p-4 md:p-6 h-full flex flex-col">
-        {/* Week navigation */}
         <div className="flex items-center justify-between mb-4">
           <h1 className="font-display text-xl font-bold">
             {language === 'pt-BR' ? 'Planejamento Semanal' : 'Weekly Planning'}
@@ -252,12 +242,9 @@ export default function WeeklyPlanner() {
 
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex-1 flex gap-4 overflow-hidden">
-            {/* Unscheduled sidebar */}
             <div className="w-56 shrink-0">
-              <UnscheduledPanel tasks={unscheduledTasks} onTaskClick={setSelectedTask} />
+              <BacklogPanel tasks={backlogTasks} onTaskClick={setSelectedTask} />
             </div>
-
-            {/* Week grid */}
             <div className="flex-1 grid grid-cols-7 gap-2 overflow-x-auto">
               {weekDays.map((day) => {
                 const key = format(day, 'yyyy-MM-dd');
@@ -277,7 +264,7 @@ export default function WeeklyPlanner() {
 
           <DragOverlay>
             {activeTask ? (
-              <div className="rounded-lg border bg-card p-2.5 shadow-lg max-w-[200px]">
+              <div className={`rounded-lg border-l-4 border bg-card p-2 shadow-lg max-w-[200px] ${QUADRANT_BORDER_COLORS[activeTask.quadrant] ?? ''}`}>
                 <p className="text-xs font-medium truncate">{activeTask.title}</p>
               </div>
             ) : null}
