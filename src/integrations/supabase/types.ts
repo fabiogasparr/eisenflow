@@ -14,16 +14,241 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      delegations: {
+        Row: {
+          created_at: string
+          delegated_by: string
+          delegated_to: string
+          id: string
+          notes: string | null
+          status: Database["public"]["Enums"]["delegation_status"]
+          task_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          delegated_by: string
+          delegated_to: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["delegation_status"]
+          task_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          delegated_by?: string
+          delegated_to?: string
+          id?: string
+          notes?: string | null
+          status?: Database["public"]["Enums"]["delegation_status"]
+          task_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "delegations_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      productivity_metrics: {
+        Row: {
+          created_at: string
+          date: string
+          id: string
+          tasks_completed: number
+          tasks_delegated: number
+          tasks_eliminated: number
+          time_in_important: number
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          date?: string
+          id?: string
+          tasks_completed?: number
+          tasks_delegated?: number
+          tasks_eliminated?: number
+          time_in_important?: number
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          date?: string
+          id?: string
+          tasks_completed?: number
+          tasks_delegated?: number
+          tasks_eliminated?: number
+          time_in_important?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      profiles: {
+        Row: {
+          avatar_url: string | null
+          created_at: string
+          display_name: string | null
+          id: string
+          preferred_language: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          preferred_language?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          avatar_url?: string | null
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          preferred_language?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      projects: {
+        Row: {
+          color: string
+          created_at: string
+          id: string
+          name: string
+          owner_id: string
+          updated_at: string
+        }
+        Insert: {
+          color?: string
+          created_at?: string
+          id?: string
+          name: string
+          owner_id: string
+          updated_at?: string
+        }
+        Update: {
+          color?: string
+          created_at?: string
+          id?: string
+          name?: string
+          owner_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      tasks: {
+        Row: {
+          assigned_to: string | null
+          created_at: string
+          created_by: string
+          description: string | null
+          due_date: string | null
+          estimated_time: number | null
+          id: string
+          impact_score: number | null
+          importance: number
+          position: number
+          project_id: string | null
+          quadrant: Database["public"]["Enums"]["task_quadrant"]
+          status: Database["public"]["Enums"]["task_status"]
+          tags: string[] | null
+          title: string
+          updated_at: string
+          urgency: number
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string
+          created_by: string
+          description?: string | null
+          due_date?: string | null
+          estimated_time?: number | null
+          id?: string
+          impact_score?: number | null
+          importance?: number
+          position?: number
+          project_id?: string | null
+          quadrant?: Database["public"]["Enums"]["task_quadrant"]
+          status?: Database["public"]["Enums"]["task_status"]
+          tags?: string[] | null
+          title: string
+          updated_at?: string
+          urgency?: number
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          due_date?: string | null
+          estimated_time?: number | null
+          id?: string
+          impact_score?: number | null
+          importance?: number
+          position?: number
+          project_id?: string | null
+          quadrant?: Database["public"]["Enums"]["task_quadrant"]
+          status?: Database["public"]["Enums"]["task_status"]
+          tags?: string[] | null
+          title?: string
+          updated_at?: string
+          urgency?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "member"
+      delegation_status: "pending" | "accepted" | "completed" | "rejected"
+      task_quadrant: "do" | "schedule" | "delegate" | "eliminate"
+      task_status: "pending" | "in_progress" | "completed" | "eliminated"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -150,6 +375,11 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "member"],
+      delegation_status: ["pending", "accepted", "completed", "rejected"],
+      task_quadrant: ["do", "schedule", "delegate", "eliminate"],
+      task_status: ["pending", "in_progress", "completed", "eliminated"],
+    },
   },
 } as const
