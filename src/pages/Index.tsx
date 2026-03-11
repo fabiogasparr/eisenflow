@@ -19,6 +19,7 @@ export default function Index() {
   const { t, language } = useLanguage();
   const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask } = useTasks();
   const { toast } = useToast();
+  const { recordAction } = useGamification();
   const [searchQuery, setSearchQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
