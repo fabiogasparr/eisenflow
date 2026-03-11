@@ -243,6 +243,7 @@ export type Database = {
       tasks: {
         Row: {
           assigned_to: string | null
+          completed_at: string | null
           created_at: string
           created_by: string
           description: string | null
@@ -254,6 +255,7 @@ export type Database = {
           position: number
           project_id: string | null
           quadrant: Database["public"]["Enums"]["task_quadrant"]
+          started_at: string | null
           status: Database["public"]["Enums"]["task_status"]
           tags: string[] | null
           title: string
@@ -262,6 +264,7 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          completed_at?: string | null
           created_at?: string
           created_by: string
           description?: string | null
@@ -273,6 +276,7 @@ export type Database = {
           position?: number
           project_id?: string | null
           quadrant?: Database["public"]["Enums"]["task_quadrant"]
+          started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           tags?: string[] | null
           title: string
@@ -281,6 +285,7 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          completed_at?: string | null
           created_at?: string
           created_by?: string
           description?: string | null
@@ -292,6 +297,7 @@ export type Database = {
           position?: number
           project_id?: string | null
           quadrant?: Database["public"]["Enums"]["task_quadrant"]
+          started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           tags?: string[] | null
           title?: string

@@ -48,6 +48,13 @@ export function useTasks() {
 
   const updateTask = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Task> & { id: string }) => {
+      // Auto-set started_at / completed_at based on status changes
+      if (updates.status === 'in_progress' && !updates.started_at) {
+        updates.started_at = new Date().toISOString();
+      }
+      if ((updates.status === 'completed' || updates.status === 'eliminated') && !updates.completed_at) {
+        updates.completed_at = new Date().toISOString();
+      }
       const { data, error } = await supabase
         .from('tasks')
         .update(updates)

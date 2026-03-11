@@ -51,6 +51,23 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
             </div>
           )}
 
+          {(task.started_at || task.completed_at) && (
+            <div className="grid grid-cols-2 gap-3 text-sm">
+              {task.started_at && (
+                <div className="rounded-lg bg-secondary p-3">
+                  <p className="text-muted-foreground">{pt ? 'Iniciada em' : 'Started at'}</p>
+                  <p className="font-semibold">{format(new Date(task.started_at), 'dd/MM/yy HH:mm')}</p>
+                </div>
+              )}
+              {task.completed_at && (
+                <div className="rounded-lg bg-secondary p-3">
+                  <p className="text-muted-foreground">{pt ? 'Concluída em' : 'Completed at'}</p>
+                  <p className="font-semibold">{format(new Date(task.completed_at), 'dd/MM/yy HH:mm')}</p>
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3 text-sm">
             <div className="rounded-lg bg-secondary p-3">
               <p className="text-muted-foreground">{t('taskUrgency')}</p>
