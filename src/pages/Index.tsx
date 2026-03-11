@@ -7,6 +7,7 @@ import { CreateTaskDialog } from '@/components/CreateTaskDialog';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { FocusMode } from '@/components/FocusMode';
 import { useTasks } from '@/hooks/useTasks';
+import { useGamification } from '@/hooks/useGamification';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Plus, Target } from 'lucide-react';
@@ -18,6 +19,7 @@ export default function Index() {
   const { t, language } = useLanguage();
   const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask } = useTasks();
   const { toast } = useToast();
+  const { recordAction } = useGamification();
   const [searchQuery, setSearchQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
@@ -140,11 +142,14 @@ export default function Index() {
           onUpdate={async (updates) => {
             if (selectedTask) {
               await updateTask.mutateAsync({ id: selectedTask.id, ...updates });
+              if (updates.status === 'completed') recordAction.mutate('complete');
+              if (updates.status === 'eliminated') recordAction.mutate('eliminate');
               setSelectedTask(null);
             }
           }}
           onDelete={async () => {
             if (selectedTask) {
+              if (selectedTask.quadrant === 'eliminate') recordAction.mutate('eliminate');
               await deleteTask.mutateAsync(selectedTask.id);
               setSelectedTask(null);
             }

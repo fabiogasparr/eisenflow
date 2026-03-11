@@ -55,6 +55,57 @@ export type Database = {
           },
         ]
       }
+      gamification: {
+        Row: {
+          created_at: string
+          current_streak: number
+          id: string
+          last_active_date: string | null
+          level: number
+          life_score: number
+          longest_streak: number
+          total_focus_minutes: number
+          total_tasks_completed: number
+          total_tasks_delegated: number
+          total_tasks_eliminated: number
+          updated_at: string
+          user_id: string
+          xp: number
+        }
+        Insert: {
+          created_at?: string
+          current_streak?: number
+          id?: string
+          last_active_date?: string | null
+          level?: number
+          life_score?: number
+          longest_streak?: number
+          total_focus_minutes?: number
+          total_tasks_completed?: number
+          total_tasks_delegated?: number
+          total_tasks_eliminated?: number
+          updated_at?: string
+          user_id: string
+          xp?: number
+        }
+        Update: {
+          created_at?: string
+          current_streak?: number
+          id?: string
+          last_active_date?: string | null
+          level?: number
+          life_score?: number
+          longest_streak?: number
+          total_focus_minutes?: number
+          total_tasks_completed?: number
+          total_tasks_delegated?: number
+          total_tasks_eliminated?: number
+          updated_at?: string
+          user_id?: string
+          xp?: number
+        }
+        Relationships: []
+      }
       productivity_metrics: {
         Row: {
           created_at: string
@@ -212,6 +263,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_badges: {
+        Row: {
+          badge_id: string
+          earned_at: string
+          id: string
+          user_id: string
+        }
+        Insert: {
+          badge_id: string
+          earned_at?: string
+          id?: string
+          user_id: string
+        }
+        Update: {
+          badge_id?: string
+          earned_at?: string
+          id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       user_roles: {
         Row: {

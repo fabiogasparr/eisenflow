@@ -7,6 +7,7 @@ export const translations = {
     weeklyPlanning: 'Planejamento Semanal',
     projects: 'Projetos',
     metrics: 'Métricas',
+    gamification: 'Conquistas',
     settings: 'Configurações',
     
     // Quadrants
@@ -88,6 +89,7 @@ export const translations = {
     weeklyPlanning: 'Weekly Planning',
     projects: 'Projects',
     metrics: 'Metrics',
+    gamification: 'Achievements',
     settings: 'Settings',
     
     // Quadrants
