@@ -8,7 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { ChevronLeft, ChevronRight, Clock, GripVertical } from 'lucide-react';
-import { format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks } from 'date-fns';
+import { format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks, type Locale } from 'date-fns';
 import { ptBR, enUS } from 'date-fns/locale';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useDroppable, useSensor, useSensors } from '@dnd-kit/core';
 import { useSortable } from '@dnd-kit/sortable';
