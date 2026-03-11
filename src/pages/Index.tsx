@@ -35,9 +35,9 @@ export default function Index() {
     const q = searchQuery.toLowerCase();
     return tasks.filter(
       (t) =>
-        t.title.toLowerCase().includes(q) ||
-        t.description?.toLowerCase().includes(q) ||
-        t.tags?.some((tag) => tag.toLowerCase().includes(q))
+      t.title.toLowerCase().includes(q) ||
+      t.description?.toLowerCase().includes(q) ||
+      t.tags?.some((tag) => tag.toLowerCase().includes(q))
     );
   }, [tasks, searchQuery]);
 
@@ -45,7 +45,7 @@ export default function Index() {
     do: filteredTasks.filter((t) => t.quadrant === 'do'),
     schedule: filteredTasks.filter((t) => t.quadrant === 'schedule'),
     delegate: filteredTasks.filter((t) => t.quadrant === 'delegate'),
-    eliminate: filteredTasks.filter((t) => t.quadrant === 'eliminate'),
+    eliminate: filteredTasks.filter((t) => t.quadrant === 'eliminate')
   }), [filteredTasks]);
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -74,10 +74,10 @@ export default function Index() {
   const classifyWithAI = async (title: string, description: string) => {
     try {
       const { data, error } = await supabase.functions.invoke('classify-task', {
-        body: { title, description },
+        body: { title, description }
       });
       if (error) throw error;
-      return data as { quadrant: Quadrant; urgency: number; importance: number };
+      return data as {quadrant: Quadrant;urgency: number;importance: number;};
     } catch (e: any) {
       toast({ title: 'AI Error', description: e.message, variant: 'destructive' });
       return null;
@@ -93,7 +93,7 @@ export default function Index() {
         <div className="flex items-center justify-between mb-4">
           <div>
             <div className="flex items-center gap-4 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-              <span className="w-1/2 text-center">{t('urgent')}</span>
+              
               <span className="w-1/2 text-center">{t('notUrgent')}</span>
             </div>
           </div>
@@ -114,14 +114,14 @@ export default function Index() {
           <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-3">
             {/* Row labels */}
             <div className="contents">
-              {quadrants.map((q) => (
-                <QuadrantDropZone
-                  key={q}
-                  quadrant={q}
-                  tasks={tasksByQuadrant[q]}
-                  onTaskClick={setSelectedTask}
-                />
-              ))}
+              {quadrants.map((q) =>
+              <QuadrantDropZone
+                key={q}
+                quadrant={q}
+                tasks={tasksByQuadrant[q]}
+                onTaskClick={setSelectedTask} />
+
+              )}
             </div>
           </div>
           <DragOverlay>
@@ -133,8 +133,8 @@ export default function Index() {
           open={createOpen}
           onOpenChange={setCreateOpen}
           onSubmit={handleCreateTask}
-          onClassifyWithAI={classifyWithAI}
-        />
+          onClassifyWithAI={classifyWithAI} />
+        
 
         <TaskDetailSheet
           task={selectedTask}
@@ -153,11 +153,11 @@ export default function Index() {
               await deleteTask.mutateAsync(selectedTask.id);
               setSelectedTask(null);
             }
-          }}
-        />
+          }} />
+        
 
         <FocusMode open={focusOpen} onClose={() => setFocusOpen(false)} />
       </div>
-    </AppLayout>
-  );
+    </AppLayout>);
+
 }
