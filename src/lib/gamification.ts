@@ -11,6 +11,7 @@ export interface Badge {
 export interface GamificationStats {
   current_streak: number;
   longest_streak: number;
+  last_active_date: string | null;
   total_tasks_completed: number;
   total_tasks_eliminated: number;
   total_tasks_delegated: number;
