@@ -85,6 +85,7 @@ export const translations = {
   en: {
     // Nav
     matrix: 'Matrix',
+    weeklyPlanning: 'Weekly Planning',
     projects: 'Projects',
     metrics: 'Metrics',
     settings: 'Settings',
