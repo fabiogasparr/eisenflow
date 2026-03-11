@@ -10,6 +10,7 @@ import Metrics from "./pages/Metrics";
 import Projects from "./pages/Projects";
 import SettingsPage from "./pages/SettingsPage";
 import Auth from "./pages/Auth";
+import WeeklyPlanner from "./pages/WeeklyPlanner";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
