@@ -7,6 +7,7 @@ import { CreateTaskDialog } from '@/components/CreateTaskDialog';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { FocusMode } from '@/components/FocusMode';
 import { useTasks } from '@/hooks/useTasks';
+import { useGamification } from '@/hooks/useGamification';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Plus, Target } from 'lucide-react';
