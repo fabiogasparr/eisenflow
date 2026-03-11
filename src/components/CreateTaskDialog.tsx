@@ -156,6 +156,36 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
             <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tag1, tag2, tag3" />
           </div>
 
+          {/* Assign to team member */}
+          {teams.length > 0 && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>{language === 'pt-BR' ? 'Time' : 'Team'}</Label>
+                <Select value={selectedTeamId} onValueChange={(v) => { setSelectedTeamId(v); setAssignedTo(''); }}>
+                  <SelectTrigger><SelectValue placeholder={language === 'pt-BR' ? 'Selecionar time' : 'Select team'} /></SelectTrigger>
+                  <SelectContent>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>{language === 'pt-BR' ? 'Atribuir a' : 'Assign to'}</Label>
+                <Select value={assignedTo} onValueChange={setAssignedTo} disabled={!selectedTeamId}>
+                  <SelectTrigger><SelectValue placeholder={language === 'pt-BR' ? 'Selecionar membro' : 'Select member'} /></SelectTrigger>
+                  <SelectContent>
+                    {members.map((m) => (
+                      <SelectItem key={m.user_id} value={m.user_id}>
+                        {m.profile?.display_name || (language === 'pt-BR' ? 'Usuário' : 'User')}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-3 gap-4">
             <div className="space-y-2">
               <Label>Quadrant</Label>
