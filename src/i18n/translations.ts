@@ -91,6 +91,7 @@ export const translations = {
     projects: 'Projects',
     metrics: 'Metrics',
     gamification: 'Achievements',
+    teams: 'Teams',
     settings: 'Settings',
     
     // Quadrants
