@@ -17,6 +17,7 @@ interface AppHeaderProps {
 
 export function AppHeader({ onSearch }: AppHeaderProps) {
   const { t, language, setLanguage } = useLanguage();
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <header className="flex h-14 items-center gap-3 border-b bg-card/80 backdrop-blur-sm px-4">
@@ -32,6 +33,9 @@ export function AppHeader({ onSearch }: AppHeaderProps) {
       </div>
 
       <div className="ml-auto flex items-center gap-2">
+        <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-muted-foreground">
+          {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
