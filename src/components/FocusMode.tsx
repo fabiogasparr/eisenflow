@@ -73,6 +73,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
   const handleCompleteTask = () => {
     if (activeTask) {
       updateTask.mutate({ id: activeTask.id, status: 'completed' });
+      recordAction.mutate('complete');
       setRunning(false);
       setActiveTaskId(null);
       setElapsed(0);
