@@ -282,7 +282,13 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
               )}
             </SheetHeader>
 
-            <div className="mt-6 space-y-6">
+            <Tabs defaultValue="members" className="mt-6">
+              <TabsList className="w-full">
+                <TabsTrigger value="members" className="flex-1">{pt ? 'Membros' : 'Members'}</TabsTrigger>
+                <TabsTrigger value="dashboard" className="flex-1">{t('teamDashboard')}</TabsTrigger>
+              </TabsList>
+
+              <TabsContent value="members" className="space-y-6 mt-4">
               {/* Members */}
               <div>
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
