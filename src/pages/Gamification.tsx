@@ -7,6 +7,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Flame, Trophy, Target, Zap, Star, TrendingUp } from 'lucide-react';
+import { WeeklyRankingCard } from '@/components/WeeklyRankingCard';
 
 export default function Gamification() {
   const { language } = useLanguage();
@@ -151,6 +152,9 @@ export default function Gamification() {
             </div>
           </CardContent>
         </Card>
+
+        {/* Weekly Ranking */}
+        <WeeklyRankingCard />
 
         {/* Activity stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
