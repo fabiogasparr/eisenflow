@@ -454,7 +454,12 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
                   </Button>
                 </div>
               )}
-            </div>
+              </TabsContent>
+
+              <TabsContent value="dashboard" className="mt-4">
+                <TeamDashboard teamId={team.id} />
+              </TabsContent>
+            </Tabs>
           </>
         )}
       </SheetContent>
