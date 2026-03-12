@@ -65,6 +65,7 @@ export type Database = {
           life_score: number
           longest_streak: number
           total_focus_minutes: number
+          total_pomodoros: number
           total_tasks_completed: number
           total_tasks_delegated: number
           total_tasks_eliminated: number
@@ -81,6 +82,7 @@ export type Database = {
           life_score?: number
           longest_streak?: number
           total_focus_minutes?: number
+          total_pomodoros?: number
           total_tasks_completed?: number
           total_tasks_delegated?: number
           total_tasks_eliminated?: number
@@ -97,6 +99,7 @@ export type Database = {
           life_score?: number
           longest_streak?: number
           total_focus_minutes?: number
+          total_pomodoros?: number
           total_tasks_completed?: number
           total_tasks_delegated?: number
           total_tasks_eliminated?: number
@@ -144,6 +147,7 @@ export type Database = {
           created_at: string
           date: string
           id: string
+          pomodoros_completed: number
           tasks_completed: number
           tasks_delegated: number
           tasks_eliminated: number
@@ -154,6 +158,7 @@ export type Database = {
           created_at?: string
           date?: string
           id?: string
+          pomodoros_completed?: number
           tasks_completed?: number
           tasks_delegated?: number
           tasks_eliminated?: number
@@ -164,6 +169,7 @@ export type Database = {
           created_at?: string
           date?: string
           id?: string
+          pomodoros_completed?: number
           tasks_completed?: number
           tasks_delegated?: number
           tasks_eliminated?: number
