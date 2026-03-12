@@ -80,6 +80,10 @@ export function useGamification() {
           updates.total_focus_minutes = stats.total_focus_minutes + 1;
           xpGain = XP_REWARDS.FOCUS_MINUTE;
           break;
+        case 'pomodoro':
+          updates.total_pomodoros = (stats.total_pomodoros ?? 0) + 1;
+          xpGain = XP_REWARDS.POMODORO_COMPLETED;
+          break;
       }
 
       // Streak logic
