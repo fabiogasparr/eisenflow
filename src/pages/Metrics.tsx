@@ -199,7 +199,7 @@ export default function Metrics() {
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-lg flex items-center gap-2">
-              <span>📈</span> {language === 'pt-BR' ? 'Pomodoros na última semana' : 'Pomodoros last 7 days'}
+              <span>📈</span> {language === 'pt-BR' ? 'Evolução semanal' : 'Weekly evolution'}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -217,6 +217,15 @@ export default function Metrics() {
                   dot={{ r: 4, fill: 'hsl(348, 83%, 47%)' }}
                   activeDot={{ r: 6 }}
                   name={language === 'pt-BR' ? 'Pomodoros' : 'Pomodoros'}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="tasksCompleted"
+                  stroke="hsl(80, 61%, 50%)"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: 'hsl(80, 61%, 50%)' }}
+                  activeDot={{ r: 6 }}
+                  name={language === 'pt-BR' ? 'Tarefas concluídas' : 'Tasks completed'}
                 />
               </LineChart>
             </ResponsiveContainer>
