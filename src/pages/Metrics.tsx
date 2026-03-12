@@ -25,20 +25,21 @@ export default function Metrics() {
       const sevenDaysAgo = subDays(new Date(), 6).toISOString().split('T')[0];
       const { data, error } = await supabase
         .from('productivity_metrics')
-        .select('date, pomodoros_completed')
+        .select('date, pomodoros_completed, tasks_completed')
         .eq('user_id', user.id)
         .gte('date', sevenDaysAgo)
         .order('date', { ascending: true });
       if (error) throw error;
 
-      // Fill missing days with 0
-      const map = new Map((data ?? []).map(d => [d.date, d.pomodoros_completed]));
+      const map = new Map((data ?? []).map(d => [d.date, d]));
       return Array.from({ length: 7 }, (_, i) => {
         const date = subDays(new Date(), 6 - i);
         const key = format(date, 'yyyy-MM-dd');
+        const row = map.get(key);
         return {
           date: format(date, 'dd/MM'),
-          pomodoros: map.get(key) ?? 0,
+          pomodoros: row?.pomodoros_completed ?? 0,
+          tasksCompleted: row?.tasks_completed ?? 0,
         };
       });
     },
@@ -198,7 +199,7 @@ export default function Metrics() {
         <Card>
           <CardHeader>
             <CardTitle className="font-display text-lg flex items-center gap-2">
-              <span>📈</span> {language === 'pt-BR' ? 'Pomodoros na última semana' : 'Pomodoros last 7 days'}
+              <span>📈</span> {language === 'pt-BR' ? 'Evolução semanal' : 'Weekly evolution'}
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -216,6 +217,15 @@ export default function Metrics() {
                   dot={{ r: 4, fill: 'hsl(348, 83%, 47%)' }}
                   activeDot={{ r: 6 }}
                   name={language === 'pt-BR' ? 'Pomodoros' : 'Pomodoros'}
+                />
+                <Line
+                  type="monotone"
+                  dataKey="tasksCompleted"
+                  stroke="hsl(80, 61%, 50%)"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: 'hsl(80, 61%, 50%)' }}
+                  activeDot={{ r: 6 }}
+                  name={language === 'pt-BR' ? 'Tarefas concluídas' : 'Tasks completed'}
                 />
               </LineChart>
             </ResponsiveContainer>
