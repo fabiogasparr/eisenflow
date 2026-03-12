@@ -2,14 +2,16 @@ import { useMemo } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTasks } from '@/hooks/useTasks';
+import { useGamification } from '@/hooks/useGamification';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { CheckCircle, Trash2, Users, Clock } from 'lucide-react';
+import { CheckCircle, Trash2, Users, Clock, Timer } from 'lucide-react';
 import { QUADRANT_CONFIG, type Quadrant } from '@/types/task';
 
 export default function Metrics() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { tasks } = useTasks();
+  const { stats: gamStats } = useGamification();
 
   const stats = useMemo(() => {
     const completed = tasks.filter(t => t.status === 'completed').length;
@@ -29,6 +31,16 @@ export default function Metrics() {
       quadrant: q,
     }));
   }, [tasks, t]);
+
+  const totalPomodoros = gamStats?.total_pomodoros ?? 0;
+  const totalFocusMinutes = gamStats?.total_focus_minutes ?? 0;
+
+  // Estimate weekly pomodoros (simple: total / weeks since first use, or just show total)
+  const pomodoroEstimate = useMemo(() => {
+    const focusHours = Math.floor(totalFocusMinutes / 60);
+    const focusMins = totalFocusMinutes % 60;
+    return { focusHours, focusMins };
+  }, [totalFocusMinutes]);
 
   const COLORS = [
     'hsl(80, 61%, 50%)',
@@ -64,6 +76,43 @@ export default function Metrics() {
             </Card>
           ))}
         </div>
+
+        {/* Pomodoro Stats */}
+        <Card className="border-destructive/20">
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <span>🍅</span> Pomodoro
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+              <div className="text-center space-y-1">
+                <p className="text-4xl font-bold font-display text-destructive">{totalPomodoros}</p>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'pt-BR' ? 'Pomodoros completados' : 'Pomodoros completed'}
+                </p>
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-4xl font-bold font-display text-quadrant-schedule">
+                  {pomodoroEstimate.focusHours > 0
+                    ? `${pomodoroEstimate.focusHours}h${pomodoroEstimate.focusMins > 0 ? ` ${pomodoroEstimate.focusMins}m` : ''}`
+                    : `${pomodoroEstimate.focusMins}m`}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'pt-BR' ? 'Tempo total em foco' : 'Total focus time'}
+                </p>
+              </div>
+              <div className="text-center space-y-1">
+                <p className="text-4xl font-bold font-display text-primary">
+                  {totalPomodoros > 0 ? Math.round((totalFocusMinutes / totalPomodoros)) : 0}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {language === 'pt-BR' ? 'Min médio por pomodoro' : 'Avg min per pomodoro'}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="grid md:grid-cols-2 gap-6">
           <Card>
