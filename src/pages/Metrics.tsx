@@ -194,6 +194,33 @@ export default function Metrics() {
             </CardContent>
           </Card>
         </div>
+        {/* Weekly Pomodoro Line Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <span>📈</span> {language === 'pt-BR' ? 'Pomodoros na última semana' : 'Pomodoros last 7 days'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={weeklyPomodoros}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="date" className="text-xs" />
+                <YAxis className="text-xs" allowDecimals={false} />
+                <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="pomodoros"
+                  stroke="hsl(348, 83%, 47%)"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: 'hsl(348, 83%, 47%)' }}
+                  activeDot={{ r: 6 }}
+                  name={language === 'pt-BR' ? 'Pomodoros' : 'Pomodoros'}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );
