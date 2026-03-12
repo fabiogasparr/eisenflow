@@ -172,7 +172,7 @@ function BacklogPanel({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: (t: 
       </div>
       <ScrollArea className="p-2 max-h-[calc(100vh-220px)]">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {tasks.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground py-8">{t('noTasks')}</p>
             ) : (
