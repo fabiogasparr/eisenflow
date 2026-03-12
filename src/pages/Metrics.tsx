@@ -4,8 +4,12 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { useTasks } from '@/hooks/useTasks';
 import { useGamification } from '@/hooks/useGamification';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { CheckCircle, Trash2, Users, Clock, Timer } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { CheckCircle, Trash2, Users, Clock } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useQuery } from '@tanstack/react-query';
+import { format, subDays } from 'date-fns';
 import { QUADRANT_CONFIG, type Quadrant } from '@/types/task';
 
 export default function Metrics() {
