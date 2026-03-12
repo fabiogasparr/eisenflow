@@ -98,6 +98,11 @@ export const translations = {
     aiChatPlaceholder: 'Descreva uma tarefa ou projeto...',
     confirmTasks: 'Criar tarefas',
     tasksCreatedSuccess: 'Tarefas criadas com sucesso!',
+    calendarSettings: 'Calendário',
+    viewMode: 'Modo de exibição',
+    weekly: 'Semanal',
+    monthly: 'Mensal',
+    showWeekends: 'Mostrar fins de semana',
   },
   en: {
     // Nav
@@ -196,6 +201,11 @@ export const translations = {
     aiChatPlaceholder: 'Describe a task or project...',
     confirmTasks: 'Create tasks',
     tasksCreatedSuccess: 'Tasks created successfully!',
+    calendarSettings: 'Calendar',
+    viewMode: 'View mode',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    showWeekends: 'Show weekends',
   },
 } as const;
 
