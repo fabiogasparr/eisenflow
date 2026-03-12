@@ -55,7 +55,7 @@ export function useGamification() {
   });
 
   const recordAction = useMutation({
-    mutationFn: async (action: 'complete' | 'eliminate' | 'delegate' | 'focus_minutes') => {
+    mutationFn: async (action: 'complete' | 'eliminate' | 'delegate' | 'focus_minutes' | 'pomodoro') => {
       if (!user || !statsQuery.data) return;
       const stats = statsQuery.data;
       const today = new Date().toISOString().split('T')[0];
