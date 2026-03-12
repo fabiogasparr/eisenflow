@@ -5,6 +5,7 @@ import { useTasks } from '@/hooks/useTasks';
 import { useCalendarSettings } from '@/hooks/useCalendarSettings';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
 import {
