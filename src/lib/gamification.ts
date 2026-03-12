@@ -16,6 +16,7 @@ export interface GamificationStats {
   total_tasks_eliminated: number;
   total_tasks_delegated: number;
   total_focus_minutes: number;
+  total_pomodoros: number;
   life_score: number;
   level: number;
   xp: number;
