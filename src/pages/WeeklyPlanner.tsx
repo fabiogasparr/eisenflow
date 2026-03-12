@@ -101,10 +101,15 @@ function DayColumn({
           isToday ? 'border-primary/50 bg-primary/5' : isOver ? 'border-quadrant-schedule bg-quadrant-schedule-bg' : 'border-border bg-card/50'
         }`}
       >
-        <div className={`px-2 py-1 border-b text-center ${isToday ? 'bg-primary/10' : 'bg-muted/30'}`}>
+        <div className={`px-2 py-1 border-b text-center flex items-center justify-center gap-1.5 ${isToday ? 'bg-primary/10' : 'bg-muted/30'}`}>
           <p className={`text-sm font-bold ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
             {format(date, 'd')}
           </p>
+          {tasks.length > 0 && (
+            <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
+              {tasks.length}
+            </span>
+          )}
         </div>
         <ScrollArea className="flex-1 p-1">
           <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
