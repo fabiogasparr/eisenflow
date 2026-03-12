@@ -45,33 +45,40 @@ function DraggableWeekTask({ task, onClick }: { task: Task; onClick: (t: Task) =
   };
 
   return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      className={`group flex items-center gap-1 rounded-md border-l-[3px] border bg-card p-1.5 shadow-sm hover:shadow-md transition-all cursor-pointer ${borderColor} ${
-        isDragging ? 'ring-2 ring-primary z-50' : ''
-      } ${isInProgress ? 'ring-1 ring-primary/30' : ''}`}
-      onClick={() => onClick(task)}
-    >
-      <button
-        {...attributes}
-        {...listeners}
-        className="cursor-grab opacity-0 group-hover:opacity-60 transition-opacity shrink-0"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <GripVertical className="h-2.5 w-2.5 text-muted-foreground" />
-      </button>
-      <p className={`text-[11px] font-medium leading-tight truncate flex-1 ${
-        isCompleted ? 'line-through text-muted-foreground' : ''
-      }`}>
-        {task.title}
-      </p>
-      {isInProgress && (
-        <span className="shrink-0 rounded-full bg-primary/10 px-1 py-px text-[8px] font-semibold text-primary">
-          ⏳
-        </span>
-      )}
-    </div>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <div
+          ref={setNodeRef}
+          style={style}
+          className={`group flex items-center gap-1 rounded-md border-l-[3px] border bg-card p-1.5 shadow-sm hover:shadow-md transition-all cursor-pointer ${borderColor} ${
+            isDragging ? 'ring-2 ring-primary z-50' : ''
+          } ${isInProgress ? 'ring-1 ring-primary/30' : ''}`}
+          onClick={() => onClick(task)}
+        >
+          <button
+            {...attributes}
+            {...listeners}
+            className="cursor-grab opacity-0 group-hover:opacity-60 transition-opacity shrink-0"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <GripVertical className="h-2.5 w-2.5 text-muted-foreground" />
+          </button>
+          <p className={`text-[11px] font-medium leading-tight truncate flex-1 ${
+            isCompleted ? 'line-through text-muted-foreground' : ''
+          }`}>
+            {task.title}
+          </p>
+          {isInProgress && (
+            <span className="shrink-0 rounded-full bg-primary/10 px-1 py-px text-[8px] font-semibold text-primary">
+              ⏳
+            </span>
+          )}
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[250px]">
+        <p className="text-xs">{task.title}</p>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
