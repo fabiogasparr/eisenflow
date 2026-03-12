@@ -4,14 +4,46 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { useTasks } from '@/hooks/useTasks';
 import { useGamification } from '@/hooks/useGamification';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import { CheckCircle, Trash2, Users, Clock, Timer } from 'lucide-react';
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
+import { CheckCircle, Trash2, Users, Clock } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useQuery } from '@tanstack/react-query';
+import { format, subDays } from 'date-fns';
 import { QUADRANT_CONFIG, type Quadrant } from '@/types/task';
 
 export default function Metrics() {
   const { t, language } = useLanguage();
   const { tasks } = useTasks();
   const { stats: gamStats } = useGamification();
+  const { user } = useAuth();
+
+  const { data: weeklyPomodoros = [] } = useQuery({
+    queryKey: ['weekly-pomodoros', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const sevenDaysAgo = subDays(new Date(), 6).toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('productivity_metrics')
+        .select('date, pomodoros_completed')
+        .eq('user_id', user.id)
+        .gte('date', sevenDaysAgo)
+        .order('date', { ascending: true });
+      if (error) throw error;
+
+      // Fill missing days with 0
+      const map = new Map((data ?? []).map(d => [d.date, d.pomodoros_completed]));
+      return Array.from({ length: 7 }, (_, i) => {
+        const date = subDays(new Date(), 6 - i);
+        const key = format(date, 'yyyy-MM-dd');
+        return {
+          date: format(date, 'dd/MM'),
+          pomodoros: map.get(key) ?? 0,
+        };
+      });
+    },
+    enabled: !!user,
+  });
 
   const stats = useMemo(() => {
     const completed = tasks.filter(t => t.status === 'completed').length;
@@ -162,6 +194,33 @@ export default function Metrics() {
             </CardContent>
           </Card>
         </div>
+        {/* Weekly Pomodoro Line Chart */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display text-lg flex items-center gap-2">
+              <span>📈</span> {language === 'pt-BR' ? 'Pomodoros na última semana' : 'Pomodoros last 7 days'}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={weeklyPomodoros}>
+                <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                <XAxis dataKey="date" className="text-xs" />
+                <YAxis className="text-xs" allowDecimals={false} />
+                <Tooltip />
+                <Line
+                  type="monotone"
+                  dataKey="pomodoros"
+                  stroke="hsl(348, 83%, 47%)"
+                  strokeWidth={2.5}
+                  dot={{ r: 4, fill: 'hsl(348, 83%, 47%)' }}
+                  activeDot={{ r: 6 }}
+                  name={language === 'pt-BR' ? 'Pomodoros' : 'Pomodoros'}
+                />
+              </LineChart>
+            </ResponsiveContainer>
+          </CardContent>
+        </Card>
       </div>
     </AppLayout>
   );
