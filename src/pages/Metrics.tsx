@@ -16,6 +16,34 @@ export default function Metrics() {
   const { t, language } = useLanguage();
   const { tasks } = useTasks();
   const { stats: gamStats } = useGamification();
+  const { user } = useAuth();
+
+  const { data: weeklyPomodoros = [] } = useQuery({
+    queryKey: ['weekly-pomodoros', user?.id],
+    queryFn: async () => {
+      if (!user) return [];
+      const sevenDaysAgo = subDays(new Date(), 6).toISOString().split('T')[0];
+      const { data, error } = await supabase
+        .from('productivity_metrics')
+        .select('date, pomodoros_completed')
+        .eq('user_id', user.id)
+        .gte('date', sevenDaysAgo)
+        .order('date', { ascending: true });
+      if (error) throw error;
+
+      // Fill missing days with 0
+      const map = new Map((data ?? []).map(d => [d.date, d.pomodoros_completed]));
+      return Array.from({ length: 7 }, (_, i) => {
+        const date = subDays(new Date(), 6 - i);
+        const key = format(date, 'yyyy-MM-dd');
+        return {
+          date: format(date, 'dd/MM'),
+          pomodoros: map.get(key) ?? 0,
+        };
+      });
+    },
+    enabled: !!user,
+  });
 
   const stats = useMemo(() => {
     const completed = tasks.filter(t => t.status === 'completed').length;
