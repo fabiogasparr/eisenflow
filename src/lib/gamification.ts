@@ -158,6 +158,33 @@ export const BADGES: Badge[] = [
     descEn: 'Productive life score above 80',
     condition: (s) => s.life_score >= 80,
   },
+  {
+    id: 'pomodoro_10',
+    icon: '🍅',
+    labelPt: 'Tomateiro',
+    labelEn: 'Tomato Grower',
+    descPt: 'Completou 10 pomodoros',
+    descEn: 'Completed 10 pomodoros',
+    condition: (s) => (s.total_pomodoros ?? 0) >= 10,
+  },
+  {
+    id: 'pomodoro_50',
+    icon: '🍅',
+    labelPt: 'Colheita Farta',
+    labelEn: 'Rich Harvest',
+    descPt: 'Completou 50 pomodoros',
+    descEn: 'Completed 50 pomodoros',
+    condition: (s) => (s.total_pomodoros ?? 0) >= 50,
+  },
+  {
+    id: 'pomodoro_100',
+    icon: '🍅',
+    labelPt: 'Mestre Pomodoro',
+    labelEn: 'Pomodoro Master',
+    descPt: 'Completou 100 pomodoros',
+    descEn: 'Completed 100 pomodoros',
+    condition: (s) => (s.total_pomodoros ?? 0) >= 100,
+  },
 ];
 
 export function calculateLevel(xp: number): number {
