@@ -16,6 +16,7 @@ export interface GamificationStats {
   total_tasks_eliminated: number;
   total_tasks_delegated: number;
   total_focus_minutes: number;
+  total_pomodoros: number;
   life_score: number;
   level: number;
   xp: number;
@@ -200,4 +201,5 @@ export const XP_REWARDS = {
   TASK_DELEGATED: 8,
   STREAK_DAY: 10,
   FOCUS_MINUTE: 1,
+  POMODORO_COMPLETED: 20,
 };

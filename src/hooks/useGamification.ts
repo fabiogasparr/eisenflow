@@ -55,7 +55,7 @@ export function useGamification() {
   });
 
   const recordAction = useMutation({
-    mutationFn: async (action: 'complete' | 'eliminate' | 'delegate' | 'focus_minutes') => {
+    mutationFn: async (action: 'complete' | 'eliminate' | 'delegate' | 'focus_minutes' | 'pomodoro') => {
       if (!user || !statsQuery.data) return;
       const stats = statsQuery.data;
       const today = new Date().toISOString().split('T')[0];
@@ -79,6 +79,10 @@ export function useGamification() {
         case 'focus_minutes':
           updates.total_focus_minutes = stats.total_focus_minutes + 1;
           xpGain = XP_REWARDS.FOCUS_MINUTE;
+          break;
+        case 'pomodoro':
+          updates.total_pomodoros = (stats.total_pomodoros ?? 0) + 1;
+          xpGain = XP_REWARDS.POMODORO_COMPLETED;
           break;
       }
 

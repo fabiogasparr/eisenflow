@@ -84,6 +84,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       const newCount = pomodoroCount + 1;
       setPomodoroCount(newCount);
       setSessionPomodoros((s) => s + 1);
+      recordAction.mutate('pomodoro');
       recordAction.mutate('focus_minutes');
 
       const isLongBreak = newCount % pomodoro.longBreakInterval === 0;
