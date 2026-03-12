@@ -201,6 +201,11 @@ export const translations = {
     aiChatPlaceholder: 'Describe a task or project...',
     confirmTasks: 'Create tasks',
     tasksCreatedSuccess: 'Tasks created successfully!',
+    calendarSettings: 'Calendar',
+    viewMode: 'View mode',
+    weekly: 'Weekly',
+    monthly: 'Monthly',
+    showWeekends: 'Show weekends',
   },
 } as const;
 
