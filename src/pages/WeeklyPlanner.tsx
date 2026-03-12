@@ -136,7 +136,7 @@ function DayColumn({
       </div>
       <ScrollArea className="flex-1 p-2">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {tasks.length === 0 ? (
               <p className="text-center text-[10px] text-muted-foreground py-6">{t('noTasks')}</p>
             ) : (
