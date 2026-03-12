@@ -105,22 +105,8 @@ export default function Index() {
   };
 
   return (
-    <AppLayout onSearch={setSearchQuery}>
+    <AppLayout onSearch={setSearchQuery} onFocusMode={() => setFocusOpen(true)} onCreateTask={() => setCreateOpen(true)}>
       <div className="p-4 md:p-6 h-full flex flex-col">
-        {/* Header row */}
-        <div className="flex items-center justify-between mb-4">
-          <div />
-          <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setFocusOpen(true)} className="gap-2">
-              <Target className="h-4 w-4" />
-              {language === 'pt-BR' ? 'Modo Foco' : 'Focus Mode'}
-            </Button>
-            <Button onClick={() => setCreateOpen(true)} className="gap-2 shadow-lg">
-              <Plus className="h-4 w-4" />
-              {t('addTask')}
-            </Button>
-          </div>
-        </div>
 
         {/* In Progress Section */}
         {inProgressTasks.length > 0 && (
