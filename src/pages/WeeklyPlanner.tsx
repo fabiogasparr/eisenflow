@@ -47,7 +47,7 @@ function DraggableWeekTask({ task, onClick }: { task: Task; onClick: (t: Task) =
     <div
       ref={setNodeRef}
       style={style}
-      className={`group flex items-center gap-2 rounded-lg border-l-4 border bg-card p-2 shadow-sm hover:shadow-md transition-all cursor-pointer ${borderColor} ${
+      className={`group flex items-center gap-1 rounded-md border-l-[3px] border bg-card p-1.5 shadow-sm hover:shadow-md transition-all cursor-pointer ${borderColor} ${
         isDragging ? 'ring-2 ring-primary z-50' : ''
       } ${isInProgress ? 'ring-1 ring-primary/30' : ''}`}
       onClick={() => onClick(task)}
@@ -58,16 +58,16 @@ function DraggableWeekTask({ task, onClick }: { task: Task; onClick: (t: Task) =
         className="cursor-grab opacity-0 group-hover:opacity-60 transition-opacity shrink-0"
         onClick={(e) => e.stopPropagation()}
       >
-        <GripVertical className="h-3 w-3 text-muted-foreground" />
+        <GripVertical className="h-2.5 w-2.5 text-muted-foreground" />
       </button>
-      <p className={`text-xs font-medium leading-tight truncate flex-1 ${
+      <p className={`text-[11px] font-medium leading-tight truncate flex-1 ${
         isCompleted ? 'line-through text-muted-foreground' : ''
       }`}>
         {task.title}
       </p>
       {isInProgress && (
-        <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-0.5 text-[9px] font-semibold text-primary">
-          {t('inProgress') ?? '⏳'}
+        <span className="shrink-0 rounded-full bg-primary/10 px-1 py-px text-[8px] font-semibold text-primary">
+          ⏳
         </span>
       )}
     </div>
@@ -136,7 +136,7 @@ function DayColumn({
       </div>
       <ScrollArea className="flex-1 p-2">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {tasks.length === 0 ? (
               <p className="text-center text-[10px] text-muted-foreground py-6">{t('noTasks')}</p>
             ) : (
@@ -172,7 +172,7 @@ function BacklogPanel({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: (t: 
       </div>
       <ScrollArea className="p-2 max-h-[calc(100vh-220px)]">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-1.5">
+          <div className="space-y-1">
             {tasks.length === 0 ? (
               <p className="text-center text-xs text-muted-foreground py-8">{t('noTasks')}</p>
             ) : (
