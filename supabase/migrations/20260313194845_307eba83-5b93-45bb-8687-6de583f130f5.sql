@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_connections ADD COLUMN accept_messages_from text NOT NULL DEFAULT 'self_only';

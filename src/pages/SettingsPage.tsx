@@ -78,6 +78,21 @@ export default function SettingsPage() {
                     />
                   </div>
                 )}
+                <div className="flex items-center justify-between max-w-xs">
+                  <Label>{t('whatsappAcceptFrom')}</Label>
+                  <Select
+                    value={whatsapp.connection.accept_messages_from || 'self_only'}
+                    onValueChange={(v) => whatsapp.updateSettings.mutate({ accept_messages_from: v as 'self_only' | 'all' })}
+                  >
+                    <SelectTrigger className="w-48">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="self_only">{t('whatsappSelfOnly')}</SelectItem>
+                      <SelectItem value="all">{t('whatsappAll')}</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
                 <div className="pt-2">
                   <p className="text-xs font-medium text-muted-foreground mb-2">{t('whatsappCommands')}:</p>
                   <div className="text-xs text-muted-foreground space-y-1 font-mono bg-muted/50 rounded-md p-3">

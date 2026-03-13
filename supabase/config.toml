@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.whatsapp-status]
 verify_jwt = false
+
+[functions.whatsapp-deadline-reminders]
+verify_jwt = false

@@ -515,6 +515,7 @@ export type Database = {
       }
       whatsapp_connections: {
         Row: {
+          accept_messages_from: string
           created_at: string
           daily_report_enabled: boolean
           id: string
@@ -528,6 +529,7 @@ export type Database = {
           user_id: string
         }
         Insert: {
+          accept_messages_from?: string
           created_at?: string
           daily_report_enabled?: boolean
           id?: string
@@ -541,6 +543,7 @@ export type Database = {
           user_id: string
         }
         Update: {
+          accept_messages_from?: string
           created_at?: string
           daily_report_enabled?: boolean
           id?: string
