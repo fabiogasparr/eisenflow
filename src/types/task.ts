@@ -46,6 +46,7 @@ export interface CreateTaskInput {
   quadrant?: Quadrant;
   urgency?: number;
   importance?: number;
+  recurrence_rule?: RecurrenceRule;
 }
 
 export const QUADRANT_CONFIG = {
