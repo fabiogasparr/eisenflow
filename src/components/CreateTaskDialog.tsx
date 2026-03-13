@@ -159,6 +159,20 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
             <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tag1, tag2, tag3" />
           </div>
 
+          {/* Recurrence */}
+          <div className="space-y-2">
+            <Label>{t('recurrence')}</Label>
+            <Select value={recurrenceRule || 'none'} onValueChange={(v) => setRecurrenceRule(v === 'none' ? '' : v as RecurrenceRule)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">{t('recurrenceNone')}</SelectItem>
+                <SelectItem value="daily">{t('recurrenceDaily')}</SelectItem>
+                <SelectItem value="weekly">{t('recurrenceWeekly')}</SelectItem>
+                <SelectItem value="monthly">{t('recurrenceMonthly')}</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
           {/* Assign to team member */}
           {teams.length > 0 && (
             <div className="grid grid-cols-2 gap-4">
