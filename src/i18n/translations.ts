@@ -110,6 +110,11 @@ export const translations = {
     recurrenceMonthly: 'Mensal',
     subtasks: 'Subtarefas',
     addSubtask: 'Adicionar item...',
+    whatsapp: 'WhatsApp',
+    whatsappReminders: 'Lembretes via WhatsApp',
+    whatsappDailyReport: 'Relatório diário',
+    whatsappReportTime: 'Horário do relatório',
+    whatsappCommands: 'Comandos disponíveis',
   },
   en: {
     // Nav
@@ -220,6 +225,11 @@ export const translations = {
     recurrenceMonthly: 'Monthly',
     subtasks: 'Subtasks',
     addSubtask: 'Add item...',
+    whatsapp: 'WhatsApp',
+    whatsappReminders: 'WhatsApp reminders',
+    whatsappDailyReport: 'Daily report',
+    whatsappReportTime: 'Report time',
+    whatsappCommands: 'Available commands',
   },
 } as const;
 

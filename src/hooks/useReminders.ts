@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTasks } from './useTasks';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useToast } from './use-toast';
-import type { Task } from '@/types/task';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface Reminder {
   id: string;
@@ -51,6 +51,28 @@ export function useReminders() {
     }
   }, []);
 
+  const sendWhatsAppReminder = useCallback(async (label: string, taskTitle: string) => {
+    try {
+      // Check if user has WhatsApp connected with reminders enabled
+      const { data: conn } = await (supabase as any)
+        .from('whatsapp_connections')
+        .select('instance_name, phone_number, reminders_enabled, status')
+        .maybeSingle();
+      
+      if (!conn || conn.status !== 'connected' || !conn.reminders_enabled || !conn.phone_number) return;
+
+      await supabase.functions.invoke('whatsapp-send', {
+        body: {
+          instance_name: conn.instance_name,
+          phone_number: conn.phone_number,
+          message: `⏰ *${label}*\n${taskTitle}`,
+        },
+      });
+    } catch {
+      // Silent fail - WhatsApp is optional
+    }
+  }, []);
+
   const checkTasks = useCallback(() => {
     const now = Date.now();
     const pendingTasks = tasks.filter(
@@ -90,6 +112,9 @@ export function useReminders() {
 
           // Browser notification
           sendBrowserNotification(label, task.title);
+
+          // WhatsApp notification (fire and forget)
+          sendWhatsAppReminder(label, task.title);
         }
       });
     });
