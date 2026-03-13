@@ -3,7 +3,6 @@ import { useTasks } from './useTasks';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useToast } from './use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import type { Task } from '@/types/task';
 
 export interface Reminder {
   id: string;
