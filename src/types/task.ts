@@ -1,5 +1,15 @@
 export type Quadrant = 'do' | 'schedule' | 'delegate' | 'eliminate';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'eliminated';
+export type RecurrenceRule = 'daily' | 'weekly' | 'monthly';
+
+export interface Subtask {
+  id: string;
+  task_id: string;
+  title: string;
+  completed: boolean;
+  position: number;
+  created_at: string;
+}
 
 export interface Task {
   id: string;
@@ -21,6 +31,8 @@ export interface Task {
   updated_at: string;
   started_at: string | null;
   completed_at: string | null;
+  recurrence_rule: RecurrenceRule | null;
+  recurrence_parent_id: string | null;
 }
 
 export interface CreateTaskInput {
@@ -34,6 +46,7 @@ export interface CreateTaskInput {
   quadrant?: Quadrant;
   urgency?: number;
   importance?: number;
+  recurrence_rule?: RecurrenceRule;
 }
 
 export const QUADRANT_CONFIG = {

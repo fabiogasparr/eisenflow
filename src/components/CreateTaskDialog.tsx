@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Sparkles } from 'lucide-react';
-import { type Quadrant, type CreateTaskInput, QUADRANT_CONFIG } from '@/types/task';
+import { type Quadrant, type CreateTaskInput, type RecurrenceRule, QUADRANT_CONFIG } from '@/types/task';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 
 interface CreateTaskDialogProps {
@@ -32,6 +32,7 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
   const [loading, setLoading] = useState(false);
   const [classifying, setClassifying] = useState(false);
   const [aiSuggestion, setAiSuggestion] = useState<{ quadrant: Quadrant; urgency: number; importance: number } | null>(null);
+  const [recurrenceRule, setRecurrenceRule] = useState<RecurrenceRule | ''>('');
 
   const { teams } = useTeams();
   const { members } = useTeamMembers(selectedTeamId || null);
@@ -72,6 +73,7 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
         urgency,
         importance,
         assigned_to: assignedTo || undefined,
+        recurrence_rule: recurrenceRule || undefined,
       } as CreateTaskInput);
       // Reset
       setTitle('');
@@ -85,6 +87,7 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
       setAssignedTo('');
       setSelectedTeamId('');
       setAiSuggestion(null);
+      setRecurrenceRule('');
       onOpenChange(false);
     } finally {
       setLoading(false);
@@ -154,6 +157,20 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
           <div className="space-y-2">
             <Label>{t('taskTags')}</Label>
             <Input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="tag1, tag2, tag3" />
+          </div>
+
+          {/* Recurrence */}
+          <div className="space-y-2">
+            <Label>{t('recurrence')}</Label>
+            <Select value={recurrenceRule || 'none'} onValueChange={(v) => setRecurrenceRule(v === 'none' ? '' : v as RecurrenceRule)}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="none">{t('recurrenceNone')}</SelectItem>
+                <SelectItem value="daily">{t('recurrenceDaily')}</SelectItem>
+                <SelectItem value="weekly">{t('recurrenceWeekly')}</SelectItem>
+                <SelectItem value="monthly">{t('recurrenceMonthly')}</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Assign to team member */}

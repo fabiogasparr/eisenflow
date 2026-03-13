@@ -1,8 +1,9 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical } from 'lucide-react';
+import { GripVertical, RefreshCw } from 'lucide-react';
 import type { Task } from '@/types/task';
 import { useLanguage } from '@/i18n/LanguageContext';
+import { useSubtasks } from '@/hooks/useSubtasks';
 
 const QUADRANT_BORDER_COLORS: Record<string, string> = {
   do: 'border-l-quadrant-do',
@@ -21,6 +22,7 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
   const borderColor = QUADRANT_BORDER_COLORS[task.quadrant] ?? '';
   const isInProgress = task.status === 'in_progress';
   const isCompleted = task.status === 'completed';
+  const { completedCount, totalCount } = useSubtasks(task.id);
 
   const {
     attributes,
@@ -60,11 +62,21 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
         }`}>
           {task.title}
         </p>
-        {isInProgress && (
-          <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
-            {t('inProgress') ?? 'Em progresso'}
-          </span>
-        )}
+        <div className="flex items-center gap-1.5 shrink-0">
+          {task.recurrence_rule && (
+            <RefreshCw className="h-3 w-3 text-muted-foreground" />
+          )}
+          {totalCount > 0 && (
+            <span className="text-[10px] text-muted-foreground font-medium">
+              {completedCount}/{totalCount} ✓
+            </span>
+          )}
+          {isInProgress && (
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+              {t('inProgress') ?? 'Em progresso'}
+            </span>
+          )}
+        </div>
       </div>
     </div>
   );
