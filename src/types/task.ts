@@ -31,6 +31,8 @@ export interface Task {
   updated_at: string;
   started_at: string | null;
   completed_at: string | null;
+  recurrence_rule: RecurrenceRule | null;
+  recurrence_parent_id: string | null;
 }
 
 export interface CreateTaskInput {
