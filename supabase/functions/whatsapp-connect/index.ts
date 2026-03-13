@@ -63,7 +63,8 @@ Deno.serve(async (req) => {
           throw new Error(`Failed to reconnect instance: ${await connectRes.text()}`)
         }
         const connectData = await connectRes.json()
-        const qrBase64 = connectData?.base64 || connectData?.qrcode?.base64 || null
+        const rawQr2 = connectData?.base64 || connectData?.qrcode?.base64 || null
+        const qrBase64 = rawQr2?.replace(/^data:image\/[a-z]+;base64,/, '') || null
 
         // Upsert connection record
         const { error: dbError } = await supabase
@@ -85,7 +86,8 @@ Deno.serve(async (req) => {
     }
 
     const createData = await createRes.json()
-    const qrBase64 = createData?.qrcode?.base64 || createData?.base64 || null
+    const rawQr = createData?.qrcode?.base64 || createData?.base64 || null
+    const qrBase64 = rawQr?.replace(/^data:image\/[a-z]+;base64,/, '') || null
 
     // Set webhook for this instance
     await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
