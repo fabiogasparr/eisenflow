@@ -63,7 +63,8 @@ Deno.serve(async (req) => {
           throw new Error(`Failed to reconnect instance: ${await connectRes.text()}`)
         }
         const connectData = await connectRes.json()
-        const qrBase64 = connectData?.base64 || connectData?.qrcode?.base64 || null
+        const rawQr2 = connectData?.base64 || connectData?.qrcode?.base64 || null
+        const qrBase64 = rawQr2?.replace(/^data:image\/[a-z]+;base64,/, '') || null
 
         // Upsert connection record
         const { error: dbError } = await supabase

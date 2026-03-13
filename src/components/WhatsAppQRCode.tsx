@@ -56,7 +56,7 @@ export function WhatsAppQRCode() {
         </Badge>
         <div className="rounded-lg border bg-background p-2">
           <img
-            src={`data:image/png;base64,${connection.qr_code}`}
+            src={connection.qr_code.startsWith('data:') ? connection.qr_code : `data:image/png;base64,${connection.qr_code}`}
             alt="WhatsApp QR Code"
             className="h-48 w-48"
           />
