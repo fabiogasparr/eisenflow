@@ -277,6 +277,58 @@ Deno.serve(async (req) => {
             }
           }
         }
+      } else if (cmd === '/membros' || cmd === '/members') {
+        // List all teammates across user's teams
+        const { data: userTeams } = await supabaseAdmin
+          .from('team_members')
+          .select('team_id')
+          .eq('user_id', userId)
+
+        if (!userTeams || userTeams.length === 0) {
+          replyText = '❌ Você não pertence a nenhum time.'
+        } else {
+          const teamIds = userTeams.map((t: any) => t.team_id)
+
+          // Get team names
+          const { data: teams } = await supabaseAdmin
+            .from('teams')
+            .select('id, name')
+            .in('id', teamIds)
+
+          // Get all members per team
+          const { data: allMembers } = await supabaseAdmin
+            .from('team_members')
+            .select('user_id, team_id, role')
+            .in('team_id', teamIds)
+
+          // Get profiles
+          const memberIds = [...new Set((allMembers ?? []).map((m: any) => m.user_id))]
+          const { data: profiles } = await supabaseAdmin
+            .from('profiles')
+            .select('user_id, display_name')
+            .in('user_id', memberIds)
+
+          const profileMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p.display_name || 'Sem nome']))
+          const teamMap = new Map((teams ?? []).map((t: any) => [t.id, t.name]))
+
+          const roleEmoji: Record<string, string> = { admin: '👑', manager: '⭐', member: '👤' }
+
+          // Group members by team
+          const teamGroups: Record<string, string[]> = {}
+          for (const m of (allMembers ?? [])) {
+            const teamName = teamMap.get(m.team_id) || 'Time'
+            if (!teamGroups[teamName]) teamGroups[teamName] = []
+            const name = profileMap.get(m.user_id) || 'Sem nome'
+            const emoji = roleEmoji[m.role] || '👤'
+            const isYou = m.user_id === userId ? ' (você)' : ''
+            teamGroups[teamName].push(`${emoji} ${name}${isYou}`)
+          }
+
+          replyText = '👥 *Seus times e membros:*\n'
+          for (const [teamName, members] of Object.entries(teamGroups)) {
+            replyText += `\n📌 *${teamName}*\n` + members.join('\n') + '\n'
+          }
+        }
       } else if (cmd === '/ajuda' || cmd === '/help') {
         replyText = `📖 *Comandos disponíveis:*\n\n` +
           `/nova [título] - Criar tarefa\n` +
@@ -285,6 +337,7 @@ Deno.serve(async (req) => {
           `/andamento [nº] - Marcar em andamento\n` +
           `/urgente [nº] - Mover para "Fazer Agora"\n` +
           `/delegar [nº] [nome] - Delegar tarefa\n` +
+          `/membros - Listar membros dos times\n` +
           `/ajuda - Este menu`
       } else {
         replyText = '❓ Comando não reconhecido. Use /ajuda para ver os comandos disponíveis.'
