@@ -246,6 +246,41 @@ export type Database = {
           },
         ]
       }
+      subtasks: {
+        Row: {
+          completed: boolean
+          created_at: string
+          id: string
+          position: number
+          task_id: string
+          title: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          id?: string
+          position?: number
+          task_id: string
+          title: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          id?: string
+          position?: number
+          task_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subtasks_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           assigned_to: string | null
@@ -261,6 +296,8 @@ export type Database = {
           position: number
           project_id: string | null
           quadrant: Database["public"]["Enums"]["task_quadrant"]
+          recurrence_parent_id: string | null
+          recurrence_rule: string | null
           started_at: string | null
           status: Database["public"]["Enums"]["task_status"]
           tags: string[] | null
@@ -282,6 +319,8 @@ export type Database = {
           position?: number
           project_id?: string | null
           quadrant?: Database["public"]["Enums"]["task_quadrant"]
+          recurrence_parent_id?: string | null
+          recurrence_rule?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           tags?: string[] | null
@@ -303,6 +342,8 @@ export type Database = {
           position?: number
           project_id?: string | null
           quadrant?: Database["public"]["Enums"]["task_quadrant"]
+          recurrence_parent_id?: string | null
+          recurrence_rule?: string | null
           started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           tags?: string[] | null
@@ -316,6 +357,13 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_recurrence_parent_id_fkey"
+            columns: ["recurrence_parent_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
             referencedColumns: ["id"]
           },
         ]
