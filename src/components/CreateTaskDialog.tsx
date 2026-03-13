@@ -87,6 +87,7 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
       setAssignedTo('');
       setSelectedTeamId('');
       setAiSuggestion(null);
+      setRecurrenceRule('');
       onOpenChange(false);
     } finally {
       setLoading(false);
