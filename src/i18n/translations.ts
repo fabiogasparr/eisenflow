@@ -103,6 +103,13 @@ export const translations = {
     weekly: 'Semanal',
     monthly: 'Mensal',
     showWeekends: 'Mostrar fins de semana',
+    recurrence: 'Recorrência',
+    recurrenceNone: 'Nenhuma',
+    recurrenceDaily: 'Diária',
+    recurrenceWeekly: 'Semanal',
+    recurrenceMonthly: 'Mensal',
+    subtasks: 'Subtarefas',
+    addSubtask: 'Adicionar item...',
   },
   en: {
     // Nav
