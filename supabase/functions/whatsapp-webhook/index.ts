@@ -19,15 +19,25 @@ Deno.serve(async (req) => {
     const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')!
 
     const body = await req.json()
-    const event = body.event
-    const instanceName = body.instance || body.instanceName
+    console.log('whatsapp-webhook received:', JSON.stringify(body).substring(0, 500))
+
+    const event = (body.event || '').toString()
+    const instanceName = body.instance || body.instanceName || body.data?.instance
 
     if (!instanceName) {
+      console.log('No instanceName found, skipping')
       return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
     }
 
-    // Handle connection status updates
-    if (event === 'CONNECTION_UPDATE' || body.data?.action === 'update') {
+    // Handle connection status updates - support multiple event name formats
+    const isConnectionUpdate = event === 'CONNECTION_UPDATE' || 
+      event === 'connection.update' ||
+      event.toLowerCase() === 'connection_update' ||
+      body.data?.action === 'update'
+
+    if (isConnectionUpdate) {
+      const state = body.data?.state || body.data?.status || body.data?.instance?.state
+      console.log('Connection update for', instanceName, '- state:', state)
       const state = body.data?.state || body.data?.status
       if (state === 'open' || state === 'connected') {
         // Get phone number from instance info

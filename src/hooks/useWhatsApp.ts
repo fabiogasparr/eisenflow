@@ -84,13 +84,24 @@ export function useWhatsApp() {
     },
   });
 
-  // Poll for status changes when QR is pending
+  // Poll for status changes when QR is pending - calls whatsapp-status to check Evolution API
+  const checkStatus = useCallback(async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('whatsapp-status');
+      if (!error && data?.status === 'connected') {
+        queryClient.invalidateQueries({ queryKey: ['whatsapp-connection'] });
+      }
+    } catch (e) {
+      console.error('Status check failed:', e);
+    }
+  }, [queryClient]);
+
   const startPolling = useCallback(() => {
     if (pollingRef.current) return;
     pollingRef.current = setInterval(() => {
-      queryClient.invalidateQueries({ queryKey: ['whatsapp-connection'] });
-    }, 3000);
-  }, [queryClient]);
+      checkStatus();
+    }, 4000);
+  }, [checkStatus]);
 
   const stopPolling = useCallback(() => {
     if (pollingRef.current) {
