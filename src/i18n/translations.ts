@@ -225,6 +225,11 @@ export const translations = {
     recurrenceMonthly: 'Monthly',
     subtasks: 'Subtasks',
     addSubtask: 'Add item...',
+    whatsapp: 'WhatsApp',
+    whatsappReminders: 'WhatsApp reminders',
+    whatsappDailyReport: 'Daily report',
+    whatsappReportTime: 'Report time',
+    whatsappCommands: 'Available commands',
   },
 } as const;
 
