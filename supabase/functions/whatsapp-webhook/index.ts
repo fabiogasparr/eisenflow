@@ -189,6 +189,94 @@ Deno.serve(async (req) => {
             replyText = `🔴 Movida para "Fazer Agora": *${tasks[idx].title}*`
           }
         }
+      } else if (cmd === '/delegar' || cmd === '/delegate') {
+        // Format: /delegar [task_number] [member_name_or_partial]
+        const delegateParts = args.split(' ')
+        const idx = parseInt(delegateParts[0]) - 1
+        const memberSearch = delegateParts.slice(1).join(' ').trim()
+
+        if (isNaN(idx) || idx < 0 || !memberSearch) {
+          replyText = '⚠️ Use: /delegar [número] [nome do membro]\nEx: /delegar 1 João'
+        } else {
+          // Get user's tasks
+          const { data: tasks } = await supabaseAdmin
+            .from('tasks')
+            .select('id, title, project_id')
+            .eq('created_by', userId)
+            .in('status', ['pending', 'in_progress'])
+            .order('created_at', { ascending: false })
+            .limit(15)
+
+          if (!tasks || !tasks[idx]) {
+            replyText = '❌ Tarefa não encontrada'
+          } else {
+            const task = tasks[idx]
+
+            // Find team members the user shares a team with
+            const { data: userTeams } = await supabaseAdmin
+              .from('team_members')
+              .select('team_id')
+              .eq('user_id', userId)
+
+            if (!userTeams || userTeams.length === 0) {
+              replyText = '❌ Você não pertence a nenhum time. Crie ou entre em um time primeiro.'
+            } else {
+              const teamIds = userTeams.map((t: any) => t.team_id)
+
+              // Get all members from user's teams
+              const { data: teammates } = await supabaseAdmin
+                .from('team_members')
+                .select('user_id, team_id')
+                .in('team_id', teamIds)
+                .neq('user_id', userId)
+
+              if (!teammates || teammates.length === 0) {
+                replyText = '❌ Nenhum membro encontrado nos seus times.'
+              } else {
+                // Get profiles for matching
+                const teammateIds = [...new Set(teammates.map((t: any) => t.user_id))]
+                const { data: profiles } = await supabaseAdmin
+                  .from('profiles')
+                  .select('user_id, display_name')
+                  .in('user_id', teammateIds)
+
+                // Search by name (case-insensitive partial match)
+                const searchLower = memberSearch.toLowerCase()
+                const matchedProfile = (profiles ?? []).find((p: any) =>
+                  p.display_name && p.display_name.toLowerCase().includes(searchLower)
+                )
+
+                if (!matchedProfile) {
+                  const availableNames = (profiles ?? [])
+                    .filter((p: any) => p.display_name)
+                    .map((p: any) => p.display_name)
+                    .join(', ')
+                  replyText = `❌ Membro "${memberSearch}" não encontrado.\n\n👥 *Membros disponíveis:* ${availableNames || 'nenhum'}`
+                } else {
+                  // Delegate: update task assigned_to and create delegation record
+                  await supabaseAdmin
+                    .from('tasks')
+                    .update({
+                      assigned_to: matchedProfile.user_id,
+                      quadrant: 'delegate',
+                    })
+                    .eq('id', task.id)
+
+                  await supabaseAdmin
+                    .from('delegations')
+                    .insert({
+                      task_id: task.id,
+                      delegated_by: userId,
+                      delegated_to: matchedProfile.user_id,
+                      status: 'pending',
+                    })
+
+                  replyText = `🟦 Tarefa delegada para *${matchedProfile.display_name}*: *${task.title}*`
+                }
+              }
+            }
+          }
+        }
       } else if (cmd === '/ajuda' || cmd === '/help') {
         replyText = `📖 *Comandos disponíveis:*\n\n` +
           `/nova [título] - Criar tarefa\n` +
@@ -196,6 +284,7 @@ Deno.serve(async (req) => {
           `/concluir [nº] - Concluir tarefa\n` +
           `/andamento [nº] - Marcar em andamento\n` +
           `/urgente [nº] - Mover para "Fazer Agora"\n` +
+          `/delegar [nº] [nome] - Delegar tarefa\n` +
           `/ajuda - Este menu`
       } else {
         replyText = '❓ Comando não reconhecido. Use /ajuda para ver os comandos disponíveis.'
