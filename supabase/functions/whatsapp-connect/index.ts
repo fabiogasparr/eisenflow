@@ -85,7 +85,8 @@ Deno.serve(async (req) => {
     }
 
     const createData = await createRes.json()
-    const qrBase64 = createData?.qrcode?.base64 || createData?.base64 || null
+    const rawQr = createData?.qrcode?.base64 || createData?.base64 || null
+    const qrBase64 = rawQr?.replace(/^data:image\/[a-z]+;base64,/, '') || null
 
     // Set webhook for this instance
     await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
