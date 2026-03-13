@@ -32,6 +32,7 @@ export function useTasks() {
           ...input,
           created_by: user.id,
           tags: input.tags ?? [],
+          recurrence_rule: input.recurrence_rule ?? null,
         })
         .select()
         .single();

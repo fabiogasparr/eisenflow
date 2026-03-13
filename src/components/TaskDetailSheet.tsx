@@ -5,11 +5,14 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Label } from '@/components/ui/label';
-import { Avatar, AvatarFallback } from '@/components/ui/avatar';
+import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Progress } from '@/components/ui/progress';
 import { QUADRANT_CONFIG, type Task } from '@/types/task';
-import { CheckCircle, Trash2, Play, Clock, UserPlus } from 'lucide-react';
+import { CheckCircle, Trash2, Play, Clock, UserPlus, Plus, X, RefreshCw } from 'lucide-react';
 import { format } from 'date-fns';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
+import { useSubtasks } from '@/hooks/useSubtasks';
 
 interface TaskDetailSheetProps {
   task: Task | null;
@@ -24,20 +27,40 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
   const { teams } = useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const { members } = useTeamMembers(selectedTeamId || null);
+  const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+
+  const { subtasks, addSubtask, toggleSubtask, deleteSubtask, completedCount, totalCount } = useSubtasks(task?.id ?? null);
 
   if (!task) return null;
 
   const config = QUADRANT_CONFIG[task.quadrant];
+  const progressPercent = totalCount > 0 ? Math.round((completedCount / totalCount) * 100) : 0;
+
+  const handleAddSubtask = () => {
+    if (!newSubtaskTitle.trim()) return;
+    addSubtask.mutate({ title: newSubtaskTitle.trim(), position: totalCount });
+    setNewSubtaskTitle('');
+  };
+
+  const recurrenceLabel = task.recurrence_rule
+    ? t(task.recurrence_rule === 'daily' ? 'recurrenceDaily' : task.recurrence_rule === 'weekly' ? 'recurrenceWeekly' : 'recurrenceMonthly')
+    : null;
 
   return (
     <Sheet open={!!task} onOpenChange={() => onClose()}>
-      <SheetContent className="sm:max-w-md">
+      <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
           <div className="flex items-center gap-2">
             <span className="text-2xl">{config.emoji}</span>
             <Badge variant="outline" className={`text-quadrant-${task.quadrant}`}>
               {t(config.labelKey)}
             </Badge>
+            {recurrenceLabel && (
+              <Badge variant="secondary" className="gap-1">
+                <RefreshCw className="h-3 w-3" />
+                {recurrenceLabel}
+              </Badge>
+            )}
           </div>
           <SheetTitle className="font-display text-xl">{task.title}</SheetTitle>
           <SheetDescription>{task.description}</SheetDescription>
@@ -87,10 +110,71 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
             </div>
           )}
 
-          {task.impact_score > 0 && (
+          {task.impact_score != null && task.impact_score > 0 && (
             <div className="rounded-lg bg-secondary p-3 text-sm">
               <p className="text-muted-foreground">{t('impact')}</p>
               <p className="font-semibold text-lg">{task.impact_score}/100</p>
+            </div>
+          )}
+
+          {/* Subtasks / Checklist */}
+          <div className="space-y-3 pt-3 border-t">
+            <div className="flex items-center justify-between">
+              <p className="text-sm font-semibold">{t('subtasks')}</p>
+              {totalCount > 0 && (
+                <span className="text-xs text-muted-foreground">{completedCount}/{totalCount} ({progressPercent}%)</span>
+              )}
+            </div>
+            {totalCount > 0 && (
+              <Progress value={progressPercent} className="h-2" />
+            )}
+            <div className="space-y-1.5">
+              {subtasks.map((sub) => (
+                <div key={sub.id} className="flex items-center gap-2 group">
+                  <Checkbox
+                    checked={sub.completed}
+                    onCheckedChange={(checked) =>
+                      toggleSubtask.mutate({ id: sub.id, completed: !!checked })
+                    }
+                  />
+                  <span className={`text-sm flex-1 ${sub.completed ? 'line-through text-muted-foreground' : ''}`}>
+                    {sub.title}
+                  </span>
+                  <button
+                    onClick={() => deleteSubtask.mutate(sub.id)}
+                    className="opacity-0 group-hover:opacity-60 transition-opacity"
+                  >
+                    <X className="h-3.5 w-3.5 text-muted-foreground" />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="flex gap-2">
+              <Input
+                value={newSubtaskTitle}
+                onChange={(e) => setNewSubtaskTitle(e.target.value)}
+                placeholder={t('addSubtask')}
+                className="h-8 text-sm"
+                onKeyDown={(e) => e.key === 'Enter' && handleAddSubtask()}
+              />
+              <Button size="sm" variant="outline" onClick={handleAddSubtask} disabled={!newSubtaskTitle.trim()}>
+                <Plus className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
+
+          {/* Recurrence */}
+          {task.recurrence_rule && (
+            <div className="pt-3 border-t">
+              <Button
+                variant="ghost"
+                size="sm"
+                className="text-muted-foreground"
+                onClick={() => onUpdate({ recurrence_rule: null } as any)}
+              >
+                <RefreshCw className="h-4 w-4 mr-1" />
+                {pt ? 'Remover recorrência' : 'Remove recurrence'}
+              </Button>
             </div>
           )}
 
