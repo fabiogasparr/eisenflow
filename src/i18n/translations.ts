@@ -115,6 +115,9 @@ export const translations = {
     whatsappDailyReport: 'Relatório diário',
     whatsappReportTime: 'Horário do relatório',
     whatsappCommands: 'Comandos disponíveis',
+    whatsappAcceptFrom: 'Aceitar mensagens de',
+    whatsappSelfOnly: 'Somente minhas mensagens',
+    whatsappAll: 'Todas as mensagens',
   },
   en: {
     // Nav
