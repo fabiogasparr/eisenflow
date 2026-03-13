@@ -28,7 +28,7 @@ export function useWhatsApp() {
     queryKey: ['whatsapp-connection', user?.id],
     queryFn: async (): Promise<WhatsAppConnection | null> => {
       if (!user) return null;
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('whatsapp_connections')
         .select('*')
         .eq('user_id', user.id)
@@ -70,7 +70,7 @@ export function useWhatsApp() {
   const updateSettings = useMutation({
     mutationFn: async (settings: { reminders_enabled?: boolean; daily_report_enabled?: boolean; report_time?: string }) => {
       if (!user) throw new Error('Not authenticated');
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('whatsapp_connections')
         .update(settings)
         .eq('user_id', user.id);

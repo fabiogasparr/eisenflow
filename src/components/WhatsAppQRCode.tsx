@@ -83,8 +83,8 @@ export function WhatsAppQRCode() {
   return (
     <div className="flex flex-col gap-3 py-2">
       <div className="flex items-center gap-3">
-        <Badge className="bg-green-500/10 text-green-600 border-green-500/20 gap-1.5">
-          <span className="h-2 w-2 rounded-full bg-green-500 animate-pulse" />
+      <Badge variant="secondary" className="gap-1.5">
+          <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
           {t('Conectado', 'Connected')}
         </Badge>
         {connection.phone_number && (
