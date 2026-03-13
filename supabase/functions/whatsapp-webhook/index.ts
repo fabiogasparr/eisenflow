@@ -272,6 +272,45 @@ Deno.serve(async (req) => {
                     })
 
                   replyText = `🟦 Tarefa delegada para *${matchedProfile.display_name}*: *${task.title}*`
+
+                  // Notify delegated member via WhatsApp if they have a connection
+                  try {
+                    const { data: delegateConn } = await supabaseAdmin
+                      .from('whatsapp_connections')
+                      .select('instance_name, phone_number, status')
+                      .eq('user_id', matchedProfile.user_id)
+                      .eq('status', 'connected')
+                      .maybeSingle()
+
+                    if (delegateConn?.phone_number && delegateConn?.instance_name) {
+                      // Get delegator name
+                      const { data: delegatorProfile } = await supabaseAdmin
+                        .from('profiles')
+                        .select('display_name')
+                        .eq('user_id', userId)
+                        .single()
+
+                      const delegatorName = delegatorProfile?.display_name || 'Alguém'
+                      const notifText = `📥 *Nova tarefa delegada para você!*\n\n` +
+                        `📝 *${task.title}*\n` +
+                        `👤 Delegada por: ${delegatorName}\n\n` +
+                        `Use /listar para ver suas tarefas.`
+
+                      await fetch(`${EVOLUTION_API_URL}/message/sendText/${delegateConn.instance_name}`, {
+                        method: 'POST',
+                        headers: {
+                          'Content-Type': 'application/json',
+                          apikey: EVOLUTION_API_KEY,
+                        },
+                        body: JSON.stringify({
+                          number: delegateConn.phone_number,
+                          text: notifText,
+                        }),
+                      })
+                    }
+                  } catch (notifErr) {
+                    console.error('Failed to notify delegated member via WhatsApp:', notifErr)
+                  }
                 }
               }
             }
