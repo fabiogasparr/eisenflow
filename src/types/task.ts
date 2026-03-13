@@ -1,5 +1,15 @@
 export type Quadrant = 'do' | 'schedule' | 'delegate' | 'eliminate';
 export type TaskStatus = 'pending' | 'in_progress' | 'completed' | 'eliminated';
+export type RecurrenceRule = 'daily' | 'weekly' | 'monthly';
+
+export interface Subtask {
+  id: string;
+  task_id: string;
+  title: string;
+  completed: boolean;
+  position: number;
+  created_at: string;
+}
 
 export interface Task {
   id: string;
