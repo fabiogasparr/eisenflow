@@ -7,7 +7,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Loader2, Sparkles } from 'lucide-react';
-import { type Quadrant, type CreateTaskInput, QUADRANT_CONFIG } from '@/types/task';
+import { type Quadrant, type CreateTaskInput, type RecurrenceRule, QUADRANT_CONFIG } from '@/types/task';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 
 interface CreateTaskDialogProps {
