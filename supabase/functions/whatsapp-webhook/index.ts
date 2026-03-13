@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
       return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
     }
 
-    // Handle connection status updates - support multiple event name formats
+    // Handle connection status updates
     const isConnectionUpdate = event === 'CONNECTION_UPDATE' || 
       event === 'connection.update' ||
       event.toLowerCase() === 'connection_update' ||
@@ -38,9 +38,8 @@ Deno.serve(async (req) => {
     if (isConnectionUpdate) {
       const state = body.data?.state || body.data?.status || body.data?.instance?.state
       console.log('Connection update for', instanceName, '- state:', state)
-      const state = body.data?.state || body.data?.status
+
       if (state === 'open' || state === 'connected') {
-        // Get phone number from instance info
         let phoneNumber: string | null = null
         try {
           const infoRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${instanceName}`, {
@@ -51,7 +50,7 @@ Deno.serve(async (req) => {
             const instance = Array.isArray(infoData) ? infoData[0] : infoData
             phoneNumber = instance?.instance?.owner || instance?.owner || null
             if (phoneNumber) {
-              phoneNumber = phoneNumber.replace(/@.*$/, '') // remove @s.whatsapp.net
+              phoneNumber = phoneNumber.replace(/@.*$/, '')
             }
           }
         } catch (e) {
@@ -80,19 +79,26 @@ Deno.serve(async (req) => {
         msgData.message?.extendedTextMessage?.text || ''
       const fromMe = msgData.key?.fromMe === true
 
-      // Only process messages sent by the user themselves (commands)
-      if (!fromMe || !messageText.startsWith('/')) {
-        return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
-      }
-
-      // Find user by instance name
+      // Find user connection with accept_messages_from setting
       const { data: conn } = await supabaseAdmin
         .from('whatsapp_connections')
-        .select('user_id, phone_number')
+        .select('user_id, phone_number, accept_messages_from')
         .eq('instance_name', instanceName)
         .single()
 
       if (!conn) {
+        return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
+      }
+
+      // Filter messages based on accept_messages_from setting
+      const acceptFrom = conn.accept_messages_from || 'self_only'
+      if (acceptFrom === 'self_only' && !fromMe) {
+        console.log('Ignored message: not from self (accept_messages_from=self_only)')
+        return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
+      }
+
+      // Only process commands (messages starting with /)
+      if (!messageText.startsWith('/')) {
         return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
       }
 
@@ -200,7 +206,6 @@ Deno.serve(async (req) => {
           }
         }
       } else if (cmd === '/delegar' || cmd === '/delegate') {
-        // Format: /delegar [task_number] [member_name_or_partial]
         const delegateParts = args.split(' ')
         const idx = parseInt(delegateParts[0]) - 1
         const memberSearch = delegateParts.slice(1).join(' ').trim()
@@ -208,7 +213,6 @@ Deno.serve(async (req) => {
         if (isNaN(idx) || idx < 0 || !memberSearch) {
           replyText = '⚠️ Use: /delegar [número] [nome do membro]\nEx: /delegar 1 João'
         } else {
-          // Get user's tasks
           const { data: tasks } = await supabaseAdmin
             .from('tasks')
             .select('id, title, project_id')
@@ -221,19 +225,15 @@ Deno.serve(async (req) => {
             replyText = '❌ Tarefa não encontrada'
           } else {
             const task = tasks[idx]
-
-            // Find team members the user shares a team with
             const { data: userTeams } = await supabaseAdmin
               .from('team_members')
               .select('team_id')
               .eq('user_id', userId)
 
             if (!userTeams || userTeams.length === 0) {
-              replyText = '❌ Você não pertence a nenhum time. Crie ou entre em um time primeiro.'
+              replyText = '❌ Você não pertence a nenhum time.'
             } else {
               const teamIds = userTeams.map((t: any) => t.team_id)
-
-              // Get all members from user's teams
               const { data: teammates } = await supabaseAdmin
                 .from('team_members')
                 .select('user_id, team_id')
@@ -243,14 +243,12 @@ Deno.serve(async (req) => {
               if (!teammates || teammates.length === 0) {
                 replyText = '❌ Nenhum membro encontrado nos seus times.'
               } else {
-                // Get profiles for matching
                 const teammateIds = [...new Set(teammates.map((t: any) => t.user_id))]
                 const { data: profiles } = await supabaseAdmin
                   .from('profiles')
                   .select('user_id, display_name')
                   .in('user_id', teammateIds)
 
-                // Search by name (case-insensitive partial match)
                 const searchLower = memberSearch.toLowerCase()
                 const matchedProfile = (profiles ?? []).find((p: any) =>
                   p.display_name && p.display_name.toLowerCase().includes(searchLower)
@@ -263,13 +261,9 @@ Deno.serve(async (req) => {
                     .join(', ')
                   replyText = `❌ Membro "${memberSearch}" não encontrado.\n\n👥 *Membros disponíveis:* ${availableNames || 'nenhum'}`
                 } else {
-                  // Delegate: update task assigned_to and create delegation record
                   await supabaseAdmin
                     .from('tasks')
-                    .update({
-                      assigned_to: matchedProfile.user_id,
-                      quadrant: 'delegate',
-                    })
+                    .update({ assigned_to: matchedProfile.user_id, quadrant: 'delegate' })
                     .eq('id', task.id)
 
                   await supabaseAdmin
@@ -283,7 +277,6 @@ Deno.serve(async (req) => {
 
                   replyText = `🟦 Tarefa delegada para *${matchedProfile.display_name}*: *${task.title}*`
 
-                  // Notify delegated member via WhatsApp if they have a connection
                   try {
                     const { data: delegateConn } = await supabaseAdmin
                       .from('whatsapp_connections')
@@ -293,7 +286,6 @@ Deno.serve(async (req) => {
                       .maybeSingle()
 
                     if (delegateConn?.phone_number && delegateConn?.instance_name) {
-                      // Get delegator name
                       const { data: delegatorProfile } = await supabaseAdmin
                         .from('profiles')
                         .select('display_name')
@@ -327,7 +319,6 @@ Deno.serve(async (req) => {
           }
         }
       } else if (cmd === '/membros' || cmd === '/members') {
-        // List all teammates across user's teams
         const { data: userTeams } = await supabaseAdmin
           .from('team_members')
           .select('team_id')
@@ -337,20 +328,16 @@ Deno.serve(async (req) => {
           replyText = '❌ Você não pertence a nenhum time.'
         } else {
           const teamIds = userTeams.map((t: any) => t.team_id)
-
-          // Get team names
           const { data: teams } = await supabaseAdmin
             .from('teams')
             .select('id, name')
             .in('id', teamIds)
 
-          // Get all members per team
           const { data: allMembers } = await supabaseAdmin
             .from('team_members')
             .select('user_id, team_id, role')
             .in('team_id', teamIds)
 
-          // Get profiles
           const memberIds = [...new Set((allMembers ?? []).map((m: any) => m.user_id))]
           const { data: profiles } = await supabaseAdmin
             .from('profiles')
@@ -361,8 +348,6 @@ Deno.serve(async (req) => {
           const teamMap = new Map((teams ?? []).map((t: any) => [t.id, t.name]))
 
           const roleEmoji: Record<string, string> = { admin: '👑', manager: '⭐', member: '👤' }
-
-          // Group members by team
           const teamGroups: Record<string, string[]> = {}
           for (const m of (allMembers ?? [])) {
             const teamName = teamMap.get(m.team_id) || 'Time'

@@ -69,7 +69,7 @@ export function useWhatsApp() {
   });
 
   const updateSettings = useMutation({
-    mutationFn: async (settings: { reminders_enabled?: boolean; daily_report_enabled?: boolean; report_time?: string }) => {
+    mutationFn: async (settings: { reminders_enabled?: boolean; daily_report_enabled?: boolean; report_time?: string; accept_messages_from?: 'self_only' | 'all' }) => {
       if (!user) throw new Error('Not authenticated');
       const { error } = await (supabase as any)
         .from('whatsapp_connections')

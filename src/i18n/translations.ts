@@ -233,6 +233,9 @@ export const translations = {
     whatsappDailyReport: 'Daily report',
     whatsappReportTime: 'Report time',
     whatsappCommands: 'Available commands',
+    whatsappAcceptFrom: 'Accept messages from',
+    whatsappSelfOnly: 'Only my messages',
+    whatsappAll: 'All messages',
   },
 } as const;
 
