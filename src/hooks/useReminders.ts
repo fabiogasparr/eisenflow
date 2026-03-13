@@ -91,6 +91,9 @@ export function useReminders() {
 
           // Browser notification
           sendBrowserNotification(label, task.title);
+
+          // WhatsApp notification (fire and forget)
+          sendWhatsAppReminder(label, task.title);
         }
       });
     });
