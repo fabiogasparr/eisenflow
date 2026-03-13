@@ -73,6 +73,7 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
         urgency,
         importance,
         assigned_to: assignedTo || undefined,
+        recurrence_rule: recurrenceRule || undefined,
       } as CreateTaskInput);
       // Reset
       setTitle('');
