@@ -2,10 +2,10 @@ import { useWhatsApp } from '@/hooks/useWhatsApp';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MessageSquare, Loader2, Unplug, QrCode } from 'lucide-react';
+import { MessageSquare, Loader2, Unplug, QrCode, RefreshCw } from 'lucide-react';
 
 export function WhatsAppQRCode() {
-  const { connection, isLoading, connect, disconnect } = useWhatsApp();
+  const { connection, isLoading, connect, disconnect, reregisterWebhook } = useWhatsApp();
   const { language } = useLanguage();
   const t = (pt: string, en: string) => language === 'pt-BR' ? pt : en;
 
@@ -91,20 +91,36 @@ export function WhatsAppQRCode() {
           <span className="text-sm text-muted-foreground">{connection.phone_number}</span>
         )}
       </div>
-      <Button
-        variant="outline"
-        size="sm"
-        onClick={() => disconnect.mutate()}
-        disabled={disconnect.isPending}
-        className="w-fit gap-2"
-      >
-        {disconnect.isPending ? (
-          <Loader2 className="h-3 w-3 animate-spin" />
-        ) : (
-          <Unplug className="h-3 w-3" />
-        )}
-        {t('Desconectar', 'Disconnect')}
-      </Button>
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => reregisterWebhook.mutate()}
+          disabled={reregisterWebhook.isPending}
+          className="w-fit gap-2"
+        >
+          {reregisterWebhook.isPending ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <RefreshCw className="h-3 w-3" />
+          )}
+          {t('Reconectar Webhook', 'Reconnect Webhook')}
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={() => disconnect.mutate()}
+          disabled={disconnect.isPending}
+          className="w-fit gap-2"
+        >
+          {disconnect.isPending ? (
+            <Loader2 className="h-3 w-3 animate-spin" />
+          ) : (
+            <Unplug className="h-3 w-3" />
+          )}
+          {t('Desconectar', 'Disconnect')}
+        </Button>
+      </div>
     </div>
   );
 }
