@@ -98,13 +98,25 @@ export default function SettingsPage() {
                     </Select>
                   </div>
                 )}
-                {(whatsapp.connection.daily_report_enabled || whatsapp.connection.weekly_report_enabled) && (
+                {whatsapp.connection.daily_report_enabled && (
                   <div className="space-y-1.5">
-                    <Label className="text-xs">{t('whatsappReportTime')}</Label>
+                    <Label className="text-xs">{language === 'pt-BR' ? 'Horário do relatório diário' : 'Daily report time'}</Label>
                     <Input
                       type="time"
+                      className="w-full sm:w-48"
                       value={whatsapp.connection.report_time || '08:00'}
                       onChange={(e) => whatsapp.updateSettings.mutate({ report_time: e.target.value })}
+                    />
+                  </div>
+                )}
+                {whatsapp.connection.weekly_report_enabled && (
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">{language === 'pt-BR' ? 'Horário do relatório semanal' : 'Weekly report time'}</Label>
+                    <Input
+                      type="time"
+                      className="w-full sm:w-48"
+                      value={whatsapp.connection.weekly_report_time || '08:00'}
+                      onChange={(e) => whatsapp.updateSettings.mutate({ weekly_report_time: e.target.value })}
                     />
                   </div>
                 )}
