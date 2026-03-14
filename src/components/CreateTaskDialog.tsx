@@ -6,7 +6,12 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Sparkles } from 'lucide-react';
+import { Calendar } from '@/components/ui/calendar';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { Loader2, Sparkles, CalendarIcon } from 'lucide-react';
+import { format } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
 import { type Quadrant, type CreateTaskInput, type RecurrenceRule, QUADRANT_CONFIG } from '@/types/task';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 
@@ -21,7 +26,9 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
   const { t, language } = useLanguage();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [dueHour, setDueHour] = useState('12');
+  const [dueMinute, setDueMinute] = useState('00');
   const [estimatedTime, setEstimatedTime] = useState('');
   const [quadrant, setQuadrant] = useState<Quadrant>('do');
   const [urgency, setUrgency] = useState(3);
@@ -59,6 +66,13 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
     }
   };
 
+  const buildDueDateString = (): string | undefined => {
+    if (!dueDate) return undefined;
+    const d = new Date(dueDate);
+    d.setHours(parseInt(dueHour), parseInt(dueMinute), 0, 0);
+    return d.toISOString();
+  };
+
   const handleSubmit = async () => {
     if (!title.trim()) return;
     setLoading(true);
@@ -66,7 +80,7 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
       await onSubmit({
         title: title.trim(),
         description: description.trim() || undefined,
-        due_date: dueDate || undefined,
+        due_date: buildDueDateString(),
         estimated_time: estimatedTime ? parseInt(estimatedTime) : undefined,
         tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         quadrant,
@@ -78,7 +92,9 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
       // Reset
       setTitle('');
       setDescription('');
-      setDueDate('');
+      setDueDate(undefined);
+      setDueHour('12');
+      setDueMinute('00');
       setEstimatedTime('');
       setQuadrant('do');
       setUrgency(3);
@@ -143,10 +159,58 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('taskDescription')} rows={3} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>{t('taskDueDate')}</Label>
-              <Input type="datetime-local" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !dueDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dueDate
+                      ? `${format(dueDate, "dd/MM/yyyy", { locale: language === 'pt-BR' ? ptBR : undefined })} ${dueHour}:${dueMinute}`
+                      : (language === 'pt-BR' ? 'Selecione data e hora' : 'Pick date & time')}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dueDate}
+                    onSelect={setDueDate}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                  <div className="p-3 border-t border-border flex items-center gap-2">
+                    <Label className="text-xs whitespace-nowrap">{language === 'pt-BR' ? 'Hora:' : 'Time:'}</Label>
+                    <Select value={dueHour} onValueChange={setDueHour}>
+                      <SelectTrigger className="w-[70px] h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-muted-foreground">:</span>
+                    <Select value={dueMinute} onValueChange={setDueMinute}>
+                      <SelectTrigger className="w-[70px] h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-2">
               <Label>{t('taskEstimatedTime')}</Label>
