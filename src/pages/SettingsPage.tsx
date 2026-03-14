@@ -77,13 +77,13 @@ export default function SettingsPage() {
                   />
                 </div>
                 {whatsapp.connection.weekly_report_enabled && (
-                  <div className="space-y-1.5 max-w-xs">
+                  <div className="space-y-1.5">
                     <Label className="text-xs">{t('whatsappWeeklyReportDay')}</Label>
                     <Select
                       value={String(whatsapp.connection.weekly_report_day ?? 1)}
                       onValueChange={(v) => whatsapp.updateSettings.mutate({ weekly_report_day: Number(v) })}
                     >
-                      <SelectTrigger className="w-48">
+                      <SelectTrigger className="w-full sm:w-48">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
