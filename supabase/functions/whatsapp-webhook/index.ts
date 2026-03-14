@@ -434,6 +434,13 @@ REGRAS:
 - Se a mensagem for ambígua, peça esclarecimento via chat_response.`
 
   try {
+    // Build messages array with history
+    const aiMessages: any[] = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory.map((m: any) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: messageText },
+    ]
+
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -442,10 +449,7 @@ REGRAS:
       },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: messageText },
-        ],
+        messages: aiMessages,
         tools: AI_TOOLS,
         tool_choice: 'auto',
       }),
