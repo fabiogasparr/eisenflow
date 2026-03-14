@@ -16,6 +16,7 @@ export interface WhatsAppConnection {
   weekly_report_enabled: boolean;
   weekly_report_day: number;
   report_time: string;
+  weekly_report_time: string;
   accept_messages_from: 'self_only' | 'all';
   created_at: string;
   updated_at: string;
