@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { QUADRANT_CONFIG, type Task } from '@/types/task';
-import { CheckCircle, Trash2, Play, Clock, UserPlus, Plus, X, RefreshCw, CalendarIcon, Timer } from 'lucide-react';
+import { CheckCircle, Trash2, Play, Clock, UserPlus, Plus, X, RefreshCw, CalendarIcon, Timer, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
