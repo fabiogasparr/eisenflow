@@ -122,11 +122,28 @@ export function useWhatsApp() {
     return stopPolling;
   }, [connectionQuery.data?.status, startPolling, stopPolling]);
 
+  const reregisterWebhook = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('whatsapp-status');
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: (data) => {
+      if (data?.webhook_reregistered) {
+        toast({ title: '✅', description: language === 'pt-BR' ? 'Webhook reconectado com sucesso' : 'Webhook reconnected successfully' });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    },
+  });
+
   return {
     connection: connectionQuery.data ?? null,
     isLoading: connectionQuery.isLoading,
     connect,
     disconnect,
     updateSettings,
+    reregisterWebhook,
   };
 }
