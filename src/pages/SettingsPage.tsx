@@ -174,7 +174,7 @@ export default function SettingsPage() {
             <CardTitle className="font-display">🍅 Pomodoro</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="flex items-center justify-between max-w-xs">
+            <div className="flex items-center justify-between">
               <Label htmlFor="pomo-enabled">
                 {language === 'pt-BR' ? 'Ativar Pomodoro' : 'Enable Pomodoro'}
               </Label>
