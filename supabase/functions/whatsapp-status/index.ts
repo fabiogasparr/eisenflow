@@ -76,9 +76,6 @@ Deno.serve(async (req) => {
       })
     }
 
-    const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')!
-    const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')!
-
     // Check instance state on Evolution API
     const stateRes = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${conn.instance_name}`, {
       headers: { apikey: EVOLUTION_API_KEY },
