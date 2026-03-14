@@ -26,7 +26,9 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
   const { t, language } = useLanguage();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [dueDate, setDueDate] = useState('');
+  const [dueDate, setDueDate] = useState<Date | undefined>(undefined);
+  const [dueHour, setDueHour] = useState('12');
+  const [dueMinute, setDueMinute] = useState('00');
   const [estimatedTime, setEstimatedTime] = useState('');
   const [quadrant, setQuadrant] = useState<Quadrant>('do');
   const [urgency, setUrgency] = useState(3);
