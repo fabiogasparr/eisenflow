@@ -68,7 +68,7 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => whatsapp.updateSettings.mutate({ daily_report_enabled: v })}
                   />
                 </div>
-                <div className="flex items-center justify-between max-w-xs">
+                <div className="flex items-center justify-between">
                   <Label htmlFor="wa-weekly-report">{t('whatsappWeeklyReport')}</Label>
                   <Switch
                     id="wa-weekly-report"
