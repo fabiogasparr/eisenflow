@@ -70,12 +70,86 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
-          {task.due_date && (
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4" />
-              {format(new Date(task.due_date), 'PPP p')}
+          {/* Due Date - editable */}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">{pt ? 'Prazo' : 'Due date'}</Label>
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className={cn(
+                      "justify-start text-left font-normal flex-1",
+                      !task.due_date && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {task.due_date ? format(new Date(task.due_date), 'PPP p') : (pt ? 'Definir prazo' : 'Set due date')}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={task.due_date ? new Date(task.due_date) : undefined}
+                    onSelect={(date) => {
+                      if (date) {
+                        // Preserve time if existing, otherwise use current time
+                        const existing = task.due_date ? new Date(task.due_date) : new Date();
+                        date.setHours(existing.getHours(), existing.getMinutes());
+                        onUpdate({ due_date: date.toISOString() });
+                      }
+                    }}
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                  <div className="px-3 pb-3 flex gap-2 items-center">
+                    <Label className="text-xs whitespace-nowrap">{pt ? 'Hora:' : 'Time:'}</Label>
+                    <Input
+                      type="time"
+                      className="h-8 text-sm w-auto"
+                      defaultValue={task.due_date ? format(new Date(task.due_date), 'HH:mm') : '09:00'}
+                      onChange={(e) => {
+                        const [h, m] = e.target.value.split(':').map(Number);
+                        const d = task.due_date ? new Date(task.due_date) : new Date();
+                        d.setHours(h, m, 0, 0);
+                        onUpdate({ due_date: d.toISOString() });
+                      }}
+                    />
+                  </div>
+                </PopoverContent>
+              </Popover>
+              {task.due_date && (
+                <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0" onClick={() => onUpdate({ due_date: null })}>
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
             </div>
-          )}
+          </div>
+
+          {/* Estimated Time - editable */}
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">{pt ? 'Tempo estimado (min)' : 'Estimated time (min)'}</Label>
+            <div className="flex items-center gap-2">
+              <Timer className="h-4 w-4 text-muted-foreground" />
+              <Input
+                type="number"
+                min={0}
+                className="h-8 text-sm w-24"
+                defaultValue={task.estimated_time ?? ''}
+                placeholder="0"
+                onBlur={(e) => {
+                  const val = e.target.value ? parseInt(e.target.value, 10) : null;
+                  if (val !== task.estimated_time) {
+                    onUpdate({ estimated_time: val });
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                }}
+              />
+              <span className="text-xs text-muted-foreground">min</span>
+            </div>
+          </div>
 
           {(task.started_at || task.completed_at) && (
             <div className="grid grid-cols-2 gap-3 text-sm">
