@@ -143,6 +143,8 @@ export default function SettingsPage() {
                     <p>/concluir [nº] — {language === 'pt-BR' ? 'Concluir tarefa' : 'Complete task'}</p>
                     <p>/andamento [nº] — {language === 'pt-BR' ? 'Em andamento' : 'In progress'}</p>
                     <p>/urgente [nº] — {language === 'pt-BR' ? 'Mover para "Fazer Agora"' : 'Move to "Do Now"'}</p>
+                    <p>/relatorio — {language === 'pt-BR' ? 'Relatório semanal' : 'Weekly report'}</p>
+                    <p>/relatorio diario — {language === 'pt-BR' ? 'Relatório diário' : 'Daily report'}</p>
                     <p>/ajuda — {language === 'pt-BR' ? 'Ver comandos' : 'Show commands'}</p>
                   </div>
                 </div>
