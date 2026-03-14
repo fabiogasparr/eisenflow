@@ -130,7 +130,7 @@ export function useWhatsApp() {
     },
     onSuccess: (data) => {
       if (data?.webhook_reregistered) {
-        toast({ title: '✅', description: language === 'pt-BR' ? 'Webhook reconectado com sucesso' : 'Webhook reconnected successfully' });
+        toast({ title: '✅', description: 'Webhook reconnected' });
       }
     },
     onError: (err: Error) => {

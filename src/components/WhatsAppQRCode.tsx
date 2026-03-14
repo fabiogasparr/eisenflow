@@ -2,10 +2,10 @@ import { useWhatsApp } from '@/hooks/useWhatsApp';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MessageSquare, Loader2, Unplug, QrCode } from 'lucide-react';
+import { MessageSquare, Loader2, Unplug, QrCode, RefreshCw } from 'lucide-react';
 
 export function WhatsAppQRCode() {
-  const { connection, isLoading, connect, disconnect } = useWhatsApp();
+  const { connection, isLoading, connect, disconnect, reregisterWebhook } = useWhatsApp();
   const { language } = useLanguage();
   const t = (pt: string, en: string) => language === 'pt-BR' ? pt : en;
 
