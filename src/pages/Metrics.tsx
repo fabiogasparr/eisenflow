@@ -153,7 +153,7 @@ export default function Metrics() {
               <CardTitle className="font-display text-lg">{t('byQuadrant')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250} className="sm:[&]:!h-[300px]">
                 <BarChart data={quadrantData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="name" className="text-xs" />
