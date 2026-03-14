@@ -166,7 +166,19 @@ Deno.serve(async (req) => {
       .eq('status', 'connected')
       .eq(reportEnabledField, true)
 
-    if (!connections || connections.length === 0) {
+    // For weekly reports, filter by the user's preferred day
+    const filteredConnections = reportType === 'weekly'
+      ? (connections || []).filter((c: any) => {
+          const nowUtc = new Date()
+          const dayOfWeek = nowUtc.getUTCDay()
+          // Adjust for BRT (-3h): if UTC hour < 3, the local day is still yesterday
+          const utcHour = nowUtc.getUTCHours()
+          const localDay = utcHour < 3 ? (dayOfWeek + 6) % 7 : dayOfWeek
+          return (c.weekly_report_day ?? 1) === localDay
+        })
+      : connections || []
+
+    if (!filteredConnections || filteredConnections.length === 0) {
       return new Response(JSON.stringify({ message: 'No reports to send' }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
