@@ -18,6 +18,8 @@ Deno.serve(async (req) => {
     const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')!
     const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')!
 
+    console.log('Starting deadline reminders check...')
+
     // Get all connected users with reminders enabled
     const { data: connections, error: connErr } = await supabaseAdmin
       .from('whatsapp_connections')
@@ -25,7 +27,13 @@ Deno.serve(async (req) => {
       .eq('status', 'connected')
       .eq('reminders_enabled', true)
 
-    if (connErr) throw connErr
+    if (connErr) {
+      console.error('Error fetching connections:', connErr)
+      throw connErr
+    }
+
+    console.log(`Found ${connections?.length ?? 0} connections with reminders enabled`)
+
     if (!connections || connections.length === 0) {
       return new Response(JSON.stringify({ ok: true, sent: 0 }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -33,16 +41,20 @@ Deno.serve(async (req) => {
     }
 
     const now = new Date()
-    const in1h = new Date(now.getTime() + 60 * 60 * 1000)
     const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000)
 
     let totalSent = 0
 
     for (const conn of connections) {
-      if (!conn.phone_number) continue
+      console.log(`Processing user ${conn.user_id}, phone: ${conn.phone_number}, instance: ${conn.instance_name}`)
+
+      if (!conn.phone_number) {
+        console.log(`Skipping user ${conn.user_id}: no phone number`)
+        continue
+      }
 
       // Get tasks with upcoming deadlines for this user
-      const { data: tasks } = await supabaseAdmin
+      const { data: tasks, error: tasksErr } = await supabaseAdmin
         .from('tasks')
         .select('id, title, due_date, status, quadrant')
         .or(`created_by.eq.${conn.user_id},assigned_to.eq.${conn.user_id}`)
@@ -51,6 +63,13 @@ Deno.serve(async (req) => {
         .lte('due_date', in24h.toISOString())
         .gte('due_date', now.toISOString())
         .order('due_date', { ascending: true })
+
+      if (tasksErr) {
+        console.error(`Error fetching tasks for user ${conn.user_id}:`, tasksErr)
+        continue
+      }
+
+      console.log(`Found ${tasks?.length ?? 0} tasks with upcoming deadlines for user ${conn.user_id}`)
 
       if (!tasks || tasks.length === 0) continue
 
@@ -94,9 +113,10 @@ Deno.serve(async (req) => {
       lines.push('Use /listar para ver detalhes.')
 
       const message = lines.join('\n')
+      console.log(`Sending reminder to ${conn.phone_number}: ${tasks.length} tasks`)
 
       try {
-        await fetch(`${EVOLUTION_API_URL}/message/sendText/${conn.instance_name}`, {
+        const sendRes = await fetch(`${EVOLUTION_API_URL}/message/sendText/${conn.instance_name}`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
@@ -107,7 +127,15 @@ Deno.serve(async (req) => {
             text: message,
           }),
         })
-        totalSent++
+
+        const sendBody = await sendRes.text()
+        console.log(`Evolution API response [${sendRes.status}]: ${sendBody}`)
+
+        if (!sendRes.ok) {
+          console.error(`Failed to send to ${conn.user_id}: ${sendRes.status} ${sendBody}`)
+        } else {
+          totalSent++
+        }
       } catch (sendErr) {
         console.error(`Failed to send reminder to ${conn.user_id}:`, sendErr)
       }
