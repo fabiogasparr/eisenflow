@@ -108,13 +108,13 @@ export default function SettingsPage() {
                     />
                   </div>
                 )}
-                <div className="flex items-center justify-between max-w-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <Label>{t('whatsappAcceptFrom')}</Label>
                   <Select
                     value={whatsapp.connection.accept_messages_from || 'self_only'}
                     onValueChange={(v) => whatsapp.updateSettings.mutate({ accept_messages_from: v as 'self_only' | 'all' })}
                   >
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full sm:w-48">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
