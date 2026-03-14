@@ -99,7 +99,7 @@ export default function SettingsPage() {
                   </div>
                 )}
                 {(whatsapp.connection.daily_report_enabled || whatsapp.connection.weekly_report_enabled) && (
-                  <div className="space-y-1.5 max-w-xs">
+                  <div className="space-y-1.5">
                     <Label className="text-xs">{t('whatsappReportTime')}</Label>
                     <Input
                       type="time"
