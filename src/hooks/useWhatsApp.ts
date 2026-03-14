@@ -13,6 +13,7 @@ export interface WhatsAppConnection {
   qr_code: string | null;
   reminders_enabled: boolean;
   daily_report_enabled: boolean;
+  weekly_report_enabled: boolean;
   report_time: string;
   accept_messages_from: 'self_only' | 'all';
   created_at: string;
