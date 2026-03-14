@@ -223,13 +223,37 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
           )}
 
           <div className="grid grid-cols-2 gap-3 text-sm">
-            <div className="rounded-lg bg-secondary p-3">
+            <div className="rounded-lg bg-secondary p-3 space-y-1.5">
               <p className="text-muted-foreground">{t('taskUrgency')}</p>
-              <p className="font-semibold text-lg">{task.urgency}/5</p>
+              <Select
+                value={String(task.urgency)}
+                onValueChange={(v) => onUpdate({ urgency: parseInt(v, 10) })}
+              >
+                <SelectTrigger className="h-8 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((v) => (
+                    <SelectItem key={v} value={String(v)}>{v}/5</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
-            <div className="rounded-lg bg-secondary p-3">
+            <div className="rounded-lg bg-secondary p-3 space-y-1.5">
               <p className="text-muted-foreground">{t('taskImportance')}</p>
-              <p className="font-semibold text-lg">{task.importance}/5</p>
+              <Select
+                value={String(task.importance)}
+                onValueChange={(v) => onUpdate({ importance: parseInt(v, 10) })}
+              >
+                <SelectTrigger className="h-8 w-full">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {[1, 2, 3, 4, 5].map((v) => (
+                    <SelectItem key={v} value={String(v)}>{v}/5</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
