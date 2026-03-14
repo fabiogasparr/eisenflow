@@ -66,6 +66,13 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
     }
   };
 
+  const buildDueDateString = (): string | undefined => {
+    if (!dueDate) return undefined;
+    const d = new Date(dueDate);
+    d.setHours(parseInt(dueHour), parseInt(dueMinute), 0, 0);
+    return d.toISOString();
+  };
+
   const handleSubmit = async () => {
     if (!title.trim()) return;
     setLoading(true);
@@ -73,7 +80,7 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
       await onSubmit({
         title: title.trim(),
         description: description.trim() || undefined,
-        due_date: dueDate || undefined,
+        due_date: buildDueDateString(),
         estimated_time: estimatedTime ? parseInt(estimatedTime) : undefined,
         tags: tags ? tags.split(',').map(t => t.trim()).filter(Boolean) : undefined,
         quadrant,
@@ -85,7 +92,9 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
       // Reset
       setTitle('');
       setDescription('');
-      setDueDate('');
+      setDueDate(undefined);
+      setDueHour('12');
+      setDueMinute('00');
       setEstimatedTime('');
       setQuadrant('do');
       setUrgency(3);
