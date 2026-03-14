@@ -66,6 +66,26 @@ Deno.serve(async (req) => {
         const rawQr2 = connectData?.base64 || connectData?.qrcode?.base64 || null
         const qrBase64 = rawQr2?.replace(/^data:image\/[a-z]+;base64,/, '') || null
 
+        // Register webhook for existing instance
+        console.log('Re-registering webhook for existing instance:', instanceName)
+        try {
+          await fetch(`${EVOLUTION_API_URL}/webhook/set/${instanceName}`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: EVOLUTION_API_KEY,
+            },
+            body: JSON.stringify({
+              url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-webhook`,
+              webhook_by_events: true,
+              webhook_base64: false,
+              events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+            }),
+          })
+        } catch (e) {
+          console.error('Failed to register webhook on reconnect:', e)
+        }
+
         // Upsert connection record
         const { error: dbError } = await supabase
           .from('whatsapp_connections')
