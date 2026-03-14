@@ -60,6 +60,31 @@ Deno.serve(async (req) => {
     const instanceState = stateData?.instance?.state || stateData?.state
 
     if (instanceState === 'open' || instanceState === 'connected') {
+      // AUTO-REGISTER WEBHOOK on successful connection
+      console.log('Connection detected, registering webhook for instance:', conn.instance_name)
+      try {
+        const webhookRes = await fetch(`${EVOLUTION_API_URL}/webhook/set/${conn.instance_name}`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            apikey: EVOLUTION_API_KEY,
+          },
+          body: JSON.stringify({
+            url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-webhook`,
+            webhook_by_events: true,
+            webhook_base64: false,
+            events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+          }),
+        })
+        if (!webhookRes.ok) {
+          console.error('Failed to register webhook:', await webhookRes.text())
+        } else {
+          console.log('Webhook registered successfully')
+        }
+      } catch (e) {
+        console.error('Error registering webhook:', e)
+      }
+
       // Get phone number
       let phoneNumber: string | null = null
       try {
@@ -69,7 +94,7 @@ Deno.serve(async (req) => {
         if (infoRes.ok) {
           const infoData = await infoRes.json()
           const instance = Array.isArray(infoData) ? infoData[0] : infoData
-          phoneNumber = instance?.instance?.owner || instance?.owner || null
+          phoneNumber = instance?.instance?.ownerJid || instance?.ownerJid || instance?.instance?.owner || instance?.owner || null
           if (phoneNumber) phoneNumber = phoneNumber.replace(/@.*$/, '')
         }
       } catch (e) {
