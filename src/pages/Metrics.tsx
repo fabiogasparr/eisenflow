@@ -174,7 +174,7 @@ export default function Metrics() {
               <CardTitle className="font-display text-lg">{t('productivityScore')}</CardTitle>
             </CardHeader>
             <CardContent className="flex items-center justify-center">
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250} className="sm:[&]:!h-[300px]">
                 <PieChart>
                   <Pie
                     data={quadrantData}
