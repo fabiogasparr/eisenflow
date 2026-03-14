@@ -38,7 +38,7 @@ export function QuadrantDropZone({ quadrant, tasks, onTaskClick }: QuadrantDropZ
           {tasks.length}
         </span>
       </div>
-      <ScrollArea className="flex-1 p-3 min-h-[120px] max-h-[calc(50vh-80px)]">
+      <ScrollArea className="flex-1 p-3 min-h-[100px] max-h-[40vh] sm:max-h-[calc(50vh-80px)]">
         <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-2">
             {tasks.length === 0 ? (

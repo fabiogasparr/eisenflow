@@ -350,7 +350,7 @@ export default function WeeklyPlanner() {
             </details>
 
             {viewMode === 'weekly' ? (
-              <div className={`flex-1 grid gap-2 overflow-x-auto`} style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
+              <div className={`flex-1 grid gap-2 overflow-x-auto`} style={{ gridTemplateColumns: `repeat(${colCount}, minmax(140px, 1fr))` }}>
                 {weekDays.map((day) => (
                   <DayColumn
                     key={format(day, 'yyyy-MM-dd')}

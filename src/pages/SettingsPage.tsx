@@ -187,7 +187,7 @@ export default function SettingsPage() {
 
             {pomo.enabled && (
               <div className="space-y-4 pt-2">
-                <div className="grid grid-cols-2 gap-4 max-w-xs">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs">
                       {language === 'pt-BR' ? 'Foco (min)' : 'Focus (min)'}
