@@ -76,6 +76,28 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => whatsapp.updateSettings.mutate({ weekly_report_enabled: v })}
                   />
                 </div>
+                {whatsapp.connection.weekly_report_enabled && (
+                  <div className="space-y-1.5 max-w-xs">
+                    <Label className="text-xs">{t('whatsappWeeklyReportDay')}</Label>
+                    <Select
+                      value={String(whatsapp.connection.weekly_report_day ?? 1)}
+                      onValueChange={(v) => whatsapp.updateSettings.mutate({ weekly_report_day: Number(v) })}
+                    >
+                      <SelectTrigger className="w-48">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="0">{language === 'pt-BR' ? 'Domingo' : 'Sunday'}</SelectItem>
+                        <SelectItem value="1">{language === 'pt-BR' ? 'Segunda-feira' : 'Monday'}</SelectItem>
+                        <SelectItem value="2">{language === 'pt-BR' ? 'Terça-feira' : 'Tuesday'}</SelectItem>
+                        <SelectItem value="3">{language === 'pt-BR' ? 'Quarta-feira' : 'Wednesday'}</SelectItem>
+                        <SelectItem value="4">{language === 'pt-BR' ? 'Quinta-feira' : 'Thursday'}</SelectItem>
+                        <SelectItem value="5">{language === 'pt-BR' ? 'Sexta-feira' : 'Friday'}</SelectItem>
+                        <SelectItem value="6">{language === 'pt-BR' ? 'Sábado' : 'Saturday'}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
                 {(whatsapp.connection.daily_report_enabled || whatsapp.connection.weekly_report_enabled) && (
                   <div className="space-y-1.5 max-w-xs">
                     <Label className="text-xs">{t('whatsappReportTime')}</Label>
