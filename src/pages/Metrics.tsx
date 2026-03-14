@@ -118,7 +118,7 @@ export default function Metrics() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
               <div className="text-center space-y-1">
                 <p className="text-4xl font-bold font-display text-destructive">{totalPomodoros}</p>
                 <p className="text-xs text-muted-foreground">
