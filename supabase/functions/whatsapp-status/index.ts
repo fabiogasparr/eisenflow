@@ -10,15 +10,17 @@ async function registerWebhook(evolutionUrl: string, apiKey: string, instanceNam
   const events = ['MESSAGES_UPSERT', 'CONNECTION_UPDATE']
 
   const formats = [
-    { url: webhookUrl, webhook_by_events: true, webhook_base64: false, events },
+    { webhook: { enabled: true, url: webhookUrl, webhook_by_events: true, webhook_base64: false, events } },
+    { webhook: { enabled: true, url: webhookUrl, events } },
+    { instance: { webhook: { enabled: true, url: webhookUrl, webhook_by_events: true, webhook_base64: false, events } } },
     { webhook: { url: webhookUrl, webhook_by_events: true, webhook_base64: false, events } },
-    { enabled: true, url: webhookUrl, webhook_by_events: true, webhook_base64: false, events },
+    { url: webhookUrl, webhook_by_events: true, webhook_base64: false, events },
   ]
 
   const results: { format: number; status: number; body: string }[] = []
 
   for (const [i, payload] of formats.entries()) {
-    console.log(`[webhook-register] Trying format ${i + 1}:`, JSON.stringify(payload).substring(0, 200))
+    console.log(`[webhook-register] Trying format ${i + 1}:`, JSON.stringify(payload).substring(0, 240))
     try {
       const res = await fetch(`${evolutionUrl}/webhook/set/${instanceName}`, {
         method: 'POST',
@@ -26,8 +28,8 @@ async function registerWebhook(evolutionUrl: string, apiKey: string, instanceNam
         body: JSON.stringify(payload),
       })
       const resText = await res.text()
-      console.log(`[webhook-register] Format ${i + 1} response [${res.status}]:`, resText.substring(0, 300))
-      results.push({ format: i + 1, status: res.status, body: resText.substring(0, 200) })
+      console.log(`[webhook-register] Format ${i + 1} response [${res.status}]:`, resText.substring(0, 320))
+      results.push({ format: i + 1, status: res.status, body: resText.substring(0, 220) })
       if (res.ok) {
         console.log(`[webhook-register] SUCCESS with format ${i + 1}`)
         return { success: true, results }
@@ -37,6 +39,7 @@ async function registerWebhook(evolutionUrl: string, apiKey: string, instanceNam
       results.push({ format: i + 1, status: 0, body: String(e) })
     }
   }
+
   console.error('[webhook-register] All formats failed')
   return { success: false, results }
 }

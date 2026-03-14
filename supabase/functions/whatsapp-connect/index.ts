@@ -10,13 +10,15 @@ async function registerWebhook(evolutionUrl: string, apiKey: string, instanceNam
   const events = ['MESSAGES_UPSERT', 'CONNECTION_UPDATE']
 
   const formats = [
-    { url: webhookUrl, webhook_by_events: true, webhook_base64: false, events },
+    { webhook: { enabled: true, url: webhookUrl, webhook_by_events: true, webhook_base64: false, events } },
+    { webhook: { enabled: true, url: webhookUrl, events } },
+    { instance: { webhook: { enabled: true, url: webhookUrl, webhook_by_events: true, webhook_base64: false, events } } },
     { webhook: { url: webhookUrl, webhook_by_events: true, webhook_base64: false, events } },
-    { enabled: true, url: webhookUrl, webhook_by_events: true, webhook_base64: false, events },
+    { url: webhookUrl, webhook_by_events: true, webhook_base64: false, events },
   ]
 
   for (const [i, payload] of formats.entries()) {
-    console.log(`[webhook-register] Trying format ${i + 1}:`, JSON.stringify(payload).substring(0, 200))
+    console.log(`[webhook-register] Trying format ${i + 1}:`, JSON.stringify(payload).substring(0, 240))
     try {
       const res = await fetch(`${evolutionUrl}/webhook/set/${instanceName}`, {
         method: 'POST',
@@ -24,7 +26,7 @@ async function registerWebhook(evolutionUrl: string, apiKey: string, instanceNam
         body: JSON.stringify(payload),
       })
       const resText = await res.text()
-      console.log(`[webhook-register] Format ${i + 1} response [${res.status}]:`, resText.substring(0, 300))
+      console.log(`[webhook-register] Format ${i + 1} response [${res.status}]:`, resText.substring(0, 320))
       if (res.ok) {
         console.log(`[webhook-register] SUCCESS with format ${i + 1}`)
         return true
@@ -33,6 +35,7 @@ async function registerWebhook(evolutionUrl: string, apiKey: string, instanceNam
       console.error(`[webhook-register] Format ${i + 1} error:`, e)
     }
   }
+
   console.error('[webhook-register] All formats failed')
   return false
 }
@@ -69,7 +72,7 @@ Deno.serve(async (req) => {
     const instanceName = `eisenflow_${userId.replace(/-/g, '')}`
     const webhookUrl = `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-webhook`
 
-    // Create instance on Evolution API - include webhook in creation payload
+    // Create instance on Evolution API - include enabled webhook in creation payload
     const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
       method: 'POST',
       headers: {
@@ -81,6 +84,7 @@ Deno.serve(async (req) => {
         integration: 'WHATSAPP-BAILEYS',
         qrcode: true,
         webhook: {
+          enabled: true,
           url: webhookUrl,
           webhook_by_events: true,
           webhook_base64: false,
@@ -106,7 +110,6 @@ Deno.serve(async (req) => {
         const rawQr2 = connectData?.base64 || connectData?.qrcode?.base64 || null
         const qrBase64 = rawQr2?.replace(/^data:image\/[a-z]+;base64,/, '') || null
 
-        // Register webhook with multi-format fallback
         const webhookOk = await registerWebhook(EVOLUTION_API_URL, EVOLUTION_API_KEY, instanceName, Deno.env.get('SUPABASE_URL')!)
 
         const { error: dbError } = await supabase
@@ -132,7 +135,6 @@ Deno.serve(async (req) => {
     const rawQr = createData?.qrcode?.base64 || createData?.base64 || null
     const qrBase64 = rawQr?.replace(/^data:image\/[a-z]+;base64,/, '') || null
 
-    // Also try separate webhook/set as fallback
     const webhookOk = await registerWebhook(EVOLUTION_API_URL, EVOLUTION_API_KEY, instanceName, Deno.env.get('SUPABASE_URL')!)
 
     const { error: dbError } = await supabase
