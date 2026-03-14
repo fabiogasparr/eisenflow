@@ -10,9 +10,9 @@ export function useTasks() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Realtime subscription: auto-refresh when tasks change (e.g. via WhatsApp webhook)
+  // Realtime: auto-refresh quadrants when tasks change (e.g. via WhatsApp webhook)
   useEffect(() => {
-    if (!user) return;
+    if (!user) return undefined;
     const channel = supabase
       .channel('tasks-realtime')
       .on(
