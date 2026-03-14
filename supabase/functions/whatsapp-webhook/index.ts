@@ -342,6 +342,36 @@ async function executeToolCall(
   }
 }
 
+// ── Helper: get recent chat history ──
+async function getChatHistory(supabaseAdmin: any, userId: string, limit = 10) {
+  const { data } = await supabaseAdmin
+    .from('whatsapp_chat_history')
+    .select('role, content')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .limit(limit)
+  return (data || []).reverse()
+}
+
+// ── Helper: save chat message ──
+async function saveChatMessage(supabaseAdmin: any, userId: string, role: string, content: string) {
+  await supabaseAdmin.from('whatsapp_chat_history').insert({ user_id: userId, role, content })
+}
+
+// ── Helper: trim old history (keep last N messages per user) ──
+async function trimChatHistory(supabaseAdmin: any, userId: string, keepLast = 30) {
+  const { data } = await supabaseAdmin
+    .from('whatsapp_chat_history')
+    .select('id')
+    .eq('user_id', userId)
+    .order('created_at', { ascending: false })
+    .range(keepLast, keepLast + 100)
+  if (data?.length) {
+    const idsToDelete = data.map((r: any) => r.id)
+    await supabaseAdmin.from('whatsapp_chat_history').delete().in('id', idsToDelete)
+  }
+}
+
 // ── AI processing for natural language messages ──
 async function processWithAI(
   messageText: string,
@@ -355,11 +385,15 @@ async function processWithAI(
     return '⚠️ IA não configurada. Use comandos com / (ex: /ajuda)'
   }
 
-  // Fetch context in parallel
-  const [tasks, teamMembers] = await Promise.all([
+  // Fetch context and history in parallel
+  const [tasks, teamMembers, chatHistory] = await Promise.all([
     getUserTasks(supabaseAdmin, userId),
     getTeamMembers(supabaseAdmin, userId),
+    getChatHistory(supabaseAdmin, userId),
   ])
+
+  // Save user message to history
+  await saveChatMessage(supabaseAdmin, userId, 'user', messageText)
 
   const quadrantLabels: Record<string, string> = {
     do: 'Fazer Agora', schedule: 'Agendar', delegate: 'Delegar', eliminate: 'Eliminar'
@@ -400,6 +434,13 @@ REGRAS:
 - Se a mensagem for ambígua, peça esclarecimento via chat_response.`
 
   try {
+    // Build messages array with history
+    const aiMessages: any[] = [
+      { role: 'system', content: systemPrompt },
+      ...chatHistory.map((m: any) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: messageText },
+    ]
+
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -408,10 +449,7 @@ REGRAS:
       },
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
-        messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: messageText },
-        ],
+        messages: aiMessages,
         tools: AI_TOOLS,
         tool_choice: 'auto',
       }),
@@ -443,14 +481,20 @@ REGRAS:
         )
         results.push(result)
       }
-      return results.join('\n\n')
+      const reply = results.join('\n\n')
+      // Save assistant response and trim old messages
+      await saveChatMessage(supabaseAdmin, userId, 'assistant', reply)
+      trimChatHistory(supabaseAdmin, userId).catch(() => {})
+      return reply
     }
 
     // Fallback: plain text response from the AI
     const textContent = choice?.message?.content
-    if (textContent) return textContent
-
-    return '🤔 Não consegui entender. Tente reformular ou use /ajuda.'
+    if (textContent) {
+      await saveChatMessage(supabaseAdmin, userId, 'assistant', textContent)
+      trimChatHistory(supabaseAdmin, userId).catch(() => {})
+      return textContent
+    }
   } catch (err) {
     console.error('AI processing error:', err)
     return '⚠️ Erro ao processar sua mensagem. Use /ajuda para ver comandos disponíveis.'
