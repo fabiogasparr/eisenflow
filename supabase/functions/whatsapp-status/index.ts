@@ -34,8 +34,44 @@ Deno.serve(async (req) => {
       .eq('user_id', user.id)
       .maybeSingle()
 
-    if (!conn || conn.status !== 'qr_pending') {
-      return new Response(JSON.stringify({ status: conn?.status || 'disconnected' }), {
+    if (!conn) {
+      return new Response(JSON.stringify({ status: 'disconnected' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')!
+    const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')!
+
+    // For already-connected instances, ensure webhook is registered and return
+    if (conn.status === 'connected') {
+      console.log('Instance already connected, ensuring webhook is registered for:', conn.instance_name)
+      try {
+        const webhookRes = await fetch(`${EVOLUTION_API_URL}/webhook/set/${conn.instance_name}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+          body: JSON.stringify({
+            url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-webhook`,
+            webhook_by_events: true,
+            webhook_base64: false,
+            events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+          }),
+        })
+        if (!webhookRes.ok) {
+          console.error('Failed to re-register webhook:', await webhookRes.text())
+        } else {
+          console.log('Webhook re-registered successfully')
+        }
+      } catch (e) {
+        console.error('Error re-registering webhook:', e)
+      }
+      return new Response(JSON.stringify({ status: 'connected', webhook_reregistered: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (conn.status !== 'qr_pending') {
+      return new Response(JSON.stringify({ status: conn.status }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       })
     }
