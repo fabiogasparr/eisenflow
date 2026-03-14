@@ -157,7 +157,7 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center justify-between max-w-xs">
+            <div className="flex items-center justify-between">
               <Label htmlFor="show-weekends">{t('showWeekends')}</Label>
               <Switch
                 id="show-weekends"
