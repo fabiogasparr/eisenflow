@@ -946,6 +946,7 @@ async function processCommand(
       `/delegar [nº] [nome] - Delegar tarefa\n` +
       `/membros - Listar membros dos times\n` +
       `/relatorio - Relatório semanal\n` +
+      `/relatorio diario - Relatório diário\n` +
       `/ajuda - Este menu\n\n` +
       `💡 *Dica:* Você também pode enviar mensagens em linguagem natural! Ex: "cria uma tarefa para revisar o relatório amanhã"`
   }
