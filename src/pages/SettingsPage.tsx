@@ -60,7 +60,7 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => whatsapp.updateSettings.mutate({ reminders_enabled: v })}
                   />
                 </div>
-                <div className="flex items-center justify-between max-w-xs">
+                <div className="flex items-center justify-between">
                   <Label htmlFor="wa-report">{t('whatsappDailyReport')}</Label>
                   <Switch
                     id="wa-report"
