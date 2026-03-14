@@ -48,8 +48,39 @@ Deno.serve(async (req) => {
     for (const conn of connections) {
       console.log(`Processing user ${conn.user_id}, phone: ${conn.phone_number}, instance: ${conn.instance_name}`)
 
-      if (!conn.phone_number) {
-        console.log(`Skipping user ${conn.user_id}: no phone number`)
+      let phoneNumber = conn.phone_number
+
+      // If phone_number is missing, try to fetch it from Evolution API and persist
+      if (!phoneNumber) {
+        console.log(`Phone number missing for user ${conn.user_id}, fetching from Evolution API...`)
+        try {
+          const infoRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${conn.instance_name}`, {
+            headers: { apikey: EVOLUTION_API_KEY },
+          })
+          if (infoRes.ok) {
+            const infoData = await infoRes.json()
+            console.log(`Evolution API fetchInstances response:`, JSON.stringify(infoData).substring(0, 1000))
+            const instance = Array.isArray(infoData) ? infoData[0] : infoData
+            const owner = instance?.ownerJid || instance?.instance?.owner || instance?.owner || instance?.instance?.wuid || null
+            if (owner) {
+              phoneNumber = owner.replace(/@.*$/, '')
+              console.log(`Found phone number from Evolution API: ${phoneNumber}`)
+              // Persist it so we don't need to fetch again
+              await supabaseAdmin
+                .from('whatsapp_connections')
+                .update({ phone_number: phoneNumber })
+                .eq('user_id', conn.user_id)
+            }
+          } else {
+            console.error(`Evolution API fetchInstances failed: ${infoRes.status}`)
+          }
+        } catch (e) {
+          console.error(`Failed to fetch phone from Evolution API:`, e)
+        }
+      }
+
+      if (!phoneNumber) {
+        console.log(`Skipping user ${conn.user_id}: no phone number even after API fetch`)
         continue
       }
 

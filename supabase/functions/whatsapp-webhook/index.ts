@@ -48,7 +48,7 @@ Deno.serve(async (req) => {
           if (infoRes.ok) {
             const infoData = await infoRes.json()
             const instance = Array.isArray(infoData) ? infoData[0] : infoData
-            phoneNumber = instance?.instance?.owner || instance?.owner || null
+            phoneNumber = instance?.ownerJid || instance?.instance?.owner || instance?.owner || null
             if (phoneNumber) {
               phoneNumber = phoneNumber.replace(/@.*$/, '')
             }
