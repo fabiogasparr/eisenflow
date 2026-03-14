@@ -316,15 +316,15 @@ export default function WeeklyPlanner() {
   return (
     <AppLayout>
       <div className="p-4 md:p-6 h-full flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="font-display text-xl font-bold">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+          <h1 className="font-display text-lg sm:text-xl font-bold">
             {viewMode === 'weekly' ? t('weeklyPlanning') : t('monthly')}
           </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <Button variant="ghost" size="icon" onClick={navPrev}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm font-medium min-w-[180px] text-center capitalize">{headerLabel}</span>
+            <span className="text-xs sm:text-sm font-medium min-w-[140px] sm:min-w-[180px] text-center capitalize">{headerLabel}</span>
             <Button variant="ghost" size="icon" onClick={navNext}>
               <ChevronRight className="h-4 w-4" />
             </Button>
