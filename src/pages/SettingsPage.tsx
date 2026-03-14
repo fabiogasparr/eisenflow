@@ -52,7 +52,7 @@ export default function SettingsPage() {
 
             {whatsapp.connection?.status === 'connected' && (
               <div className="space-y-4 pt-2 border-t">
-                <div className="flex items-center justify-between max-w-xs pt-4">
+                <div className="flex items-center justify-between pt-4">
                   <Label htmlFor="wa-reminders">{t('whatsappReminders')}</Label>
                   <Switch
                     id="wa-reminders"
