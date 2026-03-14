@@ -10,6 +10,24 @@ export function useTasks() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  // Realtime subscription: auto-refresh when tasks change (e.g. via WhatsApp webhook)
+  useEffect(() => {
+    if (!user) return;
+    const channel = supabase
+      .channel('tasks-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'tasks' },
+        () => {
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        }
+      )
+      .subscribe();
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user, queryClient]);
+
   const tasksQuery = useQuery({
     queryKey: ['tasks', user?.id],
     queryFn: async (): Promise<Task[]> => {
