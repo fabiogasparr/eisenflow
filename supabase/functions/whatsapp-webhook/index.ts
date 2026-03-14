@@ -794,6 +794,112 @@ async function processCommand(
     return reply
   }
 
+  if (cmd === '/relatorio' || cmd === '/report') {
+    const now = new Date()
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+    const weekAgoISO = weekAgo.toISOString()
+
+    // Fetch data in parallel
+    const [completedRes, createdRes, metricsRes, pendingRes, gamifRes] = await Promise.all([
+      supabaseAdmin.from('tasks').select('id, title, quadrant, completed_at')
+        .eq('created_by', userId).eq('status', 'completed')
+        .gte('completed_at', weekAgoISO),
+      supabaseAdmin.from('tasks').select('id')
+        .eq('created_by', userId).gte('created_at', weekAgoISO),
+      supabaseAdmin.from('productivity_metrics').select('*')
+        .eq('user_id', userId).gte('date', weekAgo.toISOString().split('T')[0])
+        .order('date', { ascending: true }),
+      supabaseAdmin.from('tasks').select('id, title, quadrant, due_date')
+        .eq('created_by', userId).in('status', ['pending', 'in_progress']),
+      supabaseAdmin.from('gamification').select('*')
+        .eq('user_id', userId).maybeSingle(),
+    ])
+
+    const completed = completedRes.data || []
+    const created = createdRes.data || []
+    const metrics = metricsRes.data || []
+    const pending = pendingRes.data || []
+    const gamif = gamifRes.data
+
+    // Aggregate metrics
+    const totalPomodoros = metrics.reduce((s: number, m: any) => s + (m.pomodoros_completed || 0), 0)
+    const totalFocusMin = metrics.reduce((s: number, m: any) => s + (m.time_in_important || 0), 0)
+    const totalDelegated = metrics.reduce((s: number, m: any) => s + (m.tasks_delegated || 0), 0)
+    const totalEliminated = metrics.reduce((s: number, m: any) => s + (m.tasks_eliminated || 0), 0)
+
+    // Quadrant breakdown
+    const quadrantCount: Record<string, number> = { do: 0, schedule: 0, delegate: 0, eliminate: 0 }
+    for (const t of completed) quadrantCount[t.quadrant] = (quadrantCount[t.quadrant] || 0) + 1
+
+    // Overdue tasks
+    const overdue = pending.filter((t: any) => t.due_date && new Date(t.due_date) < now)
+
+    // Format dates
+    const fmtDate = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+
+    let reply = `📊 *Relatório Semanal de Produtividade*\n`
+    reply += `📅 ${fmtDate(weekAgo)} a ${fmtDate(now)}\n\n`
+
+    reply += `━━━━━━━━━━━━━━━━━━━━━\n`
+    reply += `📈 *Resumo Geral*\n`
+    reply += `✅ Tarefas concluídas: *${completed.length}*\n`
+    reply += `📝 Tarefas criadas: *${created.length}*\n`
+    reply += `⏳ Tarefas pendentes: *${pending.length}*\n`
+    if (overdue.length > 0) reply += `🚨 Tarefas atrasadas: *${overdue.length}*\n`
+    reply += `\n`
+
+    reply += `━━━━━━━━━━━━━━━━━━━━━\n`
+    reply += `🎯 *Por Quadrante (concluídas)*\n`
+    reply += `🔴 Fazer Agora: ${quadrantCount.do}\n`
+    reply += `🔵 Agendar: ${quadrantCount.schedule}\n`
+    reply += `🟡 Delegar: ${quadrantCount.delegate}\n`
+    reply += `⚪ Eliminar: ${quadrantCount.eliminate}\n\n`
+
+    if (totalPomodoros > 0 || totalFocusMin > 0) {
+      reply += `━━━━━━━━━━━━━━━━━━━━━\n`
+      reply += `🍅 *Foco & Pomodoros*\n`
+      reply += `🍅 Pomodoros: *${totalPomodoros}*\n`
+      const hours = Math.floor(totalFocusMin / 60)
+      const mins = totalFocusMin % 60
+      reply += `⏱️ Tempo de foco: *${hours > 0 ? hours + 'h ' : ''}${mins}min*\n\n`
+    }
+
+    if (totalDelegated > 0 || totalEliminated > 0) {
+      reply += `🤝 Delegadas: ${totalDelegated} | 🗑️ Eliminadas: ${totalEliminated}\n\n`
+    }
+
+    if (gamif) {
+      reply += `━━━━━━━━━━━━━━━━━━━━━\n`
+      reply += `🏆 *Gamificação*\n`
+      reply += `⭐ Nível ${gamif.level} | ${gamif.xp} XP\n`
+      reply += `🔥 Streak: ${gamif.current_streak} dias (recorde: ${gamif.longest_streak})\n\n`
+    }
+
+    if (overdue.length > 0) {
+      reply += `━━━━━━━━━━━━━━━━━━━━━\n`
+      reply += `🚨 *Tarefas Atrasadas*\n`
+      for (const t of overdue.slice(0, 5)) {
+        reply += `• ${t.title} (${fmtDate(new Date(t.due_date))})\n`
+      }
+      if (overdue.length > 5) reply += `... e mais ${overdue.length - 5}\n`
+      reply += `\n`
+    }
+
+    // Productivity score
+    const score = completed.length > 0
+      ? Math.min(100, Math.round((completed.length / Math.max(created.length, 1)) * 100))
+      : 0
+    const scoreEmoji = score >= 80 ? '🌟' : score >= 50 ? '👍' : '💪'
+    reply += `━━━━━━━━━━━━━━━━━━━━━\n`
+    reply += `${scoreEmoji} *Taxa de conclusão: ${score}%*\n`
+
+    if (score >= 80) reply += `Excelente semana! Continue assim! 🚀`
+    else if (score >= 50) reply += `Boa semana! Foque nas tarefas importantes. 🎯`
+    else reply += `Semana desafiadora. Que tal revisar suas prioridades? 📋`
+
+    return reply
+  }
+
   if (cmd === '/ajuda' || cmd === '/help') {
     return `📖 *Comandos disponíveis:*\n\n` +
       `/nova [título] - Criar tarefa\n` +
@@ -803,6 +909,7 @@ async function processCommand(
       `/urgente [nº] - Mover para "Fazer Agora"\n` +
       `/delegar [nº] [nome] - Delegar tarefa\n` +
       `/membros - Listar membros dos times\n` +
+      `/relatorio - Relatório semanal\n` +
       `/ajuda - Este menu\n\n` +
       `💡 *Dica:* Você também pode enviar mensagens em linguagem natural! Ex: "cria uma tarefa para revisar o relatório amanhã"`
   }
