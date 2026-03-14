@@ -159,10 +159,58 @@ export function CreateTaskDialog({ open, onOpenChange, onSubmit, onClassifyWithA
             <Textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder={t('taskDescription')} rows={3} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>{t('taskDueDate')}</Label>
-              <Input type="datetime-local" value={dueDate} onChange={(e) => setDueDate(e.target.value)} />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal h-10",
+                      !dueDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {dueDate
+                      ? `${format(dueDate, "dd/MM/yyyy", { locale: language === 'pt-BR' ? ptBR : undefined })} ${dueHour}:${dueMinute}`
+                      : (language === 'pt-BR' ? 'Selecione data e hora' : 'Pick date & time')}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={dueDate}
+                    onSelect={setDueDate}
+                    initialFocus
+                    className={cn("p-3 pointer-events-auto")}
+                  />
+                  <div className="p-3 border-t border-border flex items-center gap-2">
+                    <Label className="text-xs whitespace-nowrap">{language === 'pt-BR' ? 'Hora:' : 'Time:'}</Label>
+                    <Select value={dueHour} onValueChange={setDueHour}>
+                      <SelectTrigger className="w-[70px] h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0')).map(h => (
+                          <SelectItem key={h} value={h}>{h}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <span className="text-muted-foreground">:</span>
+                    <Select value={dueMinute} onValueChange={setDueMinute}>
+                      <SelectTrigger className="w-[70px] h-8">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {['00', '05', '10', '15', '20', '25', '30', '35', '40', '45', '50', '55'].map(m => (
+                          <SelectItem key={m} value={m}>{m}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </PopoverContent>
+              </Popover>
             </div>
             <div className="space-y-2">
               <Label>{t('taskEstimatedTime')}</Label>
