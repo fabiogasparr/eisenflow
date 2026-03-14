@@ -69,10 +69,23 @@ export function useTasks() {
 
   const updateTask = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Task> & { id: string }) => {
+      // Auto-recalculate quadrant when urgency or importance change
+      if ((updates.urgency !== undefined || updates.importance !== undefined) && !updates.quadrant) {
+        const currentTask = tasksQuery.data?.find((t) => t.id === id);
+        if (currentTask) {
+          const urg = updates.urgency ?? currentTask.urgency;
+          const imp = updates.importance ?? currentTask.importance;
+          const isUrgent = urg >= 3;
+          const isImportant = imp >= 3;
+          if (isUrgent && isImportant) updates.quadrant = 'do' as Quadrant;
+          else if (!isUrgent && isImportant) updates.quadrant = 'schedule' as Quadrant;
+          else if (isUrgent && !isImportant) updates.quadrant = 'delegate' as Quadrant;
+          else updates.quadrant = 'eliminate' as Quadrant;
+        }
+      }
       // Auto-set started_at / completed_at based on status changes
       if (updates.status === 'in_progress' && !updates.started_at) {
         updates.started_at = new Date().toISOString();
-        // Auto-move to 'do' quadrant when starting a task
         if (!updates.quadrant) {
           updates.quadrant = 'do' as Quadrant;
         }
