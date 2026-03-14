@@ -188,7 +188,7 @@ Deno.serve(async (req) => {
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     let sentCount = 0
 
-    for (const conn of connections) {
+    for (const conn of filteredConnections) {
       try {
         if (!conn.phone_number) continue
 
