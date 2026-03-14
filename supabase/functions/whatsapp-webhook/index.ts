@@ -481,14 +481,20 @@ REGRAS:
         )
         results.push(result)
       }
-      return results.join('\n\n')
+      const reply = results.join('\n\n')
+      // Save assistant response and trim old messages
+      await saveChatMessage(supabaseAdmin, userId, 'assistant', reply)
+      trimChatHistory(supabaseAdmin, userId).catch(() => {})
+      return reply
     }
 
     // Fallback: plain text response from the AI
     const textContent = choice?.message?.content
-    if (textContent) return textContent
-
-    return '🤔 Não consegui entender. Tente reformular ou use /ajuda.'
+    if (textContent) {
+      await saveChatMessage(supabaseAdmin, userId, 'assistant', textContent)
+      trimChatHistory(supabaseAdmin, userId).catch(() => {})
+      return textContent
+    }
   } catch (err) {
     console.error('AI processing error:', err)
     return '⚠️ Erro ao processar sua mensagem. Use /ajuda para ver comandos disponíveis.'
