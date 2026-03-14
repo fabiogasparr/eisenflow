@@ -69,8 +69,58 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
               </Badge>
             )}
           </div>
-          <SheetTitle className="font-display text-xl">{task.title}</SheetTitle>
-          <SheetDescription>{task.description}</SheetDescription>
+          {editingTitle ? (
+            <Input
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              className="font-display text-xl h-auto py-1"
+              onBlur={() => {
+                if (titleDraft.trim() && titleDraft !== task.title) {
+                  onUpdate({ title: titleDraft.trim() });
+                }
+                setEditingTitle(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                if (e.key === 'Escape') setEditingTitle(false);
+              }}
+            />
+          ) : (
+            <SheetTitle
+              className="font-display text-xl cursor-pointer group flex items-center gap-2 hover:text-primary transition-colors"
+              onClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
+            >
+              {task.title}
+              <Pencil className="h-3.5 w-3.5 opacity-0 group-hover:opacity-50 transition-opacity" />
+            </SheetTitle>
+          )}
+          {editingDesc ? (
+            <textarea
+              autoFocus
+              value={descDraft}
+              onChange={(e) => setDescDraft(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none min-h-[60px]"
+              placeholder={pt ? 'Adicionar descrição...' : 'Add description...'}
+              onBlur={() => {
+                if (descDraft !== (task.description ?? '')) {
+                  onUpdate({ description: descDraft || null });
+                }
+                setEditingDesc(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setEditingDesc(false);
+              }}
+            />
+          ) : (
+            <SheetDescription
+              className="cursor-pointer group flex items-center gap-2 hover:text-foreground/70 transition-colors"
+              onClick={() => { setDescDraft(task.description ?? ''); setEditingDesc(true); }}
+            >
+              {task.description || (pt ? 'Clique para adicionar descrição...' : 'Click to add description...')}
+              <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity shrink-0" />
+            </SheetDescription>
+          )}
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
