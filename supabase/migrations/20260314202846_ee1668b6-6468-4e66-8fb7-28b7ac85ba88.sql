@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_connections ADD COLUMN weekly_report_enabled boolean NOT NULL DEFAULT false;
