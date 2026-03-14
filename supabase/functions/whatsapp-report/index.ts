@@ -158,12 +158,13 @@ Deno.serve(async (req) => {
       if (body?.type === 'weekly') reportType = 'weekly'
     } catch { /* no body = daily */ }
 
-    // Find all users with report enabled and connected WhatsApp
+    // Find all users with connected WhatsApp and appropriate report enabled
+    const reportEnabledField = reportType === 'weekly' ? 'weekly_report_enabled' : 'daily_report_enabled'
     const { data: connections } = await supabaseAdmin
       .from('whatsapp_connections')
       .select('*')
       .eq('status', 'connected')
-      .eq('daily_report_enabled', true)
+      .eq(reportEnabledField, true)
 
     if (!connections || connections.length === 0) {
       return new Response(JSON.stringify({ message: 'No reports to send' }), {
