@@ -40,6 +40,7 @@ export function useTasks() {
       return (data ?? []) as Task[];
     },
     enabled: !!user,
+    refetchInterval: 30000,
   });
 
   const createTask = useMutation({
