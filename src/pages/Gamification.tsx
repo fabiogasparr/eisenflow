@@ -112,12 +112,12 @@ export default function Gamification() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex items-center gap-8">
-              <div className="text-center">
-                <p className={`font-display text-6xl font-bold ${scoreColor}`}>{stats.life_score}</p>
+            <div className="flex flex-col sm:flex-row items-center gap-4 sm:gap-8">
+              <div className="text-center shrink-0">
+                <p className={`font-display text-5xl sm:text-6xl font-bold ${scoreColor}`}>{stats.life_score}</p>
                 <p className="text-sm text-muted-foreground mt-1">{scoreLabel}</p>
               </div>
-              <div className="flex-1 space-y-3">
+              <div className="flex-1 w-full space-y-3">
                 <ScoreBar
                   label={pt ? 'Tarefas concluídas' : 'Tasks completed'}
                   value={Math.min(stats.total_tasks_completed * 2, 30)}

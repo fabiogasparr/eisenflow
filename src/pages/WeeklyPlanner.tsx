@@ -316,15 +316,15 @@ export default function WeeklyPlanner() {
   return (
     <AppLayout>
       <div className="p-4 md:p-6 h-full flex flex-col">
-        <div className="flex items-center justify-between mb-4">
-          <h1 className="font-display text-xl font-bold">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-2">
+          <h1 className="font-display text-lg sm:text-xl font-bold">
             {viewMode === 'weekly' ? t('weeklyPlanning') : t('monthly')}
           </h1>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1 sm:gap-2">
             <Button variant="ghost" size="icon" onClick={navPrev}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-sm font-medium min-w-[180px] text-center capitalize">{headerLabel}</span>
+            <span className="text-xs sm:text-sm font-medium min-w-[140px] sm:min-w-[180px] text-center capitalize">{headerLabel}</span>
             <Button variant="ghost" size="icon" onClick={navNext}>
               <ChevronRight className="h-4 w-4" />
             </Button>
@@ -335,13 +335,22 @@ export default function WeeklyPlanner() {
         </div>
 
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex-1 flex gap-4 overflow-hidden">
-            <div className="w-56 shrink-0">
+          <div className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
+            <div className="hidden md:block w-56 shrink-0">
               <BacklogPanel tasks={backlogTasks} onTaskClick={setSelectedTask} />
             </div>
+            {/* Mobile backlog - collapsible */}
+            <details className="md:hidden border rounded-xl bg-card/50">
+              <summary className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer">
+                Backlog ({backlogTasks.length})
+              </summary>
+              <div className="px-2 pb-2">
+                <BacklogPanel tasks={backlogTasks} onTaskClick={setSelectedTask} />
+              </div>
+            </details>
 
             {viewMode === 'weekly' ? (
-              <div className={`flex-1 grid gap-2 overflow-x-auto`} style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
+              <div className={`flex-1 grid gap-2 overflow-x-auto`} style={{ gridTemplateColumns: `repeat(${colCount}, minmax(140px, 1fr))` }}>
                 {weekDays.map((day) => (
                   <DayColumn
                     key={format(day, 'yyyy-MM-dd')}

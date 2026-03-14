@@ -30,7 +30,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label>{t('language')}</Label>
               <Select value={language} onValueChange={(v) => setLanguage(v as any)}>
-                <SelectTrigger className="w-60">
+                <SelectTrigger className="w-full sm:w-60">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -52,7 +52,7 @@ export default function SettingsPage() {
 
             {whatsapp.connection?.status === 'connected' && (
               <div className="space-y-4 pt-2 border-t">
-                <div className="flex items-center justify-between max-w-xs pt-4">
+                <div className="flex items-center justify-between pt-4">
                   <Label htmlFor="wa-reminders">{t('whatsappReminders')}</Label>
                   <Switch
                     id="wa-reminders"
@@ -60,7 +60,7 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => whatsapp.updateSettings.mutate({ reminders_enabled: v })}
                   />
                 </div>
-                <div className="flex items-center justify-between max-w-xs">
+                <div className="flex items-center justify-between">
                   <Label htmlFor="wa-report">{t('whatsappDailyReport')}</Label>
                   <Switch
                     id="wa-report"
@@ -68,7 +68,7 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => whatsapp.updateSettings.mutate({ daily_report_enabled: v })}
                   />
                 </div>
-                <div className="flex items-center justify-between max-w-xs">
+                <div className="flex items-center justify-between">
                   <Label htmlFor="wa-weekly-report">{t('whatsappWeeklyReport')}</Label>
                   <Switch
                     id="wa-weekly-report"
@@ -77,13 +77,13 @@ export default function SettingsPage() {
                   />
                 </div>
                 {whatsapp.connection.weekly_report_enabled && (
-                  <div className="space-y-1.5 max-w-xs">
+                  <div className="space-y-1.5">
                     <Label className="text-xs">{t('whatsappWeeklyReportDay')}</Label>
                     <Select
                       value={String(whatsapp.connection.weekly_report_day ?? 1)}
                       onValueChange={(v) => whatsapp.updateSettings.mutate({ weekly_report_day: Number(v) })}
                     >
-                      <SelectTrigger className="w-48">
+                      <SelectTrigger className="w-full sm:w-48">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
@@ -99,7 +99,7 @@ export default function SettingsPage() {
                   </div>
                 )}
                 {(whatsapp.connection.daily_report_enabled || whatsapp.connection.weekly_report_enabled) && (
-                  <div className="space-y-1.5 max-w-xs">
+                  <div className="space-y-1.5">
                     <Label className="text-xs">{t('whatsappReportTime')}</Label>
                     <Input
                       type="time"
@@ -108,13 +108,13 @@ export default function SettingsPage() {
                     />
                   </div>
                 )}
-                <div className="flex items-center justify-between max-w-xs">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <Label>{t('whatsappAcceptFrom')}</Label>
                   <Select
                     value={whatsapp.connection.accept_messages_from || 'self_only'}
                     onValueChange={(v) => whatsapp.updateSettings.mutate({ accept_messages_from: v as 'self_only' | 'all' })}
                   >
-                    <SelectTrigger className="w-48">
+                    <SelectTrigger className="w-full sm:w-48">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
@@ -148,7 +148,7 @@ export default function SettingsPage() {
             <div className="space-y-2">
               <Label>{t('viewMode')}</Label>
               <Select value={calendar.viewMode} onValueChange={(v) => calendar.update({ viewMode: v as any })}>
-                <SelectTrigger className="w-60">
+                <SelectTrigger className="w-full sm:w-60">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -157,7 +157,7 @@ export default function SettingsPage() {
                 </SelectContent>
               </Select>
             </div>
-            <div className="flex items-center justify-between max-w-xs">
+            <div className="flex items-center justify-between">
               <Label htmlFor="show-weekends">{t('showWeekends')}</Label>
               <Switch
                 id="show-weekends"
@@ -174,7 +174,7 @@ export default function SettingsPage() {
             <CardTitle className="font-display">🍅 Pomodoro</CardTitle>
           </CardHeader>
           <CardContent className="space-y-5">
-            <div className="flex items-center justify-between max-w-xs">
+            <div className="flex items-center justify-between">
               <Label htmlFor="pomo-enabled">
                 {language === 'pt-BR' ? 'Ativar Pomodoro' : 'Enable Pomodoro'}
               </Label>
@@ -187,7 +187,7 @@ export default function SettingsPage() {
 
             {pomo.enabled && (
               <div className="space-y-4 pt-2">
-                <div className="grid grid-cols-2 gap-4 max-w-xs">
+                <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
                     <Label className="text-xs">
                       {language === 'pt-BR' ? 'Foco (min)' : 'Focus (min)'}

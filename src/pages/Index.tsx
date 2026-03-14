@@ -120,7 +120,7 @@ export default function Index() {
               </span>
             </div>
             <ScrollArea className="max-h-[180px]">
-              <div className="p-3 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 {inProgressTasks.map((task) => {
                   const config = QUADRANT_CONFIG[task.quadrant];
                   const borderColor = QUADRANT_BORDER_COLORS[task.quadrant] ?? '';
@@ -146,7 +146,7 @@ export default function Index() {
 
         {/* Matrix Grid */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex-1 grid grid-cols-2 grid-rows-2 gap-3">
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="contents">
               {quadrants.map((q) =>
               <QuadrantDropZone

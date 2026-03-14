@@ -118,7 +118,7 @@ export default function Metrics() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
               <div className="text-center space-y-1">
                 <p className="text-4xl font-bold font-display text-destructive">{totalPomodoros}</p>
                 <p className="text-xs text-muted-foreground">
@@ -153,7 +153,7 @@ export default function Metrics() {
               <CardTitle className="font-display text-lg">{t('byQuadrant')}</CardTitle>
             </CardHeader>
             <CardContent>
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250} className="sm:[&]:!h-[300px]">
                 <BarChart data={quadrantData}>
                   <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                   <XAxis dataKey="name" className="text-xs" />
@@ -174,7 +174,7 @@ export default function Metrics() {
               <CardTitle className="font-display text-lg">{t('productivityScore')}</CardTitle>
             </CardHeader>
             <CardContent className="flex items-center justify-center">
-              <ResponsiveContainer width="100%" height={300}>
+              <ResponsiveContainer width="100%" height={250} className="sm:[&]:!h-[300px]">
                 <PieChart>
                   <Pie
                     data={quadrantData}
@@ -203,7 +203,7 @@ export default function Metrics() {
             </CardTitle>
           </CardHeader>
           <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+            <ResponsiveContainer width="100%" height={250} className="sm:[&]:!h-[300px]">
               <LineChart data={weeklyPomodoros}>
                 <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
                 <XAxis dataKey="date" className="text-xs" />

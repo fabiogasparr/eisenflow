@@ -23,10 +23,10 @@ export function AppHeader({ onSearch, onFocusMode, onCreateTask }: AppHeaderProp
   const { theme, toggleTheme } = useTheme();
 
   return (
-    <header className="flex h-14 items-center gap-3 border-b bg-card/80 backdrop-blur-sm px-4">
+    <header className="flex h-14 items-center gap-2 sm:gap-3 border-b bg-card/80 backdrop-blur-sm px-2 sm:px-4">
       <SidebarTrigger className="shrink-0" />
 
-      <div className="relative flex-1 max-w-md">
+      <div className="relative flex-1 max-w-md hidden sm:block">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
         <Input
           placeholder={t('search')}
