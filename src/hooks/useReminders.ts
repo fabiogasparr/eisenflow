@@ -130,17 +130,8 @@ export function useReminders() {
     return () => clearInterval(interval);
   }, [checkTasks]);
 
-  // Periodically trigger server-side deadline reminders edge function
-  useEffect(() => {
-    const callDeadlineReminders = async () => {
-      try {
-        await supabase.functions.invoke('whatsapp-deadline-reminders');
-      } catch {}
-    };
-    callDeadlineReminders();
-    const interval = setInterval(callDeadlineReminders, 15 * 60 * 1000);
-    return () => clearInterval(interval);
-  }, []);
+
+
   const markAsRead = useCallback((id: string) => {
     setReminders((prev) =>
       prev.map((r) => (r.id === id ? { ...r, read: true } : r))
