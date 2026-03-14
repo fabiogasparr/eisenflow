@@ -14,12 +14,12 @@ export function useTasks() {
   useEffect(() => {
     if (!user) return undefined;
     const channel = supabase
-      .channel('tasks-realtime')
+      .channel(`tasks-realtime-${user.id}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks' },
+        { event: '*', schema: 'public', table: 'tasks', filter: `created_by=eq.${user.id}` },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+          queryClient.invalidateQueries({ queryKey: ['tasks', user.id] });
         }
       )
       .subscribe();
@@ -40,6 +40,7 @@ export function useTasks() {
       return (data ?? []) as Task[];
     },
     enabled: !!user,
+    refetchInterval: 30000,
   });
 
   const createTask = useMutation({
