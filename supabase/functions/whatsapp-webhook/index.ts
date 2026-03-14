@@ -795,11 +795,55 @@ async function processCommand(
   }
 
   if (cmd === '/relatorio' || cmd === '/report') {
+    const reportArg = args.trim().toLowerCase()
     const now = new Date()
+
+    if (reportArg === 'diario' || reportArg === 'daily' || reportArg === 'dia' || reportArg === 'hoje') {
+      // Daily report on demand
+      const [tasksRes, gamifRes] = await Promise.all([
+        supabaseAdmin.from('tasks').select('title, status, quadrant, due_date')
+          .eq('created_by', userId),
+        supabaseAdmin.from('gamification').select('*')
+          .eq('user_id', userId).maybeSingle(),
+      ])
+      const allTasks = tasksRes.data || []
+      const gamif = gamifRes.data
+      const fmtDate = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
+      const dateStr = fmtDate(now)
+      const completed = allTasks.filter((t: any) => t.status === 'completed').length
+      const inProgress = allTasks.filter((t: any) => t.status === 'in_progress').length
+      const pending = allTasks.filter((t: any) => t.status === 'pending').length
+      const nextWeek = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000)
+      const upcoming = allTasks
+        .filter((t: any) => t.due_date && t.status !== 'completed' && t.status !== 'eliminated')
+        .filter((t: any) => { const due = new Date(t.due_date!); return due >= now && due <= nextWeek })
+        .sort((a: any, b: any) => new Date(a.due_date!).getTime() - new Date(b.due_date!).getTime())
+        .slice(0, 5)
+      let report = `📊 *Relatório Diário - ${dateStr}*\n\n`
+      report += `✅ *Concluídas:* ${completed} tarefas\n`
+      report += `🔄 *Em andamento:* ${inProgress} tarefas\n`
+      report += `⏳ *Pendentes:* ${pending} tarefas\n`
+      if (upcoming.length > 0) {
+        report += `\n🔥 *Próximos prazos:*\n`
+        for (const task of upcoming) {
+          const due = new Date(task.due_date!)
+          const diffDays = Math.ceil((due.getTime() - now.getTime()) / (1000 * 60 * 60 * 24))
+          const label = diffDays === 0 ? 'hoje' : diffDays === 1 ? 'amanhã' : `em ${diffDays} dias`
+          report += `• ${task.title} - ${label}\n`
+        }
+      }
+      if (gamif) {
+        report += `\n🍅 *Pomodoros:* ${gamif.total_pomodoros} completados\n`
+        report += `🏆 *Nível:* ${gamif.level} (${gamif.xp.toLocaleString()} XP)\n`
+        if (gamif.current_streak > 0) report += `🔥 *Streak:* ${gamif.current_streak} dias\n`
+      }
+      return report
+    }
+
+    // Default: weekly report
     const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
     const weekAgoISO = weekAgo.toISOString()
 
-    // Fetch data in parallel
     const [completedRes, createdRes, metricsRes, pendingRes, gamifRes] = await Promise.all([
       supabaseAdmin.from('tasks').select('id, title, quadrant, completed_at')
         .eq('created_by', userId).eq('status', 'completed')
@@ -821,25 +865,19 @@ async function processCommand(
     const pending = pendingRes.data || []
     const gamif = gamifRes.data
 
-    // Aggregate metrics
     const totalPomodoros = metrics.reduce((s: number, m: any) => s + (m.pomodoros_completed || 0), 0)
     const totalFocusMin = metrics.reduce((s: number, m: any) => s + (m.time_in_important || 0), 0)
     const totalDelegated = metrics.reduce((s: number, m: any) => s + (m.tasks_delegated || 0), 0)
     const totalEliminated = metrics.reduce((s: number, m: any) => s + (m.tasks_eliminated || 0), 0)
 
-    // Quadrant breakdown
     const quadrantCount: Record<string, number> = { do: 0, schedule: 0, delegate: 0, eliminate: 0 }
     for (const t of completed) quadrantCount[t.quadrant] = (quadrantCount[t.quadrant] || 0) + 1
 
-    // Overdue tasks
     const overdue = pending.filter((t: any) => t.due_date && new Date(t.due_date) < now)
-
-    // Format dates
     const fmtDate = (d: Date) => d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' })
 
     let reply = `📊 *Relatório Semanal de Produtividade*\n`
     reply += `📅 ${fmtDate(weekAgo)} a ${fmtDate(now)}\n\n`
-
     reply += `━━━━━━━━━━━━━━━━━━━━━\n`
     reply += `📈 *Resumo Geral*\n`
     reply += `✅ Tarefas concluídas: *${completed.length}*\n`
@@ -847,7 +885,6 @@ async function processCommand(
     reply += `⏳ Tarefas pendentes: *${pending.length}*\n`
     if (overdue.length > 0) reply += `🚨 Tarefas atrasadas: *${overdue.length}*\n`
     reply += `\n`
-
     reply += `━━━━━━━━━━━━━━━━━━━━━\n`
     reply += `🎯 *Por Quadrante (concluídas)*\n`
     reply += `🔴 Fazer Agora: ${quadrantCount.do}\n`
@@ -885,7 +922,6 @@ async function processCommand(
       reply += `\n`
     }
 
-    // Productivity score
     const score = completed.length > 0
       ? Math.min(100, Math.round((completed.length / Math.max(created.length, 1)) * 100))
       : 0
