@@ -61,7 +61,7 @@ Deno.serve(async (req) => {
             const infoData = await infoRes.json()
             console.log(`Evolution API fetchInstances response:`, JSON.stringify(infoData).substring(0, 1000))
             const instance = Array.isArray(infoData) ? infoData[0] : infoData
-            const owner = instance?.instance?.owner || instance?.owner || instance?.instance?.wuid || null
+            const owner = instance?.ownerJid || instance?.instance?.owner || instance?.owner || instance?.instance?.wuid || null
             if (owner) {
               phoneNumber = owner.replace(/@.*$/, '')
               console.log(`Found phone number from Evolution API: ${phoneNumber}`)
