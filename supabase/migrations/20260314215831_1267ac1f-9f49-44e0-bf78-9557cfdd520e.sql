@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_connections ADD COLUMN weekly_report_time time without time zone DEFAULT '08:00:00'::time without time zone;

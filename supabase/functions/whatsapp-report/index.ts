@@ -176,15 +176,17 @@ Deno.serve(async (req) => {
 
     // Filter by report_time hour matching current BRT hour
     const filteredConnections = (connections || []).filter((c: any) => {
-      // Check if user's report_time hour matches current BRT hour
-      const userHour = parseInt((c.report_time || '08:00').split(':')[0], 10)
-      if (userHour !== brtHour) return false
-
-      // For weekly reports, also filter by preferred day
       if (reportType === 'weekly') {
+        // Use weekly_report_time if available, fallback to report_time
+        const weeklyTime = c.weekly_report_time || c.report_time || '08:00'
+        const userHour = parseInt(weeklyTime.split(':')[0], 10)
+        if (userHour !== brtHour) return false
         return (c.weekly_report_day ?? 1) === brtDay
+      } else {
+        // Daily uses report_time
+        const userHour = parseInt((c.report_time || '08:00').split(':')[0], 10)
+        return userHour === brtHour
       }
-      return true
     })
 
     if (!filteredConnections || filteredConnections.length === 0) {

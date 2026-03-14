@@ -553,6 +553,7 @@ export type Database = {
           user_id: string
           weekly_report_day: number
           weekly_report_enabled: boolean
+          weekly_report_time: string | null
         }
         Insert: {
           accept_messages_from?: string
@@ -569,6 +570,7 @@ export type Database = {
           user_id: string
           weekly_report_day?: number
           weekly_report_enabled?: boolean
+          weekly_report_time?: string | null
         }
         Update: {
           accept_messages_from?: string
@@ -585,6 +587,7 @@ export type Database = {
           user_id?: string
           weekly_report_day?: number
           weekly_report_enabled?: boolean
+          weekly_report_time?: string | null
         }
         Relationships: []
       }
