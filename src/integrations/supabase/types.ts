@@ -551,6 +551,7 @@ export type Database = {
           status: string
           updated_at: string
           user_id: string
+          weekly_report_enabled: boolean
         }
         Insert: {
           accept_messages_from?: string
@@ -565,6 +566,7 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id: string
+          weekly_report_enabled?: boolean
         }
         Update: {
           accept_messages_from?: string
@@ -579,6 +581,7 @@ export type Database = {
           status?: string
           updated_at?: string
           user_id?: string
+          weekly_report_enabled?: boolean
         }
         Relationships: []
       }

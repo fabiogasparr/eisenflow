@@ -68,7 +68,15 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => whatsapp.updateSettings.mutate({ daily_report_enabled: v })}
                   />
                 </div>
-                {whatsapp.connection.daily_report_enabled && (
+                <div className="flex items-center justify-between max-w-xs">
+                  <Label htmlFor="wa-weekly-report">{t('whatsappWeeklyReport')}</Label>
+                  <Switch
+                    id="wa-weekly-report"
+                    checked={whatsapp.connection.weekly_report_enabled}
+                    onCheckedChange={(v) => whatsapp.updateSettings.mutate({ weekly_report_enabled: v })}
+                  />
+                </div>
+                {(whatsapp.connection.daily_report_enabled || whatsapp.connection.weekly_report_enabled) && (
                   <div className="space-y-1.5 max-w-xs">
                     <Label className="text-xs">{t('whatsappReportTime')}</Label>
                     <Input
