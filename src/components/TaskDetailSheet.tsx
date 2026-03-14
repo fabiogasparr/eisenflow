@@ -31,6 +31,10 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const { members } = useTeamMembers(selectedTeamId || null);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [descDraft, setDescDraft] = useState('');
 
   const { subtasks, addSubtask, toggleSubtask, deleteSubtask, completedCount, totalCount } = useSubtasks(task?.id ?? null);
 
