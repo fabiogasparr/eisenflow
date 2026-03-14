@@ -87,9 +87,9 @@ export function useReminders() {
         const key = `${task.id}-${type}`;
         if (firedRef.current.has(key)) return;
 
-        // Fire if within 2-minute window of the threshold
+        // Fire if within 10-minute window of the threshold
         const diff = timeUntilDue - ms;
-        if (diff <= 0 && diff > -(2 * 60 * 1000)) {
+        if (diff <= 0 && diff > -(10 * 60 * 1000)) {
           firedRef.current.add(key);
 
           const label = getReminderLabel(type, language);
@@ -118,7 +118,7 @@ export function useReminders() {
         }
       });
     });
-  }, [tasks, language, toast, sendBrowserNotification]);
+  }, [tasks, language, toast, sendBrowserNotification, sendWhatsAppReminder]);
 
   useEffect(() => {
     requestPermission();
@@ -126,10 +126,21 @@ export function useReminders() {
 
   useEffect(() => {
     checkTasks();
-    const interval = setInterval(checkTasks, 30_000); // Check every 30s
+    const interval = setInterval(checkTasks, 30_000);
     return () => clearInterval(interval);
   }, [checkTasks]);
 
+  // Periodically trigger server-side deadline reminders edge function
+  useEffect(() => {
+    const callDeadlineReminders = async () => {
+      try {
+        await supabase.functions.invoke('whatsapp-deadline-reminders');
+      } catch {}
+    };
+    callDeadlineReminders();
+    const interval = setInterval(callDeadlineReminders, 15 * 60 * 1000);
+    return () => clearInterval(interval);
+  }, []);
   const markAsRead = useCallback((id: string) => {
     setReminders((prev) =>
       prev.map((r) => (r.id === id ? { ...r, read: true } : r))
