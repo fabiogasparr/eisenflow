@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_connections ADD COLUMN weekly_report_day integer NOT NULL DEFAULT 1;
