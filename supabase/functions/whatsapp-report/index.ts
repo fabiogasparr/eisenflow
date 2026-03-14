@@ -166,17 +166,26 @@ Deno.serve(async (req) => {
       .eq('status', 'connected')
       .eq(reportEnabledField, true)
 
-    // For weekly reports, filter by the user's preferred day
-    const filteredConnections = reportType === 'weekly'
-      ? (connections || []).filter((c: any) => {
-          const nowUtc = new Date()
-          const dayOfWeek = nowUtc.getUTCDay()
-          // Adjust for BRT (-3h): if UTC hour < 3, the local day is still yesterday
-          const utcHour = nowUtc.getUTCHours()
-          const localDay = utcHour < 3 ? (dayOfWeek + 6) % 7 : dayOfWeek
-          return (c.weekly_report_day ?? 1) === localDay
-        })
-      : connections || []
+    // Current BRT time (UTC-3)
+    const nowUtc = new Date()
+    const utcHour = nowUtc.getUTCHours()
+    const brtHour = (utcHour - 3 + 24) % 24
+    const brtDay = utcHour < 3
+      ? (nowUtc.getUTCDay() + 6) % 7
+      : nowUtc.getUTCDay()
+
+    // Filter by report_time hour matching current BRT hour
+    const filteredConnections = (connections || []).filter((c: any) => {
+      // Check if user's report_time hour matches current BRT hour
+      const userHour = parseInt((c.report_time || '08:00').split(':')[0], 10)
+      if (userHour !== brtHour) return false
+
+      // For weekly reports, also filter by preferred day
+      if (reportType === 'weekly') {
+        return (c.weekly_report_day ?? 1) === brtDay
+      }
+      return true
+    })
 
     if (!filteredConnections || filteredConnections.length === 0) {
       return new Response(JSON.stringify({ message: 'No reports to send' }), {
