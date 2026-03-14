@@ -9,7 +9,7 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { QUADRANT_CONFIG, type Task } from '@/types/task';
-import { CheckCircle, Trash2, Play, Clock, UserPlus, Plus, X, RefreshCw, CalendarIcon, Timer } from 'lucide-react';
+import { CheckCircle, Trash2, Play, Clock, UserPlus, Plus, X, RefreshCw, CalendarIcon, Timer, Pencil } from 'lucide-react';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
@@ -31,6 +31,10 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
   const { members } = useTeamMembers(selectedTeamId || null);
   const [newSubtaskTitle, setNewSubtaskTitle] = useState('');
+  const [editingTitle, setEditingTitle] = useState(false);
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [titleDraft, setTitleDraft] = useState('');
+  const [descDraft, setDescDraft] = useState('');
 
   const { subtasks, addSubtask, toggleSubtask, deleteSubtask, completedCount, totalCount } = useSubtasks(task?.id ?? null);
 
@@ -65,8 +69,58 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
               </Badge>
             )}
           </div>
-          <SheetTitle className="font-display text-xl">{task.title}</SheetTitle>
-          <SheetDescription>{task.description}</SheetDescription>
+          {editingTitle ? (
+            <Input
+              autoFocus
+              value={titleDraft}
+              onChange={(e) => setTitleDraft(e.target.value)}
+              className="font-display text-xl h-auto py-1"
+              onBlur={() => {
+                if (titleDraft.trim() && titleDraft !== task.title) {
+                  onUpdate({ title: titleDraft.trim() });
+                }
+                setEditingTitle(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') (e.target as HTMLInputElement).blur();
+                if (e.key === 'Escape') setEditingTitle(false);
+              }}
+            />
+          ) : (
+            <SheetTitle
+              className="font-display text-xl cursor-pointer group flex items-center gap-2 hover:text-primary transition-colors"
+              onClick={() => { setTitleDraft(task.title); setEditingTitle(true); }}
+            >
+              {task.title}
+              <Pencil className="h-3.5 w-3.5 opacity-0 group-hover:opacity-50 transition-opacity" />
+            </SheetTitle>
+          )}
+          {editingDesc ? (
+            <textarea
+              autoFocus
+              value={descDraft}
+              onChange={(e) => setDescDraft(e.target.value)}
+              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring resize-none min-h-[60px]"
+              placeholder={pt ? 'Adicionar descrição...' : 'Add description...'}
+              onBlur={() => {
+                if (descDraft !== (task.description ?? '')) {
+                  onUpdate({ description: descDraft || null });
+                }
+                setEditingDesc(false);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Escape') setEditingDesc(false);
+              }}
+            />
+          ) : (
+            <SheetDescription
+              className="cursor-pointer group flex items-center gap-2 hover:text-foreground/70 transition-colors"
+              onClick={() => { setDescDraft(task.description ?? ''); setEditingDesc(true); }}
+            >
+              {task.description || (pt ? 'Clique para adicionar descrição...' : 'Click to add description...')}
+              <Pencil className="h-3 w-3 opacity-0 group-hover:opacity-50 transition-opacity shrink-0" />
+            </SheetDescription>
+          )}
         </SheetHeader>
 
         <div className="mt-6 space-y-4">
