@@ -76,10 +76,12 @@ Deno.serve(async (req) => {
               apikey: EVOLUTION_API_KEY,
             },
             body: JSON.stringify({
-              url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-webhook`,
-              webhook_by_events: true,
-              webhook_base64: false,
-              events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+              webhook: {
+                url: `${Deno.env.get('SUPABASE_URL')}/functions/v1/whatsapp-webhook`,
+                webhook_by_events: true,
+                webhook_base64: false,
+                events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE'],
+              },
             }),
           })
         } catch (e) {
