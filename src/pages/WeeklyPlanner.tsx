@@ -335,10 +335,19 @@ export default function WeeklyPlanner() {
         </div>
 
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex-1 flex gap-4 overflow-hidden">
-            <div className="w-56 shrink-0">
+          <div className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
+            <div className="hidden md:block w-56 shrink-0">
               <BacklogPanel tasks={backlogTasks} onTaskClick={setSelectedTask} />
             </div>
+            {/* Mobile backlog - collapsible */}
+            <details className="md:hidden border rounded-xl bg-card/50">
+              <summary className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider cursor-pointer">
+                Backlog ({backlogTasks.length})
+              </summary>
+              <div className="px-2 pb-2">
+                <BacklogPanel tasks={backlogTasks} onTaskClick={setSelectedTask} />
+              </div>
+            </details>
 
             {viewMode === 'weekly' ? (
               <div className={`flex-1 grid gap-2 overflow-x-auto`} style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
