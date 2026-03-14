@@ -114,6 +114,7 @@ export const translations = {
     whatsappReminders: 'Lembretes via WhatsApp',
     whatsappDailyReport: 'Relatório diário',
     whatsappWeeklyReport: 'Relatório semanal',
+    whatsappWeeklyReportDay: 'Dia do relatório semanal',
     whatsappReportTime: 'Horário do relatório',
     whatsappCommands: 'Comandos disponíveis',
     whatsappAcceptFrom: 'Aceitar mensagens de',
