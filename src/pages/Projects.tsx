@@ -67,14 +67,15 @@ export default function Projects() {
         .select('project_id, status, quadrant')
         .not('project_id', 'is', null);
       if (error) throw error;
-      const stats: Record<string, { total: number; completed: number; quadrants: Record<string, number> }> = {};
+      const stats: Record<string, { total: number; completed: number; quadrants: Record<string, number>; statuses: Record<string, number> }> = {};
       for (const task of data ?? []) {
         if (!task.project_id) continue;
-        if (!stats[task.project_id]) stats[task.project_id] = { total: 0, completed: 0, quadrants: {} };
+        if (!stats[task.project_id]) stats[task.project_id] = { total: 0, completed: 0, quadrants: {}, statuses: {} };
         stats[task.project_id].total++;
         if (task.status === 'completed') stats[task.project_id].completed++;
         const q = task.quadrant ?? 'do';
         stats[task.project_id].quadrants[q] = (stats[task.project_id].quadrants[q] || 0) + 1;
+        stats[task.project_id].statuses[task.status] = (stats[task.project_id].statuses[task.status] || 0) + 1;
       }
       return stats;
     },
