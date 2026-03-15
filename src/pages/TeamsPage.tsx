@@ -510,3 +510,157 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
     </Sheet>
   );
 }
+
+function TeamProjectsTab({ teamId, canManage }: { teamId: string; canManage: boolean }) {
+  const { language } = useLanguage();
+  const pt = language === 'pt-BR';
+  const { user } = useAuth();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [selectedProjectId, setSelectedProjectId] = useState('');
+
+  const { data: teamProjects = [], isLoading } = useQuery({
+    queryKey: ['projects', 'team', teamId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('team_id', teamId)
+        .eq('archived', false)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const { data: myUnlinkedProjects = [] } = useQuery({
+    queryKey: ['projects', 'unlinked', user?.id],
+    enabled: linkOpen && !!user,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('owner_id', user!.id)
+        .is('team_id', null)
+        .eq('archived', false)
+        .order('name');
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const linkProject = useMutation({
+    mutationFn: async (projectId: string) => {
+      const { error } = await supabase.from('projects').update({ team_id: teamId }).eq('id', projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setSelectedProjectId('');
+      setLinkOpen(false);
+    },
+  });
+
+  const unlinkProject = useMutation({
+    mutationFn: async (projectId: string) => {
+      const { error } = await supabase.from('projects').update({ team_id: null }).eq('id', projectId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+    },
+  });
+
+  return (
+    <div className="space-y-4">
+      {canManage && (
+        <Dialog open={linkOpen} onOpenChange={setLinkOpen}>
+          <DialogTrigger asChild>
+            <Button variant="outline" size="sm" className="w-full gap-2">
+              <Plus className="h-4 w-4" />
+              {pt ? 'Vincular projeto' : 'Link project'}
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="font-display">
+                {pt ? 'Vincular projeto ao time' : 'Link project to team'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              {myUnlinkedProjects.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  {pt ? 'Nenhum projeto pessoal disponível' : 'No personal projects available'}
+                </p>
+              ) : (
+                <Select value={selectedProjectId} onValueChange={setSelectedProjectId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={pt ? 'Selecione um projeto' : 'Select a project'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {myUnlinkedProjects.map((p) => (
+                      <SelectItem key={p.id} value={p.id}>
+                        <span className="flex items-center gap-2">
+                          <span className="h-3 w-3 rounded-full" style={{ backgroundColor: p.color }} />
+                          {p.name}
+                        </span>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+              <Button
+                onClick={() => linkProject.mutate(selectedProjectId)}
+                disabled={!selectedProjectId}
+                className="w-full"
+              >
+                {pt ? 'Vincular' : 'Link'}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {isLoading ? (
+        <div className="flex justify-center py-8">
+          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        </div>
+      ) : teamProjects.length === 0 ? (
+        <div className="flex flex-col items-center py-8 text-muted-foreground">
+          <FolderOpen className="h-10 w-10 mb-2 opacity-30" />
+          <p className="text-sm">{pt ? 'Nenhum projeto vinculado' : 'No linked projects'}</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {teamProjects.map((project) => (
+            <div
+              key={project.id}
+              className="flex items-center gap-3 rounded-lg border p-3 cursor-pointer hover:bg-accent/50 transition-colors"
+              onClick={() => navigate(`/projects/${project.id}`)}
+            >
+              <div
+                className="h-8 w-8 rounded-lg shrink-0"
+                style={{ backgroundColor: project.color }}
+              />
+              <span className="flex-1 text-sm font-medium truncate">{project.name}</span>
+              {canManage && project.owner_id === user?.id && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 text-muted-foreground hover:text-destructive"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    unlinkProject.mutate(project.id);
+                  }}
+                >
+                  <Unlink className="h-3.5 w-3.5" />
+                </Button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
