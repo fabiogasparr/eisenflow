@@ -130,6 +130,7 @@ export const translations = {
     metrics: 'Metrics',
     gamification: 'Achievements',
     teams: 'Teams',
+    delegated: 'Delegated',
     settings: 'Settings',
     
     // Quadrants
