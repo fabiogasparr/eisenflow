@@ -409,5 +409,15 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
         </div>
       </SheetContent>
     </Sheet>
+
+    {task && (
+      <ShareTaskDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        taskId={task.id}
+        taskTitle={task.title}
+      />
+    )}
+    </>
   );
 }
