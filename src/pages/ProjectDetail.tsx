@@ -49,6 +49,11 @@ export default function ProjectDetail() {
   const [statusFilter, setStatusFilter] = useState('all');
   const [quadrantFilter, setQuadrantFilter] = useState('all');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+
+  const handleCreateTask = async (input: CreateTaskInput) => {
+    await createTask.mutateAsync({ ...input, project_id: id });
+  };
 
   const { data: project } = useQuery({
     queryKey: ['project', id],
