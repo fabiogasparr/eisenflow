@@ -56,6 +56,7 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
     : null;
 
   return (
+    <>
     <Sheet open={!!task} onOpenChange={() => onClose()}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
