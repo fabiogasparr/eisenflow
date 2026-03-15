@@ -16,6 +16,7 @@ import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 import { useSubtasks } from '@/hooks/useSubtasks';
+import { ShareTaskDialog } from '@/components/ShareTaskDialog';
 
 interface TaskDetailSheetProps {
   task: Task | null;
