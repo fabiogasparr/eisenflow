@@ -57,6 +57,22 @@ export function useTaskShares(taskId: string | null) {
     },
   });
 
+  const updatePermission = useMutation({
+    mutationFn: async ({ shareId, permission }: { shareId: string; permission: 'view' | 'edit' }) => {
+      const { error } = await supabase
+        .from('task_shares')
+        .update({ permission })
+        .eq('id', shareId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['task-shares'] });
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
+    },
+  });
+
   const removeShare = useMutation({
     mutationFn: async (shareId: string) => {
       const { error } = await supabase.from('task_shares').delete().eq('id', shareId);
@@ -71,6 +87,7 @@ export function useTaskShares(taskId: string | null) {
     shares: sharesQuery.data ?? [],
     isLoading: sharesQuery.isLoading,
     shareTask,
+    updatePermission,
     removeShare,
   };
 }
