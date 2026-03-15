@@ -40,6 +40,8 @@ import {
   Mail,
   MoreVertical,
   QrCode,
+  FolderOpen,
+  Unlink,
 } from 'lucide-react';
 import {
   DropdownMenu,
