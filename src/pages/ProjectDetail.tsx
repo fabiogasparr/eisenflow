@@ -6,13 +6,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { ArrowLeft, Users, CheckCircle2, Clock, Zap, Trash2, Circle } from 'lucide-react';
+import { ArrowLeft, Users, CheckCircle2, Clock, Zap, Trash2, Circle, Plus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTasks } from '@/hooks/useTasks';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
-import type { Task, Quadrant, TaskStatus } from '@/types/task';
+import { CreateTaskDialog } from '@/components/CreateTaskDialog';
+import type { Task, Quadrant, TaskStatus, CreateTaskInput } from '@/types/task';
 import { QUADRANT_CONFIG } from '@/types/task';
 
 const STATUS_OPTIONS = [
