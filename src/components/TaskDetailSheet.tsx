@@ -36,6 +36,7 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
   const [editingDesc, setEditingDesc] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [descDraft, setDescDraft] = useState('');
+  const [shareOpen, setShareOpen] = useState(false);
 
   const { subtasks, addSubtask, toggleSubtask, deleteSubtask, completedCount, totalCount } = useSubtasks(task?.id ?? null);
 
