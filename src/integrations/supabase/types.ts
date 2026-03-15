@@ -495,7 +495,7 @@ export type Database = {
         Insert: {
           avatar_url?: string | null
           created_at?: string
-          created_by: string
+          created_by?: string
           description?: string | null
           id?: string
           name: string
