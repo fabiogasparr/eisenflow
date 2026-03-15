@@ -496,6 +496,10 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
               )}
               </TabsContent>
 
+              <TabsContent value="projects" className="mt-4">
+                <TeamProjectsTab teamId={team.id} canManage={canManage} />
+              </TabsContent>
+
               <TabsContent value="dashboard" className="mt-4">
                 <TeamDashboard teamId={team.id} />
               </TabsContent>
