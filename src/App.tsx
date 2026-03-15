@@ -15,6 +15,7 @@ import WeeklyPlanner from "./pages/WeeklyPlanner";
 import Gamification from "./pages/Gamification";
 import TeamsPage from "./pages/TeamsPage";
 import AIChatPage from "./pages/AIChatPage";
+import DelegatedPage from "./pages/DelegatedPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -42,6 +43,7 @@ const AppRoutes = () => (
     <Route path="/weekly" element={<ProtectedRoute><WeeklyPlanner /></ProtectedRoute>} />
     <Route path="/gamification" element={<ProtectedRoute><Gamification /></ProtectedRoute>} />
     <Route path="/teams" element={<ProtectedRoute><TeamsPage /></ProtectedRoute>} />
+    <Route path="/delegated" element={<ProtectedRoute><DelegatedPage /></ProtectedRoute>} />
     <Route path="/chat" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />

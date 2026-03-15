@@ -6,12 +6,11 @@ import { TaskCard } from '@/components/TaskCard';
 import { CreateTaskDialog } from '@/components/CreateTaskDialog';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { FocusMode } from '@/components/FocusMode';
-import { SharedTasksView } from '@/components/SharedTasksView';
 import { useTasks } from '@/hooks/useTasks';
 import { useGamification } from '@/hooks/useGamification';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Play, Share2 } from 'lucide-react';
+import { Play } from 'lucide-react';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -144,17 +143,6 @@ export default function Index() {
             </ScrollArea>
           </div>
         )}
-
-        {/* Shared With Me Section */}
-        <div className="mb-4 rounded-xl border bg-muted/30 overflow-hidden">
-          <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/50">
-            <Share2 className="h-4 w-4 text-muted-foreground" />
-            <h3 className="font-display text-sm font-bold text-muted-foreground">
-              {language === 'pt-BR' ? 'Compartilhadas Comigo' : 'Shared With Me'}
-            </h3>
-          </div>
-          <SharedTasksView onTaskClick={setSelectedTask} />
-        </div>
 
         {/* Matrix Grid */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
