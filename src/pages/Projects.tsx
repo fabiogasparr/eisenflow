@@ -12,11 +12,19 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { Plus, FolderKanban, Users, Archive, ArchiveRestore, MoreVertical, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTeams } from '@/hooks/useTeams';
+
+const QUADRANT_META: Record<string, { label: string; labelPt: string; color: string }> = {
+  do: { label: 'Do', labelPt: 'Fazer', color: 'bg-green-500' },
+  schedule: { label: 'Schedule', labelPt: 'Agendar', color: 'bg-orange-500' },
+  delegate: { label: 'Delegate', labelPt: 'Delegar', color: 'bg-blue-500' },
+  eliminate: { label: 'Eliminate', labelPt: 'Eliminar', color: 'bg-red-500' },
+};
 
 export default function Projects() {
   const { t, language } = useLanguage();
@@ -56,15 +64,17 @@ export default function Projects() {
       if (!user) return {};
       const { data, error } = await supabase
         .from('tasks')
-        .select('project_id, status')
+        .select('project_id, status, quadrant')
         .not('project_id', 'is', null);
       if (error) throw error;
-      const stats: Record<string, { total: number; completed: number }> = {};
+      const stats: Record<string, { total: number; completed: number; quadrants: Record<string, number> }> = {};
       for (const task of data ?? []) {
         if (!task.project_id) continue;
-        if (!stats[task.project_id]) stats[task.project_id] = { total: 0, completed: 0 };
+        if (!stats[task.project_id]) stats[task.project_id] = { total: 0, completed: 0, quadrants: {} };
         stats[task.project_id].total++;
         if (task.status === 'completed') stats[task.project_id].completed++;
+        const q = task.quadrant ?? 'do';
+        stats[task.project_id].quadrants[q] = (stats[task.project_id].quadrants[q] || 0) + 1;
       }
       return stats;
     },
@@ -233,8 +243,9 @@ export default function Projects() {
                   const pct = s && s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0;
                   const total = s?.total ?? 0;
                   const completed = s?.completed ?? 0;
+                  const quadrants = s?.quadrants ?? {};
                   return total > 0 ? (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" />
@@ -243,6 +254,28 @@ export default function Projects() {
                         <span>{pct}%</span>
                       </div>
                       <Progress value={pct} className="h-1.5" />
+                      <TooltipProvider delayDuration={200}>
+                        <div className="flex items-center gap-2">
+                          {(['do', 'schedule', 'delegate', 'eliminate'] as const).map((q) => {
+                            const count = quadrants[q] || 0;
+                            if (count === 0) return null;
+                            const meta = QUADRANT_META[q];
+                            return (
+                              <Tooltip key={q}>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                    <span className={`inline-block h-2 w-2 rounded-full ${meta.color}`} />
+                                    {count}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="text-xs">
+                                  {language === 'pt-BR' ? meta.labelPt : meta.label}
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                      </TooltipProvider>
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">
