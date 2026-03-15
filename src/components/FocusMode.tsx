@@ -89,7 +89,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       setPhase('focus');
       setTimeLeft(getPhaseDuration('focus'));
     }
-  }, [phase, pomodoroCount, pomodoro.longBreakInterval, getPhaseDuration, playNotificationSound, recordAction, language]);
+  }, [phase, pomodoroCount, pomodoro.longBreakInterval, getPhaseDuration, recordAction, language]);
 
   // Timer logic
   useEffect(() => {
