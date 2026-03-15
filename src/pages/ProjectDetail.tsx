@@ -109,15 +109,17 @@ export default function ProjectDetail() {
           <div className="h-4 w-4 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
           <div className="flex-1 min-w-0">
             <h1 className="font-display text-2xl font-bold truncate">{project.name}</h1>
-          </div>
-          <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="gap-1.5 shrink-0">
-            <Plus className="h-4 w-4" />
-            {language === 'pt-BR' ? 'Nova tarefa' : 'New task'}
             {project.teams?.name && (
               <div className="flex items-center gap-1.5 text-sm text-muted-foreground mt-0.5">
                 <Users className="h-3.5 w-3.5" />
                 <span>{project.teams.name}</span>
               </div>
+            )}
+          </div>
+          <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="gap-1.5 shrink-0">
+            <Plus className="h-4 w-4" />
+            {language === 'pt-BR' ? 'Nova tarefa' : 'New task'}
+          </Button>
             )}
           </div>
         </div>
