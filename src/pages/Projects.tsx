@@ -29,6 +29,11 @@ export default function Projects() {
   const [color, setColor] = useState('#6366f1');
   const [teamId, setTeamId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [editProject, setEditProject] = useState<any>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('#6366f1');
+  const [editTeamId, setEditTeamId] = useState<string | null>(null);
+  const [deleteProject, setDeleteProject] = useState<any>(null);
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects', user?.id],
