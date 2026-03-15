@@ -75,6 +75,52 @@ export default function Projects() {
     },
   });
 
+  const archiveProject = useMutation({
+    mutationFn: async ({ id, archived }: { id: string; archived: boolean }) => {
+      const { error } = await supabase.from('projects').update({ archived }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+  });
+
+  const updateProject = useMutation({
+    mutationFn: async () => {
+      if (!editProject) return;
+      const { error } = await supabase.from('projects').update({
+        name: editName,
+        color: editColor,
+        team_id: editTeamId || null,
+      }).eq('id', editProject.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setEditProject(null);
+    },
+    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+  });
+
+  const removeProject = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('projects').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setDeleteProject(null);
+    },
+    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+  });
+
+  const openEdit = (project: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditProject(project);
+    setEditName(project.name);
+    setEditColor(project.color);
+    setEditTeamId(project.team_id);
+  };
+
   const handleCloseDialog = (open: boolean) => {
     setCreateOpen(open);
     if (!open) {
