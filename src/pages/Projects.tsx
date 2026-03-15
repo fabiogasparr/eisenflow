@@ -56,7 +56,7 @@ export default function Projects() {
       if (!user) return {};
       const { data, error } = await supabase
         .from('tasks')
-        .select('project_id, status')
+        .select('project_id, status, quadrant')
         .not('project_id', 'is', null);
       if (error) throw error;
       const stats: Record<string, { total: number; completed: number; quadrants: Record<string, number> }> = {};
