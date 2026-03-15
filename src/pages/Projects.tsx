@@ -26,6 +26,13 @@ const QUADRANT_META: Record<string, { label: string; labelPt: string; color: str
   eliminate: { label: 'Eliminate', labelPt: 'Eliminar', color: 'bg-red-500' },
 };
 
+const STATUS_META: Record<string, { label: string; labelPt: string; color: string }> = {
+  pending: { label: 'Pending', labelPt: 'Pendente', color: 'bg-yellow-500' },
+  in_progress: { label: 'In Progress', labelPt: 'Em andamento', color: 'bg-blue-500' },
+  completed: { label: 'Completed', labelPt: 'Concluída', color: 'bg-green-500' },
+  eliminated: { label: 'Eliminated', labelPt: 'Eliminada', color: 'bg-red-500' },
+};
+
 export default function Projects() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
@@ -67,14 +74,15 @@ export default function Projects() {
         .select('project_id, status, quadrant')
         .not('project_id', 'is', null);
       if (error) throw error;
-      const stats: Record<string, { total: number; completed: number; quadrants: Record<string, number> }> = {};
+      const stats: Record<string, { total: number; completed: number; quadrants: Record<string, number>; statuses: Record<string, number> }> = {};
       for (const task of data ?? []) {
         if (!task.project_id) continue;
-        if (!stats[task.project_id]) stats[task.project_id] = { total: 0, completed: 0, quadrants: {} };
+        if (!stats[task.project_id]) stats[task.project_id] = { total: 0, completed: 0, quadrants: {}, statuses: {} };
         stats[task.project_id].total++;
         if (task.status === 'completed') stats[task.project_id].completed++;
         const q = task.quadrant ?? 'do';
         stats[task.project_id].quadrants[q] = (stats[task.project_id].quadrants[q] || 0) + 1;
+        stats[task.project_id].statuses[task.status] = (stats[task.project_id].statuses[task.status] || 0) + 1;
       }
       return stats;
     },
@@ -244,6 +252,7 @@ export default function Projects() {
                   const total = s?.total ?? 0;
                   const completed = s?.completed ?? 0;
                   const quadrants = s?.quadrants ?? {};
+                  const statuses = s?.statuses ?? {};
                   return total > 0 ? (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -255,25 +264,47 @@ export default function Projects() {
                       </div>
                       <Progress value={pct} className="h-1.5" />
                       <TooltipProvider delayDuration={200}>
-                        <div className="flex items-center gap-2">
-                          {(['do', 'schedule', 'delegate', 'eliminate'] as const).map((q) => {
-                            const count = quadrants[q] || 0;
-                            if (count === 0) return null;
-                            const meta = QUADRANT_META[q];
-                            return (
-                              <Tooltip key={q}>
-                                <TooltipTrigger asChild>
-                                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                                    <span className={`inline-block h-2 w-2 rounded-full ${meta.color}`} />
-                                    {count}
-                                  </span>
-                                </TooltipTrigger>
-                                <TooltipContent side="bottom" className="text-xs">
-                                  {language === 'pt-BR' ? meta.labelPt : meta.label}
-                                </TooltipContent>
-                              </Tooltip>
-                            );
-                          })}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            {(['do', 'schedule', 'delegate', 'eliminate'] as const).map((q) => {
+                              const count = quadrants[q] || 0;
+                              if (count === 0) return null;
+                              const meta = QUADRANT_META[q];
+                              return (
+                                <Tooltip key={q}>
+                                  <TooltipTrigger asChild>
+                                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                      <span className={`inline-block h-2 w-2 rounded-full ${meta.color}`} />
+                                      {count}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom" className="text-xs">
+                                    {language === 'pt-BR' ? meta.labelPt : meta.label}
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {(['pending', 'in_progress', 'completed', 'eliminated'] as const).map((st) => {
+                              const count = statuses[st] || 0;
+                              if (count === 0) return null;
+                              const meta = STATUS_META[st];
+                              return (
+                                <Tooltip key={st}>
+                                  <TooltipTrigger asChild>
+                                    <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                      <span className={`inline-block h-1.5 w-1.5 rounded-sm ${meta.color}`} />
+                                      {count}
+                                    </span>
+                                  </TooltipTrigger>
+                                  <TooltipContent side="bottom" className="text-xs">
+                                    {language === 'pt-BR' ? meta.labelPt : meta.label}
+                                  </TooltipContent>
+                                </Tooltip>
+                              );
+                            })}
+                          </div>
                         </div>
                       </TooltipProvider>
                     </div>
