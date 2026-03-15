@@ -9,6 +9,7 @@ import { AuthProvider, useAuth } from "@/hooks/useAuth";
 import Index from "./pages/Index";
 import Metrics from "./pages/Metrics";
 import Projects from "./pages/Projects";
+import ProjectDetail from "./pages/ProjectDetail";
 import SettingsPage from "./pages/SettingsPage";
 import Auth from "./pages/Auth";
 import WeeklyPlanner from "./pages/WeeklyPlanner";
