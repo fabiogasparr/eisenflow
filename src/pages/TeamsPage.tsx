@@ -222,7 +222,9 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState<'member' | 'manager' | 'admin'>('member');
   const [copiedCode, setCopiedCode] = useState<string | null>(null);
+  const [showQR, setShowQR] = useState<string | null>(null);
 
+  const getInviteUrl = (code: string) => `${window.location.origin}/invite/${code}`;
   const myMembership = members.find((m) => m.user_id === user?.id);
   const isAdmin = myMembership?.role === 'admin';
   const isManager = myMembership?.role === 'manager';
