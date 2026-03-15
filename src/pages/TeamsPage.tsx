@@ -181,7 +181,11 @@ function JoinByCode() {
     if (!code.trim()) return;
     setJoining(true);
     try {
-      await acceptInvite.mutateAsync(code.trim());
+      // Extract code from full URL if pasted
+      let inviteCode = code.trim();
+      const match = inviteCode.match(/\/invite\/([a-f0-9]+)/i);
+      if (match) inviteCode = match[1];
+      await acceptInvite.mutateAsync(inviteCode);
       setCode('');
     } finally {
       setJoining(false);
