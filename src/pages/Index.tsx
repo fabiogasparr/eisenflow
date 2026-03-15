@@ -10,7 +10,7 @@ import { useTasks } from '@/hooks/useTasks';
 import { useGamification } from '@/hooks/useGamification';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Play, Share2 } from 'lucide-react';
+import { Play } from 'lucide-react';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
