@@ -9,13 +9,14 @@ import { Input } from '@/components/ui/input';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Progress } from '@/components/ui/progress';
 import { QUADRANT_CONFIG, type Task } from '@/types/task';
-import { CheckCircle, Trash2, Play, Clock, UserPlus, Plus, X, RefreshCw, CalendarIcon, Timer, Pencil } from 'lucide-react';
+import { CheckCircle, Trash2, Play, Clock, UserPlus, Plus, X, RefreshCw, CalendarIcon, Timer, Pencil, Share2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
 import { cn } from '@/lib/utils';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 import { useSubtasks } from '@/hooks/useSubtasks';
+import { ShareTaskDialog } from '@/components/ShareTaskDialog';
 
 interface TaskDetailSheetProps {
   task: Task | null;
@@ -35,6 +36,7 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
   const [editingDesc, setEditingDesc] = useState(false);
   const [titleDraft, setTitleDraft] = useState('');
   const [descDraft, setDescDraft] = useState('');
+  const [shareOpen, setShareOpen] = useState(false);
 
   const { subtasks, addSubtask, toggleSubtask, deleteSubtask, completedCount, totalCount } = useSubtasks(task?.id ?? null);
 
@@ -54,6 +56,7 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
     : null;
 
   return (
+    <>
     <Sheet open={!!task} onOpenChange={() => onClose()}>
       <SheetContent className="sm:max-w-md overflow-y-auto">
         <SheetHeader>
@@ -372,6 +375,13 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
           )}
 
           <div className="flex flex-col gap-2 pt-4 border-t">
+            <Button
+              onClick={() => setShareOpen(true)}
+              variant="outline"
+              className="w-full gap-2"
+            >
+              <Share2 className="h-4 w-4" /> {pt ? 'Compartilhar' : 'Share'}
+            </Button>
             {task.status !== 'in_progress' && task.status !== 'completed' && (
               <Button
                 onClick={() => onUpdate({ status: 'in_progress' })}
@@ -400,5 +410,15 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
         </div>
       </SheetContent>
     </Sheet>
+
+    {task && (
+      <ShareTaskDialog
+        open={shareOpen}
+        onOpenChange={setShareOpen}
+        taskId={task.id}
+        taskTitle={task.title}
+      />
+    )}
+    </>
   );
 }
