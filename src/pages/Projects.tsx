@@ -243,8 +243,9 @@ export default function Projects() {
                   const pct = s && s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0;
                   const total = s?.total ?? 0;
                   const completed = s?.completed ?? 0;
+                  const quadrants = s?.quadrants ?? {};
                   return total > 0 ? (
-                    <div className="space-y-1">
+                    <div className="space-y-2">
                       <div className="flex items-center justify-between text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <CheckCircle2 className="h-3 w-3" />
@@ -253,6 +254,28 @@ export default function Projects() {
                         <span>{pct}%</span>
                       </div>
                       <Progress value={pct} className="h-1.5" />
+                      <TooltipProvider delayDuration={200}>
+                        <div className="flex items-center gap-2">
+                          {(['do', 'schedule', 'delegate', 'eliminate'] as const).map((q) => {
+                            const count = quadrants[q] || 0;
+                            if (count === 0) return null;
+                            const meta = QUADRANT_META[q];
+                            return (
+                              <Tooltip key={q}>
+                                <TooltipTrigger asChild>
+                                  <span className="flex items-center gap-1 text-[10px] text-muted-foreground">
+                                    <span className={`inline-block h-2 w-2 rounded-full ${meta.color}`} />
+                                    {count}
+                                  </span>
+                                </TooltipTrigger>
+                                <TooltipContent side="bottom" className="text-xs">
+                                  {language === 'pt-BR' ? meta.labelPt : meta.label}
+                                </TooltipContent>
+                              </Tooltip>
+                            );
+                          })}
+                        </div>
+                      </TooltipProvider>
                     </div>
                   ) : (
                     <p className="text-xs text-muted-foreground">
