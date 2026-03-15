@@ -300,6 +300,7 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
             <Tabs defaultValue="members" className="mt-6">
               <TabsList className="w-full">
                 <TabsTrigger value="members" className="flex-1">{pt ? 'Membros' : 'Members'}</TabsTrigger>
+                <TabsTrigger value="projects" className="flex-1">{pt ? 'Projetos' : 'Projects'}</TabsTrigger>
                 <TabsTrigger value="dashboard" className="flex-1">{t('teamDashboard')}</TabsTrigger>
               </TabsList>
 
