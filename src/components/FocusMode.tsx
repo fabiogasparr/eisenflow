@@ -10,6 +10,7 @@ import { QUADRANT_CONFIG, type Task } from '@/types/task';
 import { X, CheckCircle, Play, Clock, Zap, Target, Timer, Coffee, SkipForward, Pause } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { playStartSound, playPauseSound, playResumeSound, playFocusEndSound, playBreakEndSound, playCompleteSound } from '@/lib/focusSounds';
 
 type PomodoroPhase = 'focus' | 'short_break' | 'long_break';
 
