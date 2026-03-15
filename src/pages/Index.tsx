@@ -142,7 +142,7 @@ export default function Index() {
               </div>
             </ScrollArea>
           </div>
-        )
+        )}
 
         {/* Matrix Grid */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
