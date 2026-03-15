@@ -26,6 +26,13 @@ const QUADRANT_META: Record<string, { label: string; labelPt: string; color: str
   eliminate: { label: 'Eliminate', labelPt: 'Eliminar', color: 'bg-red-500' },
 };
 
+const STATUS_META: Record<string, { label: string; labelPt: string; color: string }> = {
+  pending: { label: 'Pending', labelPt: 'Pendente', color: 'bg-yellow-500' },
+  in_progress: { label: 'In Progress', labelPt: 'Em andamento', color: 'bg-blue-500' },
+  completed: { label: 'Completed', labelPt: 'Concluída', color: 'bg-green-500' },
+  eliminated: { label: 'Eliminated', labelPt: 'Eliminada', color: 'bg-red-500' },
+};
+
 export default function Projects() {
   const { t, language } = useLanguage();
   const { user } = useAuth();
