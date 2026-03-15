@@ -233,6 +233,12 @@ export default function ProjectDetail() {
         onUpdate={async (updates) => { await updateTask.mutateAsync({ id: selectedTask!.id, ...updates }); }}
         onDelete={async () => { if (selectedTask) { await deleteTask.mutateAsync(selectedTask.id); setSelectedTask(null); } }}
       />
+
+      <CreateTaskDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onSubmit={handleCreateTask}
+      />
     </AppLayout>
   );
 }
