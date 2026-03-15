@@ -1,5 +1,5 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, Navigate } from "react-router-dom";
+import { BrowserRouter, Route, Routes, Navigate, useSearchParams } from "react-router-dom";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
@@ -16,6 +16,7 @@ import Gamification from "./pages/Gamification";
 import TeamsPage from "./pages/TeamsPage";
 import AIChatPage from "./pages/AIChatPage";
 import DelegatedPage from "./pages/DelegatedPage";
+import JoinTeamPage from "./pages/JoinTeamPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -29,14 +30,17 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const [searchParams] = useSearchParams();
   if (loading) return null;
-  if (user) return <Navigate to="/" replace />;
+  const redirect = searchParams.get('redirect') || '/';
+  if (user) return <Navigate to={redirect} replace />;
   return <>{children}</>;
 }
 
 const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
+    <Route path="/invite/:code" element={<JoinTeamPage />} />
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
     <Route path="/metrics" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
     <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
