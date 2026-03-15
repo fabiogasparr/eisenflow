@@ -374,6 +374,13 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
           )}
 
           <div className="flex flex-col gap-2 pt-4 border-t">
+            <Button
+              onClick={() => setShareOpen(true)}
+              variant="outline"
+              className="w-full gap-2"
+            >
+              <Share2 className="h-4 w-4" /> {pt ? 'Compartilhar' : 'Share'}
+            </Button>
             {task.status !== 'in_progress' && task.status !== 'completed' && (
               <Button
                 onClick={() => onUpdate({ status: 'in_progress' })}
