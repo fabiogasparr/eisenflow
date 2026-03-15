@@ -281,6 +281,44 @@ export type Database = {
           },
         ]
       }
+      task_shares: {
+        Row: {
+          created_at: string
+          id: string
+          permission: Database["public"]["Enums"]["share_permission"]
+          shared_by: string
+          shared_with_email: string
+          shared_with_user_id: string | null
+          task_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          permission?: Database["public"]["Enums"]["share_permission"]
+          shared_by: string
+          shared_with_email: string
+          shared_with_user_id?: string | null
+          task_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          permission?: Database["public"]["Enums"]["share_permission"]
+          shared_by?: string
+          shared_with_email?: string
+          shared_with_user_id?: string | null
+          task_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "task_shares_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tasks: {
         Row: {
           assigned_to: string | null
@@ -607,6 +645,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_task_shared_with: {
+        Args: { _task_id: string; _user_id: string }
+        Returns: boolean
+      }
       is_team_member: {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
@@ -616,6 +658,7 @@ export type Database = {
       app_role: "admin" | "member"
       delegation_status: "pending" | "accepted" | "completed" | "rejected"
       invite_status: "pending" | "accepted" | "expired" | "cancelled"
+      share_permission: "view" | "edit"
       task_quadrant: "do" | "schedule" | "delegate" | "eliminate"
       task_status: "pending" | "in_progress" | "completed" | "eliminated"
       team_role: "admin" | "manager" | "member"
@@ -749,6 +792,7 @@ export const Constants = {
       app_role: ["admin", "member"],
       delegation_status: ["pending", "accepted", "completed", "rejected"],
       invite_status: ["pending", "accepted", "expired", "cancelled"],
+      share_permission: ["view", "edit"],
       task_quadrant: ["do", "schedule", "delegate", "eliminate"],
       task_status: ["pending", "in_progress", "completed", "eliminated"],
       team_role: ["admin", "manager", "member"],
