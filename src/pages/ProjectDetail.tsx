@@ -6,13 +6,14 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
-import { ArrowLeft, Users, CheckCircle2, Clock, Zap, Trash2, Circle } from 'lucide-react';
+import { ArrowLeft, Users, CheckCircle2, Clock, Zap, Trash2, Circle, Plus } from 'lucide-react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTasks } from '@/hooks/useTasks';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
-import type { Task, Quadrant, TaskStatus } from '@/types/task';
+import { CreateTaskDialog } from '@/components/CreateTaskDialog';
+import type { Task, Quadrant, TaskStatus, CreateTaskInput } from '@/types/task';
 import { QUADRANT_CONFIG } from '@/types/task';
 
 const STATUS_OPTIONS = [
@@ -41,13 +42,18 @@ const QUADRANT_BORDER: Record<string, string> = {
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
-  const { tasks, updateTask, deleteTask } = useTasks();
+  const { tasks, updateTask, deleteTask, createTask } = useTasks();
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [quadrantFilter, setQuadrantFilter] = useState('all');
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+
+  const handleCreateTask = async (input: CreateTaskInput) => {
+    await createTask.mutateAsync({ ...input, project_id: id });
+  };
 
   const { data: project } = useQuery({
     queryKey: ['project', id],
@@ -110,6 +116,10 @@ export default function ProjectDetail() {
               </div>
             )}
           </div>
+          <Button onClick={() => setCreateDialogOpen(true)} size="sm" className="gap-1.5 shrink-0">
+            <Plus className="h-4 w-4" />
+            {language === 'pt-BR' ? 'Nova tarefa' : 'New task'}
+          </Button>
         </div>
 
         {/* Status summary */}
@@ -220,6 +230,12 @@ export default function ProjectDetail() {
         onClose={() => setSelectedTask(null)}
         onUpdate={async (updates) => { await updateTask.mutateAsync({ id: selectedTask!.id, ...updates }); }}
         onDelete={async () => { if (selectedTask) { await deleteTask.mutateAsync(selectedTask.id); setSelectedTask(null); } }}
+      />
+
+      <CreateTaskDialog
+        open={createDialogOpen}
+        onOpenChange={setCreateDialogOpen}
+        onSubmit={handleCreateTask}
       />
     </AppLayout>
   );
