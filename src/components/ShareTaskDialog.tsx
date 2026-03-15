@@ -199,17 +199,23 @@ export function ShareTaskDialog({ open, onOpenChange, taskId, taskTitle }: Share
                         </TooltipContent>
                       </Tooltip>
 
-                      {/* Permission badge */}
-                      <Badge
-                        variant="secondary"
-                        className="text-[10px] px-1.5 py-0.5 shrink-0 gap-1"
+                      {/* Permission selector */}
+                      <Select
+                        value={share.permission}
+                        onValueChange={(v) => updatePermission.mutate({ shareId: share.id, permission: v as 'view' | 'edit' })}
                       >
-                        {share.permission === 'edit' ? (
-                          <><Pencil className="h-2.5 w-2.5" /> {pt ? 'Editar' : 'Edit'}</>
-                        ) : (
-                          <><Eye className="h-2.5 w-2.5" /> {pt ? 'Ver' : 'View'}</>
-                        )}
-                      </Badge>
+                        <SelectTrigger className="h-6 w-[90px] text-[10px] px-1.5 border-0 bg-secondary shrink-0">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="view">
+                            <span className="flex items-center gap-1"><Eye className="h-3 w-3" /> {pt ? 'Ver' : 'View'}</span>
+                          </SelectItem>
+                          <SelectItem value="edit">
+                            <span className="flex items-center gap-1"><Pencil className="h-3 w-3" /> {pt ? 'Editar' : 'Edit'}</span>
+                          </SelectItem>
+                        </SelectContent>
+                      </Select>
 
                       {/* Remove button */}
                       <button
