@@ -1,0 +1,1 @@
+ALTER TABLE public.projects ADD COLUMN archived boolean NOT NULL DEFAULT false;

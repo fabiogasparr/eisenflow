@@ -210,6 +210,7 @@ export type Database = {
       }
       projects: {
         Row: {
+          archived: boolean
           color: string
           created_at: string
           id: string
@@ -219,6 +220,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          archived?: boolean
           color?: string
           created_at?: string
           id?: string
@@ -228,6 +230,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          archived?: boolean
           color?: string
           created_at?: string
           id?: string
