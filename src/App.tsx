@@ -16,6 +16,7 @@ import Gamification from "./pages/Gamification";
 import TeamsPage from "./pages/TeamsPage";
 import AIChatPage from "./pages/AIChatPage";
 import DelegatedPage from "./pages/DelegatedPage";
+import JoinTeamPage from "./pages/JoinTeamPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
