@@ -8,7 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, FolderKanban, Users, Archive } from 'lucide-react';
+import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
+import { Plus, FolderKanban, Users, Archive, ArchiveRestore, MoreVertical, Pencil, Trash2 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,6 +29,11 @@ export default function Projects() {
   const [color, setColor] = useState('#6366f1');
   const [teamId, setTeamId] = useState<string | null>(null);
   const [showArchived, setShowArchived] = useState(false);
+  const [editProject, setEditProject] = useState<any>(null);
+  const [editName, setEditName] = useState('');
+  const [editColor, setEditColor] = useState('#6366f1');
+  const [editTeamId, setEditTeamId] = useState<string | null>(null);
+  const [deleteProject, setDeleteProject] = useState<any>(null);
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects', user?.id],
@@ -67,6 +74,52 @@ export default function Projects() {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
     },
   });
+
+  const archiveProject = useMutation({
+    mutationFn: async ({ id, archived }: { id: string; archived: boolean }) => {
+      const { error } = await supabase.from('projects').update({ archived }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
+    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+  });
+
+  const updateProject = useMutation({
+    mutationFn: async () => {
+      if (!editProject) return;
+      const { error } = await supabase.from('projects').update({
+        name: editName,
+        color: editColor,
+        team_id: editTeamId || null,
+      }).eq('id', editProject.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setEditProject(null);
+    },
+    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+  });
+
+  const removeProject = useMutation({
+    mutationFn: async (id: string) => {
+      const { error } = await supabase.from('projects').delete().eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['projects'] });
+      setDeleteProject(null);
+    },
+    onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
+  });
+
+  const openEdit = (project: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setEditProject(project);
+    setEditName(project.name);
+    setEditColor(project.color);
+    setEditTeamId(project.team_id);
+  };
 
   const handleCloseDialog = (open: boolean) => {
     setCreateOpen(open);
@@ -110,13 +163,37 @@ export default function Projects() {
             >
               <CardHeader className="flex-row items-center gap-3 space-y-0">
                 <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
-                <CardTitle className="font-display text-lg">{project.name}</CardTitle>
+                <CardTitle className="font-display text-lg truncate">{project.name}</CardTitle>
                 {project.archived && (
-                  <Badge variant="secondary" className="ml-auto text-[10px] gap-1">
+                  <Badge variant="secondary" className="text-[10px] gap-1 shrink-0">
                     <Archive className="h-3 w-3" />
                     {language === 'pt-BR' ? 'Arquivado' : 'Archived'}
                   </Badge>
                 )}
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                    <Button variant="ghost" size="icon" className="ml-auto h-8 w-8 shrink-0">
+                      <MoreVertical className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                    <DropdownMenuItem onClick={(e) => openEdit(project, e)}>
+                      <Pencil className="h-4 w-4 mr-2" />
+                      {language === 'pt-BR' ? 'Editar' : 'Edit'}
+                    </DropdownMenuItem>
+                    <DropdownMenuItem onClick={(e) => { e.stopPropagation(); archiveProject.mutate({ id: project.id, archived: !project.archived }); }}>
+                      {project.archived ? <ArchiveRestore className="h-4 w-4 mr-2" /> : <Archive className="h-4 w-4 mr-2" />}
+                      {project.archived
+                        ? (language === 'pt-BR' ? 'Desarquivar' : 'Unarchive')
+                        : (language === 'pt-BR' ? 'Arquivar' : 'Archive')}
+                    </DropdownMenuItem>
+                    <DropdownMenuSeparator />
+                    <DropdownMenuItem className="text-destructive focus:text-destructive" onClick={(e) => { e.stopPropagation(); setDeleteProject(project); }}>
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      {language === 'pt-BR' ? 'Excluir' : 'Delete'}
+                    </DropdownMenuItem>
+                  </DropdownMenuContent>
+                </DropdownMenu>
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -141,6 +218,7 @@ export default function Projects() {
           )}
         </div>
 
+        {/* Create Dialog */}
         <Dialog open={createOpen} onOpenChange={handleCloseDialog}>
           <DialogContent>
             <DialogHeader>
@@ -179,6 +257,71 @@ export default function Projects() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+
+        {/* Edit Dialog */}
+        <Dialog open={!!editProject} onOpenChange={(open) => !open && setEditProject(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle className="font-display">
+                {language === 'pt-BR' ? 'Editar Projeto' : 'Edit Project'}
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4">
+              <Input
+                placeholder={language === 'pt-BR' ? 'Nome do projeto' : 'Project name'}
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+              />
+              <div className="flex items-center gap-3">
+                <label className="text-sm text-muted-foreground">{language === 'pt-BR' ? 'Cor' : 'Color'}</label>
+                <input type="color" value={editColor} onChange={(e) => setEditColor(e.target.value)} className="h-8 w-8 rounded cursor-pointer" />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm text-muted-foreground">{language === 'pt-BR' ? 'Time (opcional)' : 'Team (optional)'}</label>
+                <Select value={editTeamId ?? '_none'} onValueChange={(v) => setEditTeamId(v === '_none' ? null : v)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder={language === 'pt-BR' ? 'Pessoal' : 'Personal'} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="_none">{language === 'pt-BR' ? 'Pessoal' : 'Personal'}</SelectItem>
+                    {teams.map((team) => (
+                      <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="ghost" onClick={() => setEditProject(null)}>{t('cancel')}</Button>
+              <Button onClick={() => updateProject.mutate()} disabled={!editName.trim()}>{t('save')}</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation */}
+        <AlertDialog open={!!deleteProject} onOpenChange={(open) => !open && setDeleteProject(null)}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {language === 'pt-BR' ? 'Excluir projeto' : 'Delete project'}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {language === 'pt-BR'
+                  ? `Tem certeza que deseja excluir "${deleteProject?.name}"? Esta ação não pode ser desfeita.`
+                  : `Are you sure you want to delete "${deleteProject?.name}"? This action cannot be undone.`}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel>{t('cancel')}</AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                onClick={() => deleteProject && removeProject.mutate(deleteProject.id)}
+              >
+                {language === 'pt-BR' ? 'Excluir' : 'Delete'}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </AppLayout>
   );
