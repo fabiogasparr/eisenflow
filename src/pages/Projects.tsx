@@ -25,12 +25,6 @@ const QUADRANT_META: Record<string, { label: string; labelPt: string; color: str
   delegate: { label: 'Delegate', labelPt: 'Delegar', color: 'bg-blue-500' },
   eliminate: { label: 'Eliminate', labelPt: 'Eliminar', color: 'bg-red-500' },
 };
-import { Progress } from '@/components/ui/progress';
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
-import { useAuth } from '@/hooks/useAuth';
-import { useToast } from '@/hooks/use-toast';
-import { useTeams } from '@/hooks/useTeams';
 
 export default function Projects() {
   const { t, language } = useLanguage();
