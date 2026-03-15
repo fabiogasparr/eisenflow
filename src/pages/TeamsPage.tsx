@@ -247,8 +247,9 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
     }
   };
 
-  const handleCopyCode = async (code: string) => {
-    await navigator.clipboard.writeText(code);
+  const handleCopyLink = async (code: string) => {
+    const url = getInviteUrl(code);
+    await navigator.clipboard.writeText(url);
     setCopiedCode(code);
     setTimeout(() => setCopiedCode(null), 2000);
   };
