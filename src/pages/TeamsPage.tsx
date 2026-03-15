@@ -241,8 +241,9 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
     const invite = await createInvite.mutateAsync({ teamId: team.id, role: inviteRole });
     if (invite) {
       const code = (invite as any).invite_code;
-      await navigator.clipboard.writeText(code);
-      toast({ title: '📋', description: pt ? 'Código copiado!' : 'Code copied!' });
+      const url = getInviteUrl(code);
+      await navigator.clipboard.writeText(url);
+      toast({ title: '📋', description: pt ? 'Link de convite copiado!' : 'Invite link copied!' });
     }
   };
 
