@@ -12,6 +12,20 @@ import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuIte
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
 import { Plus, FolderKanban, Users, Archive, ArchiveRestore, MoreVertical, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
+import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/hooks/useAuth';
+import { useToast } from '@/hooks/use-toast';
+import { useTeams } from '@/hooks/useTeams';
+
+const QUADRANT_META: Record<string, { label: string; labelPt: string; color: string }> = {
+  do: { label: 'Do', labelPt: 'Fazer', color: 'bg-green-500' },
+  schedule: { label: 'Schedule', labelPt: 'Agendar', color: 'bg-orange-500' },
+  delegate: { label: 'Delegate', labelPt: 'Delegar', color: 'bg-blue-500' },
+  eliminate: { label: 'Eliminate', labelPt: 'Eliminar', color: 'bg-red-500' },
+};
+import { Progress } from '@/components/ui/progress';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
