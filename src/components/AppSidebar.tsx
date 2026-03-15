@@ -1,4 +1,4 @@
-import { Grid3X3, FolderKanban, BarChart3, Settings, LogOut, Zap, CalendarDays, Trophy, Users, MessageSquare } from 'lucide-react';
+import { Grid3X3, FolderKanban, BarChart3, Settings, LogOut, Zap, CalendarDays, Trophy, Users, MessageSquare, Share2 } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
