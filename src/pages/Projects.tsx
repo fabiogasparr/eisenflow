@@ -10,7 +10,8 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Badge } from '@/components/ui/badge';
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from '@/components/ui/alert-dialog';
-import { Plus, FolderKanban, Users, Archive, ArchiveRestore, MoreVertical, Pencil, Trash2 } from 'lucide-react';
+import { Plus, FolderKanban, Users, Archive, ArchiveRestore, MoreVertical, Pencil, Trash2, CheckCircle2 } from 'lucide-react';
+import { Progress } from '@/components/ui/progress';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -45,6 +46,27 @@ export default function Projects() {
         .order('created_at', { ascending: false });
       if (error) throw error;
       return data;
+    },
+    enabled: !!user,
+  });
+
+  const { data: taskStats = {} } = useQuery({
+    queryKey: ['project-task-stats', user?.id],
+    queryFn: async () => {
+      if (!user) return {};
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('project_id, status')
+        .not('project_id', 'is', null);
+      if (error) throw error;
+      const stats: Record<string, { total: number; completed: number }> = {};
+      for (const task of data ?? []) {
+        if (!task.project_id) continue;
+        if (!stats[task.project_id]) stats[task.project_id] = { total: 0, completed: 0 };
+        stats[task.project_id].total++;
+        if (task.status === 'completed') stats[task.project_id].completed++;
+      }
+      return stats;
     },
     enabled: !!user,
   });
@@ -195,7 +217,7 @@ export default function Projects() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <FolderKanban className="h-4 w-4" />
                   <span>{new Date(project.created_at).toLocaleDateString()}</span>
@@ -206,6 +228,28 @@ export default function Projects() {
                     </Badge>
                   )}
                 </div>
+                {(() => {
+                  const s = taskStats[project.id];
+                  const pct = s && s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0;
+                  const total = s?.total ?? 0;
+                  const completed = s?.completed ?? 0;
+                  return total > 0 ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          {completed}/{total}
+                        </span>
+                        <span>{pct}%</span>
+                      </div>
+                      <Progress value={pct} className="h-1.5" />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {language === 'pt-BR' ? 'Sem tarefas' : 'No tasks'}
+                    </p>
+                  );
+                })()}
               </CardContent>
             </Card>
           ))}
