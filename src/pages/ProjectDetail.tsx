@@ -43,7 +43,7 @@ export default function ProjectDetail() {
   const navigate = useNavigate();
   const { t } = useLanguage();
   const { user } = useAuth();
-  const { tasks, updateTask } = useTasks();
+  const { tasks, updateTask, deleteTask } = useTasks();
 
   const [statusFilter, setStatusFilter] = useState('all');
   const [quadrantFilter, setQuadrantFilter] = useState('all');
