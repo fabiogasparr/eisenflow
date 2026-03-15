@@ -406,35 +406,59 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
                           {pt ? 'Convites pendentes:' : 'Pending invites:'}
                         </p>
                         {invites.map((invite) => (
-                          <div key={invite.id} className="flex items-center gap-2 rounded border p-2 text-xs">
-                            {invite.invited_email ? (
-                              <span className="flex-1 truncate">{invite.invited_email}</span>
-                            ) : (
-                              <code className="flex-1 truncate font-mono text-muted-foreground">
-                                {invite.invite_code}
-                              </code>
-                            )}
-                            <Badge variant="outline" className="shrink-0">{roleLabel(invite.role)}</Badge>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 shrink-0"
-                              onClick={() => handleCopyCode(invite.invite_code)}
-                            >
-                              {copiedCode === invite.invite_code ? (
-                                <Check className="h-3 w-3" />
+                          <div key={invite.id} className="rounded-lg border p-3 space-y-2">
+                            <div className="flex items-center gap-2 text-xs">
+                              {invite.invited_email ? (
+                                <span className="flex-1 truncate">{invite.invited_email}</span>
                               ) : (
-                                <Copy className="h-3 w-3" />
+                                <span className="flex-1 truncate text-muted-foreground font-mono text-[11px]">
+                                  {getInviteUrl(invite.invite_code).replace(/^https?:\/\//, '')}
+                                </span>
                               )}
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-6 w-6 shrink-0 text-destructive"
-                              onClick={() => cancelInvite.mutate(invite.id)}
-                            >
-                              <Trash2 className="h-3 w-3" />
-                            </Button>
+                              <Badge variant="outline" className="shrink-0">{roleLabel(invite.role)}</Badge>
+                            </div>
+                            <div className="flex gap-1">
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 gap-1 text-xs h-7"
+                                onClick={() => handleCopyLink(invite.invite_code)}
+                              >
+                                {copiedCode === invite.invite_code ? (
+                                  <><Check className="h-3 w-3" /> {pt ? 'Copiado!' : 'Copied!'}</>
+                                ) : (
+                                  <><Copy className="h-3 w-3" /> {pt ? 'Copiar link' : 'Copy link'}</>
+                                )}
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="gap-1 text-xs h-7"
+                                onClick={() => setShowQR(showQR === invite.invite_code ? null : invite.invite_code)}
+                              >
+                                <QrCode className="h-3 w-3" /> QR
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7 shrink-0 text-destructive"
+                                onClick={() => cancelInvite.mutate(invite.id)}
+                              >
+                                <Trash2 className="h-3 w-3" />
+                              </Button>
+                            </div>
+                            {showQR === invite.invite_code && (
+                              <div className="flex flex-col items-center gap-2 pt-2 border-t">
+                                <QRCodeSVG
+                                  value={getInviteUrl(invite.invite_code)}
+                                  size={160}
+                                  className="rounded-lg"
+                                />
+                                <p className="text-[10px] text-muted-foreground text-center">
+                                  {pt ? 'Escaneie para entrar no time' : 'Scan to join the team'}
+                                </p>
+                              </div>
+                            )}
                           </div>
                         ))}
                       </div>
