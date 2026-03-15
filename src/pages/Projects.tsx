@@ -8,7 +8,7 @@ import { Input } from '@/components/ui/input';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
-import { Plus, FolderKanban, Users } from 'lucide-react';
+import { Plus, FolderKanban, Users, Archive } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -16,7 +16,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useTeams } from '@/hooks/useTeams';
 
 export default function Projects() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -26,6 +26,7 @@ export default function Projects() {
   const [name, setName] = useState('');
   const [color, setColor] = useState('#6366f1');
   const [teamId, setTeamId] = useState<string | null>(null);
+  const [showArchived, setShowArchived] = useState(false);
 
   const { data: projects = [] } = useQuery({
     queryKey: ['projects', user?.id],
@@ -40,6 +41,10 @@ export default function Projects() {
     },
     enabled: !!user,
   });
+
+  const activeProjects = projects.filter((p: any) => !p.archived);
+  const archivedProjects = projects.filter((p: any) => p.archived);
+  const displayedProjects = showArchived ? projects : activeProjects;
 
   const createProject = useMutation({
     mutationFn: async () => {
@@ -77,24 +82,47 @@ export default function Projects() {
       <div className="p-4 md:p-6 space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="font-display text-2xl font-bold">{t('projects')}</h1>
-          <Button onClick={() => setCreateOpen(true)} className="gap-2">
-            <Plus className="h-4 w-4" />
-            {t('addTask').replace('Tarefa', 'Projeto').replace('Task', 'Project')}
-          </Button>
+          <div className="flex items-center gap-2">
+            {archivedProjects.length > 0 && (
+              <Button
+                variant={showArchived ? 'secondary' : 'ghost'}
+                size="sm"
+                onClick={() => setShowArchived(!showArchived)}
+                className="gap-1.5"
+              >
+                <Archive className="h-4 w-4" />
+                {language === 'pt-BR' ? `Arquivados (${archivedProjects.length})` : `Archived (${archivedProjects.length})`}
+              </Button>
+            )}
+            <Button onClick={() => setCreateOpen(true)} className="gap-2">
+              <Plus className="h-4 w-4" />
+              {language === 'pt-BR' ? 'Novo Projeto' : 'New Project'}
+            </Button>
+          </div>
         </div>
 
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
-          {projects.map((project: any) => (
-            <Card key={project.id} className="hover:shadow-md transition-shadow cursor-pointer" onClick={() => navigate(`/projects/${project.id}`)}>
+          {displayedProjects.map((project: any) => (
+            <Card
+              key={project.id}
+              className={`hover:shadow-md transition-shadow cursor-pointer ${project.archived ? 'opacity-50' : ''}`}
+              onClick={() => navigate(`/projects/${project.id}`)}
+            >
               <CardHeader className="flex-row items-center gap-3 space-y-0">
                 <div className="h-3 w-3 rounded-full shrink-0" style={{ backgroundColor: project.color }} />
                 <CardTitle className="font-display text-lg">{project.name}</CardTitle>
+                {project.archived && (
+                  <Badge variant="secondary" className="ml-auto text-[10px] gap-1">
+                    <Archive className="h-3 w-3" />
+                    {language === 'pt-BR' ? 'Arquivado' : 'Archived'}
+                  </Badge>
+                )}
               </CardHeader>
               <CardContent>
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <FolderKanban className="h-4 w-4" />
                   <span>{new Date(project.created_at).toLocaleDateString()}</span>
-                  {project.teams?.name && (
+                  {project.teams?.name && !project.archived && (
                     <Badge variant="secondary" className="ml-auto gap-1">
                       <Users className="h-3 w-3" />
                       {project.teams.name}
@@ -104,9 +132,11 @@ export default function Projects() {
               </CardContent>
             </Card>
           ))}
-          {projects.length === 0 && (
+          {displayedProjects.length === 0 && (
             <p className="text-muted-foreground col-span-full text-center py-12">
-              {t('noTasks')}
+              {showArchived
+                ? (language === 'pt-BR' ? 'Nenhum projeto encontrado.' : 'No projects found.')
+                : (language === 'pt-BR' ? 'Nenhum projeto ativo.' : 'No active projects.')}
             </p>
           )}
         </div>
@@ -114,22 +144,28 @@ export default function Projects() {
         <Dialog open={createOpen} onOpenChange={handleCloseDialog}>
           <DialogContent>
             <DialogHeader>
-              <DialogTitle className="font-display">New Project</DialogTitle>
+              <DialogTitle className="font-display">
+                {language === 'pt-BR' ? 'Novo Projeto' : 'New Project'}
+              </DialogTitle>
             </DialogHeader>
             <div className="space-y-4">
-              <Input placeholder="Project name" value={name} onChange={(e) => setName(e.target.value)} />
+              <Input
+                placeholder={language === 'pt-BR' ? 'Nome do projeto' : 'Project name'}
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
               <div className="flex items-center gap-3">
-                <label className="text-sm text-muted-foreground">Color</label>
+                <label className="text-sm text-muted-foreground">{language === 'pt-BR' ? 'Cor' : 'Color'}</label>
                 <input type="color" value={color} onChange={(e) => setColor(e.target.value)} className="h-8 w-8 rounded cursor-pointer" />
               </div>
               <div className="space-y-2">
-                <label className="text-sm text-muted-foreground">Time (opcional)</label>
+                <label className="text-sm text-muted-foreground">{language === 'pt-BR' ? 'Time (opcional)' : 'Team (optional)'}</label>
                 <Select value={teamId ?? '_none'} onValueChange={(v) => setTeamId(v === '_none' ? null : v)}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Pessoal" />
+                    <SelectValue placeholder={language === 'pt-BR' ? 'Pessoal' : 'Personal'} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="_none">Pessoal</SelectItem>
+                    <SelectItem value="_none">{language === 'pt-BR' ? 'Pessoal' : 'Personal'}</SelectItem>
                     {teams.map((team) => (
                       <SelectItem key={team.id} value={team.id}>{team.name}</SelectItem>
                     ))}
