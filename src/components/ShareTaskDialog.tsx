@@ -23,7 +23,7 @@ interface ShareTaskDialogProps {
 export function ShareTaskDialog({ open, onOpenChange, taskId, taskTitle }: ShareTaskDialogProps) {
   const { language } = useLanguage();
   const pt = language === 'pt-BR';
-  const { shares, shareTask, removeShare } = useTaskShares(taskId);
+  const { shares, shareTask, updatePermission, removeShare } = useTaskShares(taskId);
   const [email, setEmail] = useState('');
   const [permission, setPermission] = useState<'view' | 'edit'>('view');
 
