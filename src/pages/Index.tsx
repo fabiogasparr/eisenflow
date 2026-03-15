@@ -6,7 +6,6 @@ import { TaskCard } from '@/components/TaskCard';
 import { CreateTaskDialog } from '@/components/CreateTaskDialog';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { FocusMode } from '@/components/FocusMode';
-import { SharedTasksView } from '@/components/SharedTasksView';
 import { useTasks } from '@/hooks/useTasks';
 import { useGamification } from '@/hooks/useGamification';
 import { useLanguage } from '@/i18n/LanguageContext';
