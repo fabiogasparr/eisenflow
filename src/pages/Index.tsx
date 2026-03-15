@@ -145,6 +145,17 @@ export default function Index() {
           </div>
         )}
 
+        {/* Shared With Me Section */}
+        <div className="mb-4 rounded-xl border bg-muted/30 overflow-hidden">
+          <div className="flex items-center gap-2 px-4 py-2.5 border-b bg-muted/50">
+            <Share2 className="h-4 w-4 text-muted-foreground" />
+            <h3 className="font-display text-sm font-bold text-muted-foreground">
+              {language === 'pt-BR' ? 'Compartilhadas Comigo' : 'Shared With Me'}
+            </h3>
+          </div>
+          <SharedTasksView onTaskClick={setSelectedTask} />
+        </div>
+
         {/* Matrix Grid */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
