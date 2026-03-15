@@ -160,7 +160,14 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     }
   };
 
-  const handlePauseResume = () => setRunning(!running);
+  const handlePauseResume = () => {
+    if (running) {
+      playPauseSound();
+    } else {
+      playResumeSound();
+    }
+    setRunning(!running);
+  };
 
   const handleSkipBreak = () => {
     setPhase('focus');
