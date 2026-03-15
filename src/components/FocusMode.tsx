@@ -142,6 +142,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       setElapsed(0);
     }
     setRunning(true);
+    playStartSound();
     if (task.status === 'pending') {
       updateTask.mutate({ id: task.id, status: 'in_progress' });
     }
