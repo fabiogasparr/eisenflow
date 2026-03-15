@@ -58,9 +58,6 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
 
     if (phase === 'focus') {
       playFocusEndSound();
-    } else {
-      playBreakEndSound();
-    }
       const newCount = pomodoroCount + 1;
       setPomodoroCount(newCount);
       setSessionPomodoros((s) => s + 1);
@@ -82,6 +79,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       setPhase(nextPhase);
       setTimeLeft(getPhaseDuration(nextPhase));
     } else {
+      playBreakEndSound();
       toast.info(
         language === 'pt-BR' ? '⏰ Pausa finalizada!' : '⏰ Break over!',
         { description: language === 'pt-BR' ? 'Pronto para mais um pomodoro?' : 'Ready for another pomodoro?' }
