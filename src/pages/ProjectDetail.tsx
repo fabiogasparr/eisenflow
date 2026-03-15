@@ -42,7 +42,7 @@ const QUADRANT_BORDER: Record<string, string> = {
 export default function ProjectDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { user } = useAuth();
   const { tasks, updateTask, deleteTask, createTask } = useTasks();
 
