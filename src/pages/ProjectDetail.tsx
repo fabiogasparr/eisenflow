@@ -120,8 +120,6 @@ export default function ProjectDetail() {
             <Plus className="h-4 w-4" />
             {language === 'pt-BR' ? 'Nova tarefa' : 'New task'}
           </Button>
-            )}
-          </div>
         </div>
 
         {/* Status summary */}
