@@ -39,6 +39,7 @@ import {
   Link,
   Mail,
   MoreVertical,
+  QrCode,
 } from 'lucide-react';
 import {
   DropdownMenu,
@@ -47,6 +48,7 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { QRCodeSVG } from 'qrcode.react';
 
 export default function TeamsPage() {
   const { language } = useLanguage();
