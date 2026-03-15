@@ -30,8 +30,10 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
+  const [searchParams] = useSearchParams();
   if (loading) return null;
-  if (user) return <Navigate to="/" replace />;
+  const redirect = searchParams.get('redirect') || '/';
+  if (user) return <Navigate to={redirect} replace />;
   return <>{children}</>;
 }
 
