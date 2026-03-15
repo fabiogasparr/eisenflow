@@ -50,6 +50,27 @@ export default function Projects() {
     enabled: !!user,
   });
 
+  const { data: taskStats = {} } = useQuery({
+    queryKey: ['project-task-stats', user?.id],
+    queryFn: async () => {
+      if (!user) return {};
+      const { data, error } = await supabase
+        .from('tasks')
+        .select('project_id, status')
+        .not('project_id', 'is', null);
+      if (error) throw error;
+      const stats: Record<string, { total: number; completed: number }> = {};
+      for (const task of data ?? []) {
+        if (!task.project_id) continue;
+        if (!stats[task.project_id]) stats[task.project_id] = { total: 0, completed: 0 };
+        stats[task.project_id].total++;
+        if (task.status === 'completed') stats[task.project_id].completed++;
+      }
+      return stats;
+    },
+    enabled: !!user,
+  });
+
   const activeProjects = projects.filter((p: any) => !p.archived);
   const archivedProjects = projects.filter((p: any) => p.archived);
   const displayedProjects = showArchived ? projects : activeProjects;
