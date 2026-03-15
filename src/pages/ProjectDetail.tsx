@@ -215,14 +215,12 @@ export default function ProjectDetail() {
       </div>
 
       {/* Task detail sheet */}
-      {selectedTask && (
-        <TaskDetailSheet
-          task={selectedTask}
-          open={!!selectedTask}
-          onOpenChange={(open) => !open && setSelectedTask(null)}
-          onUpdate={(updates) => updateTask.mutate({ id: selectedTask.id, ...updates })}
-        />
-      )}
+      <TaskDetailSheet
+        task={selectedTask}
+        onClose={() => setSelectedTask(null)}
+        onUpdate={async (updates) => { await updateTask.mutateAsync({ id: selectedTask!.id, ...updates }); }}
+        onDelete={async () => { if (selectedTask) { await deleteTask.mutateAsync(selectedTask.id); setSelectedTask(null); } }}
+      />
     </AppLayout>
   );
 }
