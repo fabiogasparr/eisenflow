@@ -400,7 +400,7 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
                     {/* Generate link */}
                     <Button variant="outline" size="sm" onClick={handleGenerateLink} className="w-full gap-2">
                       <Link className="h-4 w-4" />
-                      {pt ? 'Gerar código de convite' : 'Generate invite code'}
+                      {pt ? 'Gerar link de convite' : 'Generate invite link'}
                     </Button>
 
                     {/* Pending invites */}
