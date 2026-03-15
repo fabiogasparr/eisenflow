@@ -217,7 +217,7 @@ export default function Projects() {
                   </DropdownMenuContent>
                 </DropdownMenu>
               </CardHeader>
-              <CardContent>
+              <CardContent className="space-y-3">
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <FolderKanban className="h-4 w-4" />
                   <span>{new Date(project.created_at).toLocaleDateString()}</span>
@@ -228,6 +228,28 @@ export default function Projects() {
                     </Badge>
                   )}
                 </div>
+                {(() => {
+                  const s = taskStats[project.id];
+                  const pct = s && s.total > 0 ? Math.round((s.completed / s.total) * 100) : 0;
+                  const total = s?.total ?? 0;
+                  const completed = s?.completed ?? 0;
+                  return total > 0 ? (
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between text-xs text-muted-foreground">
+                        <span className="flex items-center gap-1">
+                          <CheckCircle2 className="h-3 w-3" />
+                          {completed}/{total}
+                        </span>
+                        <span>{pct}%</span>
+                      </div>
+                      <Progress value={pct} className="h-1.5" />
+                    </div>
+                  ) : (
+                    <p className="text-xs text-muted-foreground">
+                      {language === 'pt-BR' ? 'Sem tarefas' : 'No tasks'}
+                    </p>
+                  );
+                })()}
               </CardContent>
             </Card>
           ))}
