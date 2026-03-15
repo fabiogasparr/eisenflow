@@ -57,6 +57,10 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     setRunning(false);
 
     if (phase === 'focus') {
+      playFocusEndSound();
+    } else {
+      playBreakEndSound();
+    }
       const newCount = pomodoroCount + 1;
       setPomodoroCount(newCount);
       setSessionPomodoros((s) => s + 1);
