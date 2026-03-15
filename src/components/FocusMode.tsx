@@ -10,6 +10,7 @@ import { QUADRANT_CONFIG, type Task } from '@/types/task';
 import { X, CheckCircle, Play, Clock, Zap, Target, Timer, Coffee, SkipForward, Pause } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
+import { playStartSound, playPauseSound, playResumeSound, playFocusEndSound, playBreakEndSound, playCompleteSound } from '@/lib/focusSounds';
 
 type PomodoroPhase = 'focus' | 'short_break' | 'long_break';
 
@@ -52,35 +53,11 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     }
   }, [pomodoro.focusDuration, pomodoro.shortBreakDuration, pomodoro.longBreakDuration]);
 
-  const playNotificationSound = useCallback(() => {
-    try {
-      const ctx = new AudioContext();
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.frequency.value = 800;
-      gain.gain.value = 0.3;
-      osc.start();
-      osc.stop(ctx.currentTime + 0.3);
-      setTimeout(() => {
-        const osc2 = ctx.createOscillator();
-        const gain2 = ctx.createGain();
-        osc2.connect(gain2);
-        gain2.connect(ctx.destination);
-        osc2.frequency.value = 1000;
-        gain2.gain.value = 0.3;
-        osc2.start();
-        osc2.stop(ctx.currentTime + 0.3);
-      }, 350);
-    } catch {}
-  }, []);
-
   const handlePhaseEnd = useCallback(() => {
     setRunning(false);
-    playNotificationSound();
 
     if (phase === 'focus') {
+      playFocusEndSound();
       const newCount = pomodoroCount + 1;
       setPomodoroCount(newCount);
       setSessionPomodoros((s) => s + 1);
@@ -102,6 +79,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       setPhase(nextPhase);
       setTimeLeft(getPhaseDuration(nextPhase));
     } else {
+      playBreakEndSound();
       toast.info(
         language === 'pt-BR' ? '⏰ Pausa finalizada!' : '⏰ Break over!',
         { description: language === 'pt-BR' ? 'Pronto para mais um pomodoro?' : 'Ready for another pomodoro?' }
@@ -109,7 +87,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       setPhase('focus');
       setTimeLeft(getPhaseDuration('focus'));
     }
-  }, [phase, pomodoroCount, pomodoro.longBreakInterval, getPhaseDuration, playNotificationSound, recordAction, language]);
+  }, [phase, pomodoroCount, pomodoro.longBreakInterval, getPhaseDuration, recordAction, language]);
 
   // Timer logic
   useEffect(() => {
@@ -162,6 +140,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       setElapsed(0);
     }
     setRunning(true);
+    playStartSound();
     if (task.status === 'pending') {
       updateTask.mutate({ id: task.id, status: 'in_progress' });
     }
@@ -170,6 +149,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
   const handleCompleteTask = () => {
     if (activeTask) {
       updateTask.mutate({ id: activeTask.id, status: 'completed' });
+      playCompleteSound();
       recordAction.mutate('complete');
       setRunning(false);
       setActiveTaskId(null);
@@ -178,7 +158,14 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     }
   };
 
-  const handlePauseResume = () => setRunning(!running);
+  const handlePauseResume = () => {
+    if (running) {
+      playPauseSound();
+    } else {
+      playResumeSound();
+    }
+    setRunning(!running);
+  };
 
   const handleSkipBreak = () => {
     setPhase('focus');
