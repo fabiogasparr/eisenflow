@@ -171,7 +171,7 @@ export default function AIChatPage() {
 
   return (
     <AppLayout mainClassName="overflow-hidden !pb-0">
-      <div className="flex flex-col h-full min-h-0 max-w-3xl mx-auto">
+      <div className="flex flex-col h-[calc(100dvh-7rem)] md:h-full min-h-0 max-w-3xl mx-auto">
         {/* Header */}
         <div className="flex items-center gap-3 py-3 px-2 border-b border-border shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
