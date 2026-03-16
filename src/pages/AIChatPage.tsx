@@ -271,7 +271,7 @@ export default function AIChatPage() {
         </ScrollArea>
 
         {/* Input */}
-        <div className="border-t border-border p-3 pb-16 md:pb-3">
+        <div className="border-t border-border p-3 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-3">
           <div className="flex gap-2 items-end">
             <Textarea
               ref={inputRef}
