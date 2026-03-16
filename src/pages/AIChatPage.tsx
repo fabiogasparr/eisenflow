@@ -183,10 +183,10 @@ export default function AIChatPage() {
         </div>
 
         {/* Messages */}
-        <ScrollArea className="flex-1 px-2" ref={scrollRef}>
+        <ScrollArea className="flex-1 min-h-0 px-2" ref={scrollRef}>
           <div className="space-y-4 py-4">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+              <div className="flex flex-col items-center justify-center py-10 md:py-16 text-center space-y-3">
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
                   <Bot className="h-7 w-7 text-primary" />
                 </div>
