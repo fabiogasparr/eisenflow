@@ -170,7 +170,7 @@ export default function AIChatPage() {
 
   return (
     <AppLayout>
-      <div className="flex flex-col h-full max-w-3xl mx-auto overflow-hidden">
+      <div className="flex flex-col h-full min-h-0 max-w-3xl mx-auto overflow-hidden">
         {/* Header */}
         <div className="flex items-center gap-3 py-4 px-2 border-b border-border">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
@@ -183,10 +183,10 @@ export default function AIChatPage() {
         </div>
 
         {/* Messages */}
-        <ScrollArea className="flex-1 px-2" ref={scrollRef}>
+        <ScrollArea className="flex-1 min-h-0 px-2" ref={scrollRef}>
           <div className="space-y-4 py-4">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center py-16 text-center space-y-3">
+              <div className="flex flex-col items-center justify-center py-10 md:py-16 text-center space-y-3">
                 <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10">
                   <Bot className="h-7 w-7 text-primary" />
                 </div>
@@ -271,7 +271,7 @@ export default function AIChatPage() {
         </ScrollArea>
 
         {/* Input */}
-        <div className="border-t border-border p-3 pb-16 md:pb-3">
+        <div className="border-t border-border p-3 pb-[calc(4rem+env(safe-area-inset-bottom))] md:pb-3">
           <div className="flex gap-2 items-end">
             <Textarea
               ref={inputRef}
