@@ -277,7 +277,7 @@ export default function AIChatPage() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-border p-3 pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-3 shrink-0">
+        <div className="border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3 shrink-0">
           <div className="flex gap-2 items-end">
             <Textarea
               ref={inputRef}
