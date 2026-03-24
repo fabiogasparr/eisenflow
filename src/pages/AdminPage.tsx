@@ -66,7 +66,10 @@ export default function AdminPage() {
   const [stats, setStats] = useState<OverviewStats>({ totalUsers: 0, totalTasks: 0, completedTasks: 0, activeUsers7d: 0 });
   const [loadingData, setLoadingData] = useState(true);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [togglingUser, setTogglingUser] = useState<string | null>(null);
+  const [teamsData, setTeamsData] = useState<TeamInfo[]>([]);
+  const [teamMembersMap, setTeamMembersMap] = useState<Record<string, TeamMemberInfo[]>>({});
 
   useEffect(() => {
     if (!isSuperAdmin) return;
