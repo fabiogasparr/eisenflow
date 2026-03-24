@@ -105,10 +105,7 @@ Deno.serve(async (req) => {
       const tokenData = await tokenRes.json();
       if (!tokenRes.ok) {
         console.error("Token exchange failed:", tokenData);
-        return new Response(
-          `<html><body><script>window.close();</script><p>Erro ao conectar. Tente novamente.</p></body></html>`,
-          { headers: { "Content-Type": "text/html" } }
-        );
+        return new Response(styledPage('Erro ao conectar', 'Tente novamente.', false), { headers: { "Content-Type": "text/html" } });
       }
 
       // Get user's Google email
