@@ -13,7 +13,7 @@ interface QuadrantDropZoneProps {
   onDelete?: (task: Task) => void;
 }
 
-export function QuadrantDropZone({ quadrant, tasks, onTaskClick }: QuadrantDropZoneProps) {
+export function QuadrantDropZone({ quadrant, tasks, onTaskClick, onComplete, onDelete }: QuadrantDropZoneProps) {
   const { t } = useLanguage();
   const config = QUADRANT_CONFIG[quadrant];
 
