@@ -142,7 +142,7 @@ Deno.serve(async (req) => {
       await supabaseAdmin
         .from('whatsapp_connections')
         .update({ status: 'connected', qr_code: null, phone_number: phoneNumber })
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
 
       return new Response(JSON.stringify({ status: 'connected', phone_number: phoneNumber, webhook_registered: webhookOk, webhook_results: webhookResults }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
