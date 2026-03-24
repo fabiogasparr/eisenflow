@@ -24,11 +24,25 @@ export default function OrganizationPage() {
   const { tenants, isLoading, createTenant, deleteTenant } = useTenants();
   const { activeTenant, setActiveTenantId } = useTenantContext();
   const { toast } = useToast();
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { acceptInvite } = useTenantInvites(null);
 
   const [createOpen, setCreateOpen] = useState(false);
   const [newName, setNewName] = useState('');
   const [newSlug, setNewSlug] = useState('');
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+
+  // Auto-accept invite from URL
+  useEffect(() => {
+    const inviteCode = searchParams.get('invite');
+    if (inviteCode && user) {
+      acceptInvite.mutate(inviteCode, {
+        onSettled: () => {
+          setSearchParams({});
+        },
+      });
+    }
+  }, [searchParams, user]);
 
   const viewingTenant = selectedTenantId ? tenants.find(t => t.id === selectedTenantId) : activeTenant;
 
