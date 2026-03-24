@@ -61,15 +61,17 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     )
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const token = authHeader.replace('Bearer ', '')
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token)
+    if (claimsError || !claimsData?.claims) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
     }
+    const userId = claimsData.claims.sub
 
     const { data: conn } = await (supabase as any)
       .from('whatsapp_connections')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .maybeSingle()
 
     if (!conn) {
@@ -140,7 +142,7 @@ Deno.serve(async (req) => {
       await supabaseAdmin
         .from('whatsapp_connections')
         .update({ status: 'connected', qr_code: null, phone_number: phoneNumber })
-        .eq('user_id', user.id)
+        .eq('user_id', userId)
 
       return new Response(JSON.stringify({ status: 'connected', phone_number: phoneNumber, webhook_registered: webhookOk, webhook_results: webhookResults }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
