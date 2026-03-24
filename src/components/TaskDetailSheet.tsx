@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/sheet';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -27,6 +28,7 @@ interface TaskDetailSheetProps {
 
 export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetailSheetProps) {
   const { t, language } = useLanguage();
+  const isMobile = useIsMobile();
   const pt = language === 'pt-BR';
   const { teams } = useTeams();
   const [selectedTeamId, setSelectedTeamId] = useState<string>('');
@@ -58,7 +60,10 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
   return (
     <>
     <Sheet open={!!task} onOpenChange={() => onClose()}>
-      <SheetContent className="sm:max-w-md overflow-y-auto">
+      <SheetContent
+        side={isMobile ? "bottom" : "right"}
+        className={isMobile ? "max-h-[85dvh] rounded-t-2xl overflow-y-auto" : "sm:max-w-md overflow-y-auto"}
+      >
         <SheetHeader>
           <div className="flex items-center gap-2">
             <span className="text-2xl">{config.emoji}</span>
@@ -151,7 +156,6 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
                     selected={task.due_date ? new Date(task.due_date) : undefined}
                     onSelect={(date) => {
                       if (date) {
-                        // Preserve time if existing, otherwise use current time
                         const existing = task.due_date ? new Date(task.due_date) : new Date();
                         date.setHours(existing.getHours(), existing.getMinutes());
                         onUpdate({ due_date: date.toISOString() });
