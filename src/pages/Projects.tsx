@@ -103,7 +103,8 @@ export default function Projects() {
         color,
         owner_id: user.id,
         team_id: teamId || null,
-      });
+        tenant_id: activeTenantId ?? null,
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {
