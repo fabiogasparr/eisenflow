@@ -35,6 +35,20 @@ export function useGoogleCalendar() {
     enabled: !!user,
   });
 
+  const isConnected = !!tokenQuery.data;
+
+  const calendarsQuery = useQuery({
+    queryKey: ['google-calendars', user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase.functions.invoke('google-calendar-sync', {
+        body: { action: 'list-calendars' },
+      });
+      if (error) throw error;
+      return data?.calendars as Array<{ id: string; summary: string; primary: boolean; backgroundColor: string }> || [];
+    },
+    enabled: !!user && isConnected,
+  });
+
   const connect = useCallback(() => {
     if (!session?.access_token) return;
     const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
@@ -51,6 +65,7 @@ export function useGoogleCalendar() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['google-calendar-token'] });
+      queryClient.invalidateQueries({ queryKey: ['google-calendars'] });
       toast({ title: 'Google Calendar desconectado' });
     },
     onError: (err: Error) => {
@@ -60,8 +75,39 @@ export function useGoogleCalendar() {
 
   const syncAllTasks = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('google-calendar-sync', {
+      // Export tasks → Google
+      const { data: exportData, error: exportError } = await supabase.functions.invoke('google-calendar-sync', {
         body: { action: 'sync-tasks' },
+      });
+      if (exportError) throw exportError;
+
+      // Import Google → tasks
+      const { data: importData, error: importError } = await supabase.functions.invoke('google-calendar-sync', {
+        body: { action: 'import-events' },
+      });
+      if (importError) throw importError;
+
+      return { export: exportData, import: importData };
+    },
+    onSuccess: (data) => {
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      const exported = data?.export?.synced ?? 0;
+      const imported = data?.import?.imported ?? 0;
+      const updated = data?.import?.updated ?? 0;
+      toast({
+        title: 'Sincronização concluída',
+        description: `${exported} tarefas exportadas, ${imported} eventos importados, ${updated} atualizados`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Erro ao sincronizar', description: err.message, variant: 'destructive' });
+    },
+  });
+
+  const importEvents = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('google-calendar-sync', {
+        body: { action: 'import-events' },
       });
       if (error) throw error;
       return data;
@@ -69,12 +115,12 @@ export function useGoogleCalendar() {
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast({
-        title: 'Sincronização concluída',
-        description: `${data?.synced ?? 0} de ${data?.total ?? 0} tarefas sincronizadas`,
+        title: 'Importação concluída',
+        description: `${data?.imported ?? 0} eventos importados, ${data?.updated ?? 0} atualizados`,
       });
     },
     onError: (err: Error) => {
-      toast({ title: 'Erro ao sincronizar', description: err.message, variant: 'destructive' });
+      toast({ title: 'Erro ao importar', description: err.message, variant: 'destructive' });
     },
   });
 
@@ -110,7 +156,6 @@ export function useGoogleCalendar() {
         const { data, error } = await supabase.functions.invoke('google-calendar-sync', { body });
         if (error) throw error;
 
-        // If created, save event ID to task
         if (!task.google_event_id && data?.event?.id) {
           await supabase
             .from('tasks')
@@ -125,12 +170,15 @@ export function useGoogleCalendar() {
   );
 
   return {
-    isConnected: !!tokenQuery.data,
+    isConnected,
     tokenData: tokenQuery.data,
     isLoading: tokenQuery.isLoading,
+    calendars: calendarsQuery.data ?? [],
+    calendarsLoading: calendarsQuery.isLoading,
     connect,
     disconnect,
     syncAllTasks,
+    importEvents,
     syncTask,
     updateSettings,
   };

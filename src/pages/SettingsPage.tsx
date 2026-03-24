@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Calendar, RefreshCw, Unplug, CheckCircle2 } from 'lucide-react';
+import { Calendar, RefreshCw, Unplug, CheckCircle2, Download } from 'lucide-react';
 
 export default function SettingsPage() {
   const { t, language, setLanguage } = useLanguage();
@@ -180,6 +180,45 @@ export default function SettingsPage() {
                   </span>
                 </div>
 
+                {/* Calendar selector */}
+                <div className="space-y-1.5">
+                  <Label className="text-xs">
+                    {language === 'pt-BR' ? 'Calendário para sincronizar' : 'Calendar to sync'}
+                  </Label>
+                  <Select
+                    value={gcal.tokenData?.calendar_id || 'primary'}
+                    onValueChange={(v) => gcal.updateSettings.mutate({ calendar_id: v })}
+                    disabled={gcal.calendarsLoading}
+                  >
+                    <SelectTrigger className="w-full sm:w-72">
+                      <SelectValue placeholder={gcal.calendarsLoading
+                        ? (language === 'pt-BR' ? 'Carregando calendários...' : 'Loading calendars...')
+                        : (language === 'pt-BR' ? 'Selecione um calendário' : 'Select a calendar')
+                      } />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {gcal.calendars.map((cal) => (
+                        <SelectItem key={cal.id} value={cal.id}>
+                          <span className="flex items-center gap-2">
+                            {cal.backgroundColor && (
+                              <span
+                                className="inline-block w-3 h-3 rounded-full shrink-0"
+                                style={{ backgroundColor: cal.backgroundColor }}
+                              />
+                            )}
+                            {cal.summary}
+                            {cal.primary && (
+                              <span className="text-xs text-muted-foreground ml-1">
+                                ({language === 'pt-BR' ? 'principal' : 'primary'})
+                              </span>
+                            )}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
                 <div className="flex items-center justify-between">
                   <Label htmlFor="gcal-sync">
                     {language === 'pt-BR' ? 'Sincronização automática' : 'Auto sync'}
@@ -207,6 +246,15 @@ export default function SettingsPage() {
                   >
                     <RefreshCw className={`h-4 w-4 mr-1 ${gcal.syncAllTasks.isPending ? 'animate-spin' : ''}`} />
                     {language === 'pt-BR' ? 'Sincronizar agora' : 'Sync now'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => gcal.importEvents.mutate()}
+                    disabled={gcal.importEvents.isPending}
+                  >
+                    <Download className={`h-4 w-4 mr-1 ${gcal.importEvents.isPending ? 'animate-spin' : ''}`} />
+                    {language === 'pt-BR' ? 'Importar do Calendar' : 'Import from Calendar'}
                   </Button>
                   <Button
                     variant="ghost"

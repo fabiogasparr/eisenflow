@@ -21,7 +21,6 @@ async function refreshTokenIfNeeded(
   const expiresAt = new Date(tokenRow.token_expires_at).getTime();
   const now = Date.now();
 
-  // Refresh if expires in less than 5 minutes
   if (expiresAt - now > 5 * 60 * 1000) {
     return tokenRow.access_token;
   }
@@ -58,21 +57,14 @@ async function refreshTokenIfNeeded(
   return data.access_token as string;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
-
+async function authenticateUser(req: Request) {
   const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
   const SUPABASE_ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
   const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
   const authHeader = req.headers.get("Authorization");
   if (!authHeader?.startsWith("Bearer ")) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    throw new Error("Unauthorized");
   }
 
   const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
@@ -82,16 +74,16 @@ Deno.serve(async (req) => {
   const token = authHeader.replace("Bearer ", "");
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
   if (claimsError || !claimsData?.claims?.sub) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    throw new Error("Unauthorized");
   }
-  const userId = claimsData.claims.sub as string;
 
+  const userId = claimsData.claims.sub as string;
   const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
-  // Get user's Google tokens
+  return { userId, supabaseAdmin };
+}
+
+async function getTokenAndAccess(supabaseAdmin: ReturnType<typeof createClient>, userId: string) {
   const { data: tokenRow, error: tokenError } = await supabaseAdmin
     .from("google_calendar_tokens")
     .select("*")
@@ -99,18 +91,47 @@ Deno.serve(async (req) => {
     .single();
 
   if (tokenError || !tokenRow) {
-    return new Response(JSON.stringify({ error: "Google Calendar not connected" }), {
-      status: 400,
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    throw new Error("Google Calendar not connected");
+  }
+
+  const accessToken = await refreshTokenIfNeeded(supabaseAdmin, tokenRow);
+  const calendarId = tokenRow.calendar_id || "primary";
+
+  return { tokenRow, accessToken, calendarId };
+}
+
+Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") {
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
-    const accessToken = await refreshTokenIfNeeded(supabaseAdmin, tokenRow);
-    const calendarId = tokenRow.calendar_id || "primary";
+    const { userId, supabaseAdmin } = await authenticateUser(req);
+    const { tokenRow, accessToken, calendarId } = await getTokenAndAccess(supabaseAdmin, userId);
 
     const body = await req.json();
     const { action } = body;
+
+    // ── LIST CALENDARS ──
+    if (action === "list-calendars") {
+      const res = await fetch(
+        `${GOOGLE_CALENDAR_API}/users/me/calendarList`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(`Google API error [${res.status}]: ${JSON.stringify(data)}`);
+
+      const calendars = (data.items || []).map((cal: Record<string, unknown>) => ({
+        id: cal.id,
+        summary: cal.summary,
+        primary: cal.primary || false,
+        backgroundColor: cal.backgroundColor,
+      }));
+
+      return new Response(JSON.stringify({ calendars }), {
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
 
     // ── LIST EVENTS ──
     if (action === "list-events") {
@@ -163,7 +184,6 @@ Deno.serve(async (req) => {
       const data = await res.json();
       if (!res.ok) throw new Error(`Google API error [${res.status}]: ${JSON.stringify(data)}`);
 
-      // Update last_synced_at
       await supabaseAdmin
         .from("google_calendar_tokens")
         .update({ last_synced_at: new Date().toISOString() })
@@ -230,7 +250,90 @@ Deno.serve(async (req) => {
       });
     }
 
-    // ── SYNC ALL TASKS ──
+    // ── IMPORT EVENTS (Google → Tasks) ──
+    if (action === "import-events") {
+      const timeMin = new Date().toISOString();
+      const timeMax = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+
+      const params = new URLSearchParams({
+        timeMin,
+        timeMax,
+        singleEvents: "true",
+        orderBy: "startTime",
+        maxResults: "250",
+      });
+
+      const res = await fetch(
+        `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events?${params}`,
+        { headers: { Authorization: `Bearer ${accessToken}` } }
+      );
+      const eventsData = await res.json();
+      if (!res.ok) throw new Error(`Google API error [${res.status}]: ${JSON.stringify(eventsData)}`);
+
+      const events = eventsData.items || [];
+      let imported = 0;
+      let updated = 0;
+
+      for (const event of events) {
+        if (!event.id || !event.summary) continue;
+        const startDateTime = event.start?.dateTime || event.start?.date;
+        if (!startDateTime) continue;
+
+        // Check if task already exists for this event
+        const { data: existingTasks } = await supabaseAdmin
+          .from("tasks")
+          .select("id, title, description, due_date")
+          .eq("google_event_id", event.id)
+          .eq("created_by", userId);
+
+        if (existingTasks && existingTasks.length > 0) {
+          // Update existing task if Google event changed
+          const existing = existingTasks[0];
+          const needsUpdate =
+            existing.title !== event.summary ||
+            existing.description !== (event.description || null) ||
+            existing.due_date !== startDateTime;
+
+          if (needsUpdate) {
+            await supabaseAdmin
+              .from("tasks")
+              .update({
+                title: event.summary,
+                description: event.description || null,
+                due_date: startDateTime,
+              })
+              .eq("id", existing.id);
+            updated++;
+          }
+        } else {
+          // Create new task from event
+          await supabaseAdmin
+            .from("tasks")
+            .insert({
+              title: event.summary,
+              description: event.description || null,
+              due_date: startDateTime,
+              google_event_id: event.id,
+              created_by: userId,
+              quadrant: "schedule",
+              status: "pending",
+            });
+          imported++;
+        }
+      }
+
+      await supabaseAdmin
+        .from("google_calendar_tokens")
+        .update({ last_synced_at: new Date().toISOString() })
+        .eq("user_id", userId);
+
+      return new Response(
+        JSON.stringify({ success: true, imported, updated, total: events.length }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
+    }
+
+    // ── SYNC ALL TASKS (Tasks → Google) ──
     if (action === "sync-tasks") {
       const { data: tasks, error: tasksError } = await supabaseAdmin
         .from("tasks")
@@ -247,7 +350,6 @@ Deno.serve(async (req) => {
         const endDateTime = new Date(new Date(startDateTime).getTime() + 60 * 60 * 1000).toISOString();
 
         if (task.google_event_id) {
-          // Update existing event
           try {
             const res = await fetch(
               `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events/${task.google_event_id}`,
@@ -266,12 +368,11 @@ Deno.serve(async (req) => {
               }
             );
             if (res.ok) synced++;
-            else await res.text(); // consume body
+            else await res.text();
           } catch (_e) {
-            // skip failed updates
+            // skip
           }
         } else {
-          // Create new event
           try {
             const res = await fetch(
               `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`,
@@ -298,12 +399,11 @@ Deno.serve(async (req) => {
               synced++;
             }
           } catch (_e) {
-            // skip failed creates
+            // skip
           }
         }
       }
 
-      // Update last_synced_at
       await supabaseAdmin
         .from("google_calendar_tokens")
         .update({ last_synced_at: new Date().toISOString() })
@@ -320,10 +420,11 @@ Deno.serve(async (req) => {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
     });
   } catch (err) {
+    const status = (err instanceof Error && err.message === "Unauthorized") ? 401 : 500;
     console.error("google-calendar-sync error:", err);
     return new Response(
       JSON.stringify({ error: err instanceof Error ? err.message : "Unknown error" }),
-      { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      { status, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
   }
 });
