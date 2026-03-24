@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { TenantProvider } from "@/hooks/useTenantContext";
 import Index from "./pages/Index";
 import Metrics from "./pages/Metrics";
 import Projects from "./pages/Projects";
