@@ -125,8 +125,28 @@ export default function Index() {
 
   return (
     <AppLayout onSearch={setSearchQuery} onFocusMode={() => setFocusOpen(true)} onCreateTask={() => setCreateOpen(true)}>
-      <div className="p-2 md:p-6 h-full flex flex-col">
-
+      <div
+        ref={containerRef}
+        className="p-2 md:p-6 h-full flex flex-col overflow-auto"
+        {...pullHandlers}
+      >
+        {/* Pull-to-refresh indicator */}
+        {(isPulling || isRefreshing) && (
+          <div
+            className="flex items-center justify-center py-2 transition-all"
+            style={{ height: pullDistance > 0 ? pullDistance : isRefreshing ? 36 : 0 }}
+          >
+            <RefreshCw
+              className={`h-5 w-5 text-primary transition-transform ${
+                isRefreshing ? 'animate-spin' : ''
+              }`}
+              style={{
+                transform: !isRefreshing ? `rotate(${Math.min(pullDistance * 4, 360)}deg)` : undefined,
+                opacity: Math.min(pullDistance / 60, 1),
+              }}
+            />
+          </div>
+        )}
         {/* In Progress Section */}
         {inProgressTasks.length > 0 && (
           <div className="mb-4 rounded-xl border-2 border-primary/30 bg-primary/5 overflow-hidden">
