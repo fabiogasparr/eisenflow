@@ -65,7 +65,7 @@ export default function AdminPage() {
         supabase.from('tasks').select('created_by, status'),
       ]);
 
-      setProfiles((profilesRes.data as any as UserProfile[]) || []);
+      setProfiles((profilesRes.data as UserProfile[]) || []);
 
       // Build gamification map
       const gMap: Record<string, UserGamification> = {};
