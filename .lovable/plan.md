@@ -1,75 +1,114 @@
 
 
-# Calendário Unificado: App + Google Calendar
+# Arquitetura Multi-Tenant
 
-## Problema
+## Situação Atual
 
-1. **Eventos do Google não aparecem no calendário** — O calendário atual (`WeeklyPlanner`) só mostra tarefas do banco de dados. Eventos do Google Calendar só aparecem se forem importados como tarefas (criando duplicação).
-2. **Sem visualização mesclada** — Não há forma de ver eventos nativos do Google Calendar lado a lado com as tarefas do app.
-3. **Evento de 24/abril pode não ter sido importado** — A importação automática roda uma vez por sessão e pode ter falhado ou o evento pode estar fora do range de 30 dias.
+Não existe conceito de **tenant** no banco de dados. A aba "Tenants" no Admin apenas lista os **times**. O modelo atual trata times como a unidade organizacional principal, sem isolamento de dados entre organizações.
 
-## Solução
-
-Criar um calendário unificado que busca eventos diretamente da API do Google Calendar (via edge function) e os exibe junto com as tarefas do app, sem precisar importá-los como tarefas.
-
-## Mudanças
-
-### 1. Hook `useGoogleCalendarEvents` (novo: `src/hooks/useGoogleCalendarEvents.ts`)
-
-- Query que chama `google-calendar-sync` com action `list-events`, passando `timeMin`/`timeMax` baseados no período visível (semana ou mês atual)
-- Retorna array de eventos Google com `{ id, summary, description, start, end, htmlLink }`
-- Re-fetches quando o período muda (navegação semana/mês)
-- Só ativa se Google Calendar estiver conectado
-
-### 2. Tipo `CalendarItem` (union type)
+## Modelo Proposto
 
 ```text
-CalendarItem = 
-  | { type: 'task'; data: Task }
-  | { type: 'google-event'; data: GoogleEvent }
+┌─────────────────────────────────────────────────────┐
+│                    TENANT (Org)                     │
+│  - Configurações isoladas                           │
+│  - Vários usuários (tenant_members)                 │
+│  - Vários times internos                            │
+│                                                     │
+│  ┌──────────┐  ┌──────────┐  ┌──────────┐          │
+│  │ Time A   │  │ Time B   │  │ Time C   │          │
+│  │ usr1,2,3 │  │ usr2,4   │  │ usr1,5   │          │
+│  └──────────┘  └──────────┘  └──────────┘          │
+└─────────────────────────────────────────────────────┘
+
+Relações cross-tenant:
+- Usr6 (Tenant B) pode participar do Time A (Tenant A)
+- Usr7 (sem tenant) pode ser convidado como guest em um Time/Projeto
 ```
 
-Permite diferenciar visualmente e tratar cada tipo de item.
+## Mudanças no Banco de Dados
 
-### 3. Atualizar `WeeklyPlanner.tsx`
+### 1. Tabela `tenants`
+- `id`, `name`, `slug` (unique), `logo_url`, `created_by`, `created_at`, `updated_at`
+- RLS: membros veem seu tenant; super_admin vê todos
 
-- Importar `useGoogleCalendar` e o novo `useGoogleCalendarEvents`
-- Passar `timeMin`/`timeMax` baseados no período visível
-- No `getTasksForDay`, mesclar tarefas + eventos Google, ordenados por horário
-- Renderizar eventos Google com estilo diferenciado (ícone do Google Calendar, cor azul, sem drag-and-drop)
-- Eventos Google são read-only no calendário (clicáveis para abrir no Google Calendar via `htmlLink`)
+### 2. Tabela `tenant_members`
+- `id`, `tenant_id` (FK tenants), `user_id`, `role` (enum: `owner`, `admin`, `member`, `guest`), `joined_at`
+- `UNIQUE(tenant_id, user_id)`
+- RLS: membros do tenant veem membros do mesmo tenant; super_admin vê todos
 
-### 4. Componente `GoogleEventCard` (inline no WeeklyPlanner ou componente separado)
+### 3. Alterar tabela `teams`
+- Adicionar coluna `tenant_id` (uuid, nullable, FK tenants)
+- Times com `tenant_id` pertencem a um tenant
+- Times sem `tenant_id` são times independentes (cross-tenant ou pessoais)
+- Ajustar RLS: membros do tenant podem ver times do tenant
 
-- Visual diferente das tarefas: borda azul Google, ícone de calendário, horário visível
-- Sem grip/drag (não são arrastáveis)
-- Click abre o evento no Google Calendar (nova aba)
-- Tooltip com detalhes (horário, descrição)
+### 4. Alterar tabela `tasks`
+- Adicionar coluna `tenant_id` (uuid, nullable, FK tenants)
+- Tarefas criadas por membro de um tenant herdam o `tenant_id`
+- RLS adicional: membros do tenant veem tarefas do tenant (se no mesmo projeto/time)
+- **Guest: pode SELECT e UPDATE, mas NÃO pode DELETE**
 
-### 5. Ajustar edge function `google-calendar-sync`
+### 5. Alterar tabela `projects`
+- Adicionar coluna `tenant_id` (uuid, nullable, FK tenants)
+- Projetos de um tenant ficam isolados via RLS
 
-- A action `list-events` já existe e funciona
-- Garantir que aceita `timeMin`/`timeMax` como parâmetros do body (já aceita)
-- Nenhuma mudança necessária na edge function
+### 6. Funções auxiliares (SECURITY DEFINER)
+- `get_user_tenant_id(uuid)` → retorna tenant_id do usuário
+- `is_tenant_member(uuid, uuid)` → verifica se user é membro do tenant
+- `get_tenant_role(uuid, uuid)` → retorna role do user no tenant
 
-### 6. Indicador de loading
+### 7. Políticas RLS atualizadas
 
-- Skeleton sutil enquanto eventos Google carregam
-- Badge "Google Calendar" no header quando eventos estão sendo exibidos
+**Princípio**: dados de um tenant só visíveis para membros daquele tenant. Guests veem apenas o que foi explicitamente compartilhado (time/projeto que foram adicionados).
+
+- `tasks`: adicionar policy "Tenant members can view tenant tasks" usando `is_tenant_member`
+- `tasks`: guest policy — SELECT e UPDATE sim, DELETE não
+- `projects`: adicionar policy para isolamento por tenant
+- `teams`: adicionar policy para times do tenant
+
+## Mudanças no Frontend
+
+### 8. Hook `useTenants` (novo)
+- CRUD de tenants
+- Listar membros do tenant
+- Convidar/remover membros
+- Gerenciar configurações do tenant
+
+### 9. Página de Gestão do Tenant
+- Novo item no menu lateral "Organização" ou ajustar a página existente
+- Listar membros, times, projetos do tenant
+- Configurações do tenant (nome, logo, slug)
+
+### 10. Atualizar Admin Page
+- Aba "Tenants" passa a listar tenants reais (não times)
+- Exibir membros, times e projetos por tenant
+
+### 11. Atualizar fluxo de criação
+- Ao criar tarefa/projeto, se o usuário pertence a um tenant, o `tenant_id` é preenchido automaticamente
+- Ao criar time, permitir associar a um tenant
+
+### 12. Contexto de Tenant no App
+- Hook `useTenantContext` para saber o tenant ativo do usuário logado
+- Usado em queries para filtrar dados por tenant
 
 ## Arquivos
 
 | Arquivo | Ação |
 |---------|------|
-| `src/hooks/useGoogleCalendarEvents.ts` | Criar — query de eventos por período |
-| `src/pages/WeeklyPlanner.tsx` | Modificar — mesclar eventos Google + tarefas |
-| `src/hooks/useGoogleCalendar.ts` | Sem mudanças |
-| `supabase/functions/google-calendar-sync/index.ts` | Sem mudanças |
+| Migração SQL | Criar tabelas `tenants`, `tenant_members`, colunas `tenant_id`, funções, RLS |
+| `src/hooks/useTenants.ts` | Criar — CRUD tenants + membros |
+| `src/hooks/useTenantContext.ts` | Criar — contexto do tenant ativo |
+| `src/pages/AdminPage.tsx` | Modificar — aba Tenants real |
+| `src/pages/TeamsPage.tsx` | Modificar — associar times a tenants |
+| `src/components/CreateTaskDialog.tsx` | Modificar — preencher tenant_id |
+| `src/pages/Projects.tsx` | Modificar — preencher tenant_id |
+| `src/components/AppSidebar.tsx` | Modificar — item "Organização" |
+| `src/hooks/useTasks.ts` | Modificar — incluir tenant_id nas queries |
 
-## Detalhes técnicos
+## Observações
 
-- Eventos Google são buscados via `supabase.functions.invoke('google-calendar-sync', { body: { action: 'list-events', timeMin, timeMax } })`
-- O período é recalculado quando o usuário navega (semana anterior/próxima, mês anterior/próximo)
-- `staleTime` de 5 minutos para evitar chamadas excessivas à API do Google
-- Eventos Google sem `dateTime` (eventos de dia inteiro) usam `date` como referência
+- Migração retroativa: tarefas/projetos/times existentes ficarão sem `tenant_id` (pessoais). O super_admin poderá associá-los a tenants depois.
+- O enum `guest` no `tenant_members.role` permite que convidados externos tenham acesso controlado (view + edit, sem delete).
+- Configurações de perfil (`profiles`) permanecem isoladas por usuário, independente do tenant.
 
