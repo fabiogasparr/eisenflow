@@ -1,50 +1,39 @@
 
 
-# Seletor de Calendários + Sync Bidirecional
+# Melhorias no Google Calendar: Tela de Callback + Import Automático
 
-## Problemas Identificados
+## Problemas
 
-1. **Sem seletor de calendário**: Após conectar, o usuário não pode escolher qual calendário usar — sempre usa "primary". A API do Google permite listar todos os calendários do usuário.
-2. **Sync unidirecional**: Atualmente só sincroniza Tarefas → Google Calendar. Não importa eventos do Google Calendar como tarefas.
+1. **Tela de callback feia**: Após autorizar o Google, o popup mostra HTML cru com script visível (screenshot do usuário)
+2. **Botão "Importar do Calendar" desnecessário**: O usuário quer que os eventos sejam importados automaticamente quando sincronizar, sem ação manual separada
 
 ## Mudanças
 
-### 1. Adicionar ação `list-calendars` na Edge Function `google-calendar-sync`
+### 1. Melhorar tela de callback (`supabase/functions/google-calendar-auth/index.ts`)
 
-Novo action que chama `GET /calendar/v3/users/me/calendarList` com o access_token do usuário e retorna a lista de calendários (id, summary, primary, backgroundColor).
+Substituir o HTML simples da resposta de sucesso (linha 155-163) por uma página estilizada com:
+- Background branco, fonte sans-serif, ícone de check verde (SVG inline)
+- Mensagem "Google Calendar conectado com sucesso!"
+- Texto secundário "Esta janela será fechada automaticamente..."
+- O script de `postMessage` + `window.close()` continua funcionando igual, mas fica oculto no HTML bem formatado
+- Fazer o mesmo para a página de erro (linha 112-114 e 148-151)
 
-### 2. Adicionar `listCalendars` no hook `useGoogleCalendar`
+### 2. Remover botão "Importar do Calendar" (`src/pages/SettingsPage.tsx`)
 
-Nova query que busca a lista de calendários quando o usuário está conectado. Retorna array de `{ id, summary, primary }`.
+- Remover o botão de importação separado (linhas 250-258)
+- O "Sincronizar agora" já faz export + import bidirecionalmente (lógica atual do `syncAllTasks`)
 
-### 3. Adicionar seletor de calendário na Settings
+### 3. Import automático ao carregar tarefas (`src/hooks/useGoogleCalendar.ts`)
 
-Após conectar, exibir um `<Select>` com os calendários disponíveis. Ao selecionar, atualiza `calendar_id` na tabela `google_calendar_tokens` via `updateSettings`.
+- Adicionar um `useEffect` que, quando `isConnected && sync_enabled`, dispara automaticamente o `import-events` uma vez por sessão (usando flag em `sessionStorage` para evitar repetição)
+- Isso garante que ao abrir o app, eventos do Google são importados sem precisar clicar nada
 
-### 4. Adicionar sync bidirecional (Google → Tarefas)
+### 4. Remover `importEvents` do hook público
 
-Nova ação `import-events` na edge function `google-calendar-sync`:
-- Busca eventos do Google Calendar do período (próximos 30 dias)
-- Para cada evento que não tenha uma tarefa correspondente (verificando por `google_event_id`), cria uma nova tarefa com:
-  - `title` = event summary
-  - `description` = event description
-  - `due_date` = event start dateTime
-  - `google_event_id` = event id
-  - `quadrant` = 'schedule' (padrão para eventos importados)
-  - `status` = 'pending'
-- Eventos que já têm tarefa correspondente: atualiza título/descrição/data se modificados no Google
-
-### 5. Botão "Importar eventos" na Settings + opção no sync
-
-- Adicionar botão "Importar do Calendar" na seção Google Calendar das Settings
-- O "Sincronizar agora" passará a fazer sync bidirecional (exporta tarefas + importa eventos)
-
-### 6. Hook `useGoogleCalendar` — expor `importEvents`
-
-Nova mutation que chama a action `import-events`.
+- Manter apenas internamente; remover do retorno do hook e da Settings
 
 ### Arquivos modificados
-- `supabase/functions/google-calendar-sync/index.ts` — actions `list-calendars` e `import-events`
-- `src/hooks/useGoogleCalendar.ts` — `listCalendars` query + `importEvents` mutation
-- `src/pages/SettingsPage.tsx` — seletor de calendário + botão importar
+- `supabase/functions/google-calendar-auth/index.ts` — HTML bonito no callback
+- `src/pages/SettingsPage.tsx` — remover botão importar
+- `src/hooks/useGoogleCalendar.ts` — auto-import ao carregar
 
