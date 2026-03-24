@@ -4,6 +4,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { useToast } from '@/hooks/use-toast';
+import { useTenantContext } from '@/hooks/useTenantContext';
 
 export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
   const { user } = useAuth();
