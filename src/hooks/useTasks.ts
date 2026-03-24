@@ -10,6 +10,7 @@ export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { activeTenantId } = useTenantContext();
 
   // Realtime: auto-refresh quadrants when tasks change (e.g. via WhatsApp webhook)
   useEffect(() => {
