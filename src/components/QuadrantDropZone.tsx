@@ -47,7 +47,7 @@ export function QuadrantDropZone({ quadrant, tasks, onTaskClick, onComplete, onD
               <p className="text-center text-xs text-muted-foreground py-4">{t('noTasks')}</p>
             ) : (
               tasks.map((task) => (
-                <TaskCard key={task.id} task={task} onClick={onTaskClick} />
+                <TaskCard key={task.id} task={task} onClick={onTaskClick} onComplete={onComplete} onDelete={onDelete} />
               ))
             )}
           </div>
