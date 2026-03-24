@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Calendar, RefreshCw, Unplug, CheckCircle2, Download } from 'lucide-react';
+import { Calendar, RefreshCw, Unplug, CheckCircle2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { t, language, setLanguage } = useLanguage();
@@ -246,15 +246,6 @@ export default function SettingsPage() {
                   >
                     <RefreshCw className={`h-4 w-4 mr-1 ${gcal.syncAllTasks.isPending ? 'animate-spin' : ''}`} />
                     {language === 'pt-BR' ? 'Sincronizar agora' : 'Sync now'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => gcal.importEvents.mutate()}
-                    disabled={gcal.importEvents.isPending}
-                  >
-                    <Download className={`h-4 w-4 mr-1 ${gcal.importEvents.isPending ? 'animate-spin' : ''}`} />
-                    {language === 'pt-BR' ? 'Importar do Calendar' : 'Import from Calendar'}
                   </Button>
                   <Button
                     variant="ghost"

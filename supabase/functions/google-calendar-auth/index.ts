@@ -6,6 +6,22 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+function styledPage(title: string, subtitle: string, success: boolean, postMessage = false) {
+  const icon = success
+    ? `<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>`
+    : `<svg width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`;
+  const script = postMessage
+    ? `<script>if(window.opener){window.opener.postMessage({type:'google-calendar-connected'},'*')}setTimeout(function(){window.close()},2000);</script>`
+    : `<script>setTimeout(function(){window.close()},3000);</script>`;
+  return `<!DOCTYPE html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title></head>
+<body style="margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#f8fafc;">
+<div style="text-align:center;padding:2rem;">
+${icon}
+<h1 style="margin:1.5rem 0 .5rem;font-size:1.5rem;color:#1e293b;">${title}</h1>
+<p style="color:#64748b;font-size:1rem;">${subtitle}</p>
+</div>${script}</body></html>`;
+}
+
 Deno.serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -66,10 +82,7 @@ Deno.serve(async (req) => {
       const errorParam = url.searchParams.get("error");
 
       if (errorParam) {
-        return new Response(
-          `<html><body><script>window.close();</script><p>Autorização cancelada. Pode fechar esta aba.</p></body></html>`,
-          { headers: { "Content-Type": "text/html" } }
-        );
+      return new Response(styledPage('Autorização cancelada', 'Pode fechar esta aba.', false), { headers: { "Content-Type": "text/html" } });
       }
 
       if (!code || !state) {
@@ -108,10 +121,7 @@ Deno.serve(async (req) => {
       const tokenData = await tokenRes.json();
       if (!tokenRes.ok) {
         console.error("Token exchange failed:", tokenData);
-        return new Response(
-          `<html><body><script>window.close();</script><p>Erro ao conectar. Tente novamente.</p></body></html>`,
-          { headers: { "Content-Type": "text/html" } }
-        );
+        return new Response(styledPage('Erro ao conectar', 'Tente novamente.', false), { headers: { "Content-Type": "text/html" } });
       }
 
       // Get user's Google email
@@ -145,20 +155,12 @@ Deno.serve(async (req) => {
 
       if (upsertError) {
         console.error("Upsert error:", upsertError);
-        return new Response(
-          `<html><body><script>window.close();</script><p>Erro ao salvar tokens.</p></body></html>`,
-          { headers: { "Content-Type": "text/html" } }
-        );
+        return new Response(styledPage('Erro ao salvar tokens', 'Tente novamente.', false), { headers: { "Content-Type": "text/html" } });
       }
 
       // Success - close popup window and notify parent
       return new Response(
-        `<html><body><script>
-          if (window.opener) {
-            window.opener.postMessage({ type: 'google-calendar-connected' }, '*');
-          }
-          window.close();
-        </script><p>Google Calendar conectado com sucesso! Pode fechar esta aba.</p></body></html>`,
+        styledPage('Google Calendar conectado!', 'Esta janela será fechada automaticamente...', true, true),
         { headers: { "Content-Type": "text/html" } }
       );
     }

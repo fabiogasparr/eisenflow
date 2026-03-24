@@ -35,6 +35,20 @@ export function useGoogleCalendar() {
     enabled: !!user,
   });
 
+  // Auto-import events once per session when connected + sync enabled
+  useEffect(() => {
+    if (tokenQuery.data?.sync_enabled && sessionStorage.getItem('gcal-auto-imported') !== 'true') {
+      sessionStorage.setItem('gcal-auto-imported', 'true');
+      supabase.functions.invoke('google-calendar-sync', {
+        body: { action: 'import-events' },
+      }).then(({ error }) => {
+        if (!error) {
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        }
+      }).catch(console.error);
+    }
+  }, [tokenQuery.data?.sync_enabled, queryClient]);
+
   const isConnected = !!tokenQuery.data;
 
   const calendarsQuery = useQuery({
@@ -178,7 +192,7 @@ export function useGoogleCalendar() {
     connect,
     disconnect,
     syncAllTasks,
-    importEvents,
+    
     syncTask,
     updateSettings,
   };
