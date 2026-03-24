@@ -3,18 +3,22 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { useCalendarSettings } from '@/hooks/useCalendarSettings';
 import { usePomodoroSettings } from '@/hooks/usePomodoroSettings';
 import { useWhatsApp } from '@/hooks/useWhatsApp';
+import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { WhatsAppQRCode } from '@/components/WhatsAppQRCode';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Calendar, RefreshCw, Unplug, CheckCircle2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { t, language, setLanguage } = useLanguage();
   const calendar = useCalendarSettings();
   const pomo = usePomodoroSettings();
   const whatsapp = useWhatsApp();
+  const gcal = useGoogleCalendar();
 
   return (
     <AppLayout>
@@ -148,6 +152,85 @@ export default function SettingsPage() {
                     <p>/ajuda — {language === 'pt-BR' ? 'Ver comandos' : 'Show commands'}</p>
                   </div>
                 </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Google Calendar */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display flex items-center gap-2">
+              <Calendar className="h-5 w-5" />
+              Google Calendar
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            {gcal.isLoading ? (
+              <p className="text-sm text-muted-foreground">
+                {language === 'pt-BR' ? 'Carregando...' : 'Loading...'}
+              </p>
+            ) : gcal.isConnected ? (
+              <>
+                <div className="flex items-center gap-2 text-sm">
+                  <CheckCircle2 className="h-4 w-4 text-green-500" />
+                  <span className="text-muted-foreground">
+                    {language === 'pt-BR' ? 'Conectado' : 'Connected'}
+                    {gcal.tokenData?.google_email && ` — ${gcal.tokenData.google_email}`}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="gcal-sync">
+                    {language === 'pt-BR' ? 'Sincronização automática' : 'Auto sync'}
+                  </Label>
+                  <Switch
+                    id="gcal-sync"
+                    checked={gcal.tokenData?.sync_enabled ?? true}
+                    onCheckedChange={(v) => gcal.updateSettings.mutate({ sync_enabled: v })}
+                  />
+                </div>
+
+                {gcal.tokenData?.last_synced_at && (
+                  <p className="text-xs text-muted-foreground">
+                    {language === 'pt-BR' ? 'Última sincronização' : 'Last synced'}:{' '}
+                    {new Date(gcal.tokenData.last_synced_at).toLocaleString(language)}
+                  </p>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-2 pt-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => gcal.syncAllTasks.mutate()}
+                    disabled={gcal.syncAllTasks.isPending}
+                  >
+                    <RefreshCw className={`h-4 w-4 mr-1 ${gcal.syncAllTasks.isPending ? 'animate-spin' : ''}`} />
+                    {language === 'pt-BR' ? 'Sincronizar agora' : 'Sync now'}
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => gcal.disconnect.mutate()}
+                    disabled={gcal.disconnect.isPending}
+                    className="text-destructive hover:text-destructive"
+                  >
+                    <Unplug className="h-4 w-4 mr-1" />
+                    {language === 'pt-BR' ? 'Desconectar' : 'Disconnect'}
+                  </Button>
+                </div>
+              </>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-sm text-muted-foreground">
+                  {language === 'pt-BR'
+                    ? 'Conecte sua conta Google para sincronizar tarefas com o Google Calendar automaticamente.'
+                    : 'Connect your Google account to automatically sync tasks with Google Calendar.'}
+                </p>
+                <Button onClick={gcal.connect} variant="outline">
+                  <Calendar className="h-4 w-4 mr-2" />
+                  {language === 'pt-BR' ? 'Conectar Google Calendar' : 'Connect Google Calendar'}
+                </Button>
               </div>
             )}
           </CardContent>

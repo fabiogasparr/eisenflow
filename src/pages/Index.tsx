@@ -7,6 +7,7 @@ import { CreateTaskDialog } from '@/components/CreateTaskDialog';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { FocusMode } from '@/components/FocusMode';
 import { useTasks } from '@/hooks/useTasks';
+import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useGamification } from '@/hooks/useGamification';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
@@ -20,7 +21,8 @@ import { QUADRANT_CONFIG } from '@/types/task';
 
 export default function Index() {
   const { t, language } = useLanguage();
-  const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask, refetch } = useTasks();
+  const gcal = useGoogleCalendar();
+  const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask, refetch } = useTasks(gcal.syncTask);
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
