@@ -1,15 +1,18 @@
-import { Search, Globe, Moon, Sun, Target, Plus } from 'lucide-react';
+import { Search, Globe, Moon, Sun, Target, Plus, Building2, Check } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTheme } from '@/hooks/useTheme';
 import { NotificationCenter } from '@/components/NotificationCenter';
+import { useTenantContext } from '@/hooks/useTenantContext';
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  DropdownMenuSeparator,
+  DropdownMenuLabel,
 } from '@/components/ui/dropdown-menu';
 
 interface AppHeaderProps {
