@@ -109,6 +109,48 @@ export type Database = {
         }
         Relationships: []
       }
+      google_calendar_tokens: {
+        Row: {
+          access_token: string
+          calendar_id: string
+          created_at: string
+          google_email: string | null
+          id: string
+          last_synced_at: string | null
+          refresh_token: string
+          sync_enabled: boolean
+          token_expires_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_token: string
+          calendar_id?: string
+          created_at?: string
+          google_email?: string | null
+          id?: string
+          last_synced_at?: string | null
+          refresh_token: string
+          sync_enabled?: boolean
+          token_expires_at: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_token?: string
+          calendar_id?: string
+          created_at?: string
+          google_email?: string | null
+          id?: string
+          last_synced_at?: string | null
+          refresh_token?: string
+          sync_enabled?: boolean
+          token_expires_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           body: string
@@ -334,6 +376,7 @@ export type Database = {
           description: string | null
           due_date: string | null
           estimated_time: number | null
+          google_event_id: string | null
           id: string
           impact_score: number | null
           importance: number
@@ -357,6 +400,7 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           estimated_time?: number | null
+          google_event_id?: string | null
           id?: string
           impact_score?: number | null
           importance?: number
@@ -380,6 +424,7 @@ export type Database = {
           description?: string | null
           due_date?: string | null
           estimated_time?: number | null
+          google_event_id?: string | null
           id?: string
           impact_score?: number | null
           importance?: number
