@@ -55,6 +55,7 @@ const AppRoutes = () => (
     <Route path="/delegated" element={<ProtectedRoute><DelegatedPage /></ProtectedRoute>} />
     <Route path="/chat" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+    <Route path="/organization" element={<ProtectedRoute><OrganizationPage /></ProtectedRoute>} />
     <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
