@@ -3,11 +3,13 @@ import { AppLayout } from '@/components/AppLayout';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTasks } from '@/hooks/useTasks';
 import { useCalendarSettings } from '@/hooks/useCalendarSettings';
+import { useGoogleCalendarEvents, type GoogleEvent, type CalendarItem } from '@/hooks/useGoogleCalendarEvents';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
-import { ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, Calendar as CalendarIcon, ExternalLink } from 'lucide-react';
 import {
   format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks,
   startOfMonth, endOfMonth, addMonths, subMonths, getDay,
