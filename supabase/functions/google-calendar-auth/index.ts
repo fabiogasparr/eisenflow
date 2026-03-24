@@ -139,10 +139,7 @@ Deno.serve(async (req) => {
 
       if (upsertError) {
         console.error("Upsert error:", upsertError);
-        return new Response(
-          `<html><body><script>window.close();</script><p>Erro ao salvar tokens.</p></body></html>`,
-          { headers: { "Content-Type": "text/html" } }
-        );
+        return new Response(styledPage('Erro ao salvar tokens', 'Tente novamente.', false), { headers: { "Content-Type": "text/html" } });
       }
 
       // Success - close popup window and notify parent
