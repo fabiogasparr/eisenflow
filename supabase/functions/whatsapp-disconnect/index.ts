@@ -22,11 +22,12 @@ Deno.serve(async (req) => {
       { global: { headers: { Authorization: authHeader } } }
     )
 
-    const { data: { user }, error: userError } = await supabase.auth.getUser()
-    if (userError || !user) {
+    const token = authHeader.replace('Bearer ', '')
+    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token)
+    if (claimsError || !claimsData?.claims) {
       return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
     }
-    const userId = user.id
+    const userId = claimsData.claims.sub
 
     const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')
     const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')
