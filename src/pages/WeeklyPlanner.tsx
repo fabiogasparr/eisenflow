@@ -299,13 +299,6 @@ export default function WeeklyPlanner() {
       return dateStr && isSameDay(new Date(dateStr), day);
     });
 
-  // Weekly state
-  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
-    startOfWeek(new Date(), { weekStartsOn: 1 })
-  );
-  // Monthly state
-  const [currentMonth, setCurrentMonth] = useState(() => new Date());
-
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
