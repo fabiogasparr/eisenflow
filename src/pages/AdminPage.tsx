@@ -141,6 +141,7 @@ export default function AdminPage() {
       });
       setTenantMembersData(tmemMap);
 
+      const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const activeUsers = (gamificationRes.data || []).filter(
         (g: any) => g.last_active_date && new Date(g.last_active_date) >= sevenDaysAgo
