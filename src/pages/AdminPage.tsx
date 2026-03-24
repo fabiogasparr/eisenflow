@@ -108,7 +108,7 @@ export default function AdminPage() {
     setTogglingUser(userId);
     const { error } = await supabase
       .from('profiles')
-      .update({ disabled: !currentDisabled })
+      .update({ disabled: !currentDisabled } as any)
       .eq('user_id', userId);
 
     if (error) {
