@@ -4,11 +4,13 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { useToast } from '@/hooks/use-toast';
+import { useTenantContext } from '@/hooks/useTenantContext';
 
 export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
+  const { activeTenantId } = useTenantContext();
 
   // Realtime: auto-refresh quadrants when tasks change (e.g. via WhatsApp webhook)
   useEffect(() => {
@@ -53,7 +55,8 @@ export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
           created_by: user.id,
           tags: input.tags ?? [],
           recurrence_rule: input.recurrence_rule ?? null,
-        })
+          tenant_id: activeTenantId ?? null,
+        } as any)
         .select()
         .single();
       if (error) throw error;

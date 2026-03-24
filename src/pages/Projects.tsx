@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTeams } from '@/hooks/useTeams';
+import { useTenantContext } from '@/hooks/useTenantContext';
 
 const QUADRANT_META: Record<string, { label: string; labelPt: string; color: string }> = {
   do: { label: 'Do', labelPt: 'Fazer', color: 'bg-green-500' },
@@ -39,6 +40,7 @@ export default function Projects() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { teams } = useTeams();
+  const { activeTenantId } = useTenantContext();
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
@@ -101,7 +103,8 @@ export default function Projects() {
         color,
         owner_id: user.id,
         team_id: teamId || null,
-      });
+        tenant_id: activeTenantId ?? null,
+      } as any);
       if (error) throw error;
     },
     onSuccess: () => {

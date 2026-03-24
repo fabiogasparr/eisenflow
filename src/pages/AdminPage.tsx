@@ -70,12 +70,14 @@ export default function AdminPage() {
   const [togglingUser, setTogglingUser] = useState<string | null>(null);
   const [teamsData, setTeamsData] = useState<TeamInfo[]>([]);
   const [teamMembersMap, setTeamMembersMap] = useState<Record<string, TeamMemberInfo[]>>({});
+  const [tenantsData, setTenantsData] = useState<any[]>([]);
+  const [tenantMembersData, setTenantMembersData] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     if (!isSuperAdmin) return;
 
     const fetchData = async () => {
-      const [profilesRes, tasksRes, completedRes, gamificationRes, allTasksRes, teamsRes, teamMembersRes] = await Promise.all([
+      const [profilesRes, tasksRes, completedRes, gamificationRes, allTasksRes, teamsRes, teamMembersRes, tenantsRes, tenantMembersRes] = await Promise.all([
         supabase.from('profiles').select('user_id, display_name, created_at, preferred_language, disabled'),
         supabase.from('tasks').select('id', { count: 'exact', head: true }),
         supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
@@ -83,6 +85,8 @@ export default function AdminPage() {
         supabase.from('tasks').select('created_by, status'),
         supabase.from('teams').select('id, name, description, created_at, created_by'),
         supabase.from('team_members').select('team_id, user_id, role, joined_at'),
+        supabase.from('tenants').select('*'),
+        supabase.from('tenant_members').select('*'),
       ]);
 
       setProfiles((profilesRes.data as UserProfile[]) || []);
@@ -124,6 +128,18 @@ export default function AdminPage() {
         });
       });
       setTeamMembersMap(tmMap);
+
+      // Build tenants data
+      setTenantsData((tenantsRes.data as any[]) || []);
+      const tmemMap: Record<string, any[]> = {};
+      (tenantMembersRes.data || []).forEach((m: any) => {
+        if (!tmemMap[m.tenant_id]) tmemMap[m.tenant_id] = [];
+        tmemMap[m.tenant_id].push({
+          ...m,
+          display_name: profileMap[m.user_id] || null,
+        });
+      });
+      setTenantMembersData(tmemMap);
 
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -300,27 +316,30 @@ export default function AdminPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold">Times / Tenants</h2>
-                    <p className="text-sm text-muted-foreground">{teamsData.length} time(s) cadastrado(s)</p>
+                    <h2 className="text-lg font-semibold">Organizações (Tenants)</h2>
+                    <p className="text-sm text-muted-foreground">{tenantsData.length} organização(ões) cadastrada(s)</p>
                   </div>
                 </div>
-                {teamsData.length === 0 ? (
+                {tenantsData.length === 0 ? (
                   <Card>
                     <CardContent className="flex items-center justify-center py-12 text-muted-foreground">
-                      Nenhum time encontrado.
+                      Nenhuma organização encontrada.
                     </CardContent>
                   </Card>
                 ) : (
-                  teamsData.map(team => {
-                    const members = teamMembersMap[team.id] || [];
-                    const isExpanded = expandedTeam === team.id;
+                  tenantsData.map((tenant: any) => {
+                    const members = tenantMembersData[tenant.id] || [];
+                    const isExpanded = expandedTeam === tenant.id;
                     return (
-                      <Card key={team.id}>
-                        <CardHeader className="cursor-pointer" onClick={() => setExpandedTeam(isExpanded ? null : team.id)}>
+                      <Card key={tenant.id}>
+                        <CardHeader className="cursor-pointer" onClick={() => setExpandedTeam(isExpanded ? null : tenant.id)}>
                           <div className="flex items-center justify-between">
                             <div>
-                              <CardTitle className="text-base">{team.name}</CardTitle>
-                              {team.description && <CardDescription>{team.description}</CardDescription>}
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <Building2 className="h-4 w-4" />
+                                {tenant.name}
+                              </CardTitle>
+                              <CardDescription>{tenant.slug}</CardDescription>
                             </div>
                             <div className="flex items-center gap-3">
                               <Badge variant="secondary">
@@ -328,7 +347,7 @@ export default function AdminPage() {
                                 {members.length} membro(s)
                               </Badge>
                               <span className="text-xs text-muted-foreground">
-                                Criado em {new Date(team.created_at).toLocaleDateString('pt-BR')}
+                                Criado em {new Date(tenant.created_at).toLocaleDateString('pt-BR')}
                               </span>
                               <Button variant="ghost" size="icon">
                                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -347,11 +366,11 @@ export default function AdminPage() {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {members.map(m => (
+                                {members.map((m: any) => (
                                   <TableRow key={m.user_id}>
                                     <TableCell className="font-medium">{m.display_name || '—'}</TableCell>
                                     <TableCell>
-                                      <Badge variant={m.role === 'admin' ? 'default' : m.role === 'manager' ? 'secondary' : 'outline'}>
+                                      <Badge variant={m.role === 'owner' ? 'default' : m.role === 'admin' ? 'secondary' : 'outline'}>
                                         {m.role}
                                       </Badge>
                                     </TableCell>

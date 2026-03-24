@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { LanguageProvider } from "@/i18n/LanguageContext";
 import { ThemeProvider } from "@/hooks/useTheme";
 import { AuthProvider, useAuth } from "@/hooks/useAuth";
+import { TenantProvider } from "@/hooks/useTenantContext";
 import Index from "./pages/Index";
 import Metrics from "./pages/Metrics";
 import Projects from "./pages/Projects";
@@ -19,6 +20,7 @@ import AIChatPage from "./pages/AIChatPage";
 import DelegatedPage from "./pages/DelegatedPage";
 import JoinTeamPage from "./pages/JoinTeamPage";
 import AdminPage from "./pages/AdminPage";
+import OrganizationPage from "./pages/OrganizationPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -53,6 +55,7 @@ const AppRoutes = () => (
     <Route path="/delegated" element={<ProtectedRoute><DelegatedPage /></ProtectedRoute>} />
     <Route path="/chat" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+    <Route path="/organization" element={<ProtectedRoute><OrganizationPage /></ProtectedRoute>} />
     <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
@@ -63,6 +66,7 @@ const App = () => (
     <ThemeProvider>
       <LanguageProvider>
         <AuthProvider>
+          <TenantProvider>
           <TooltipProvider>
             <Toaster />
             <Sonner />
@@ -70,6 +74,7 @@ const App = () => (
               <AppRoutes />
             </BrowserRouter>
           </TooltipProvider>
+          </TenantProvider>
         </AuthProvider>
       </LanguageProvider>
     </ThemeProvider>

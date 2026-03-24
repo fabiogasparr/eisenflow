@@ -262,6 +262,7 @@ export type Database = {
           name: string
           owner_id: string
           team_id: string | null
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -272,6 +273,7 @@ export type Database = {
           name: string
           owner_id: string
           team_id?: string | null
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -282,6 +284,7 @@ export type Database = {
           name?: string
           owner_id?: string
           team_id?: string | null
+          tenant_id?: string | null
           updated_at?: string
         }
         Relationships: [
@@ -290,6 +293,13 @@ export type Database = {
             columns: ["team_id"]
             isOneToOne: false
             referencedRelation: "teams"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "projects_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -388,6 +398,7 @@ export type Database = {
           started_at: string | null
           status: Database["public"]["Enums"]["task_status"]
           tags: string[] | null
+          tenant_id: string | null
           title: string
           updated_at: string
           urgency: number
@@ -412,6 +423,7 @@ export type Database = {
           started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           tags?: string[] | null
+          tenant_id?: string | null
           title: string
           updated_at?: string
           urgency?: number
@@ -436,6 +448,7 @@ export type Database = {
           started_at?: string | null
           status?: Database["public"]["Enums"]["task_status"]
           tags?: string[] | null
+          tenant_id?: string | null
           title?: string
           updated_at?: string
           urgency?: number
@@ -453,6 +466,13 @@ export type Database = {
             columns: ["recurrence_parent_id"]
             isOneToOne: false
             referencedRelation: "tasks"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -541,6 +561,7 @@ export type Database = {
           description: string | null
           id: string
           name: string
+          tenant_id: string | null
           updated_at: string
         }
         Insert: {
@@ -550,6 +571,7 @@ export type Database = {
           description?: string | null
           id?: string
           name: string
+          tenant_id?: string | null
           updated_at?: string
         }
         Update: {
@@ -559,6 +581,77 @@ export type Database = {
           description?: string | null
           id?: string
           name?: string
+          tenant_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "teams_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_members: {
+        Row: {
+          id: string
+          joined_at: string
+          role: Database["public"]["Enums"]["tenant_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          joined_at?: string
+          role?: Database["public"]["Enums"]["tenant_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          id?: string
+          joined_at?: string
+          role?: Database["public"]["Enums"]["tenant_role"]
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_members_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenants: {
+        Row: {
+          created_at: string
+          created_by: string
+          id: string
+          logo_url: string | null
+          name: string
+          slug: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          id?: string
+          logo_url?: string | null
+          name: string
+          slug: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          id?: string
+          logo_url?: string | null
+          name?: string
+          slug?: string
           updated_at?: string
         }
         Relationships: []
@@ -689,7 +782,12 @@ export type Database = {
         Args: { _team_id: string; _user_id: string }
         Returns: Database["public"]["Enums"]["team_role"]
       }
+      get_tenant_role: {
+        Args: { _tenant_id: string; _user_id: string }
+        Returns: Database["public"]["Enums"]["tenant_role"]
+      }
       get_user_email: { Args: never; Returns: string }
+      get_user_tenant_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -706,6 +804,10 @@ export type Database = {
         Args: { _team_id: string; _user_id: string }
         Returns: boolean
       }
+      is_tenant_member: {
+        Args: { _tenant_id: string; _user_id: string }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "admin" | "member" | "super_admin"
@@ -715,6 +817,7 @@ export type Database = {
       task_quadrant: "do" | "schedule" | "delegate" | "eliminate"
       task_status: "pending" | "in_progress" | "completed" | "eliminated"
       team_role: "admin" | "manager" | "member"
+      tenant_role: "owner" | "admin" | "member" | "guest"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -849,6 +952,7 @@ export const Constants = {
       task_quadrant: ["do", "schedule", "delegate", "eliminate"],
       task_status: ["pending", "in_progress", "completed", "eliminated"],
       team_role: ["admin", "manager", "member"],
+      tenant_role: ["owner", "admin", "member", "guest"],
     },
   },
 } as const
