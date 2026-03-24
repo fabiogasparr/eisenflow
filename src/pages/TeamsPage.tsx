@@ -60,6 +60,7 @@ export default function TeamsPage() {
   const { language } = useLanguage();
   const pt = language === 'pt-BR';
   const { teams, isLoading, createTeam } = useTeams();
+  const { activeTenantId } = useTenantContext();
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [newTeamName, setNewTeamName] = useState('');
