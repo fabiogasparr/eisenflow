@@ -129,7 +129,18 @@ export default function AdminPage() {
       });
       setTeamMembersMap(tmMap);
 
-      const sevenDaysAgo = new Date();
+      // Build tenants data
+      setTenantsData((tenantsRes.data as any[]) || []);
+      const tmemMap: Record<string, any[]> = {};
+      (tenantMembersRes.data || []).forEach((m: any) => {
+        if (!tmemMap[m.tenant_id]) tmemMap[m.tenant_id] = [];
+        tmemMap[m.tenant_id].push({
+          ...m,
+          display_name: profileMap[m.user_id] || null,
+        });
+      });
+      setTenantMembersData(tmemMap);
+
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const activeUsers = (gamificationRes.data || []).filter(
         (g: any) => g.last_active_date && new Date(g.last_active_date) >= sevenDaysAgo
