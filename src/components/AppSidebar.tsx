@@ -26,6 +26,7 @@ export function AppSidebar() {
   const { signOut, user } = useAuth();
   const location = useLocation();
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+  const { tenants, activeTenant, setActiveTenantId } = useTenantContext();
 
   useEffect(() => {
     if (!user) return;
