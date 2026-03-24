@@ -66,10 +66,7 @@ Deno.serve(async (req) => {
       const errorParam = url.searchParams.get("error");
 
       if (errorParam) {
-        return new Response(
-          `<html><body><script>window.close();</script><p>Autorização cancelada. Pode fechar esta aba.</p></body></html>`,
-          { headers: { "Content-Type": "text/html" } }
-        );
+      return new Response(styledPage('Autorização cancelada', 'Pode fechar esta aba.', false), { headers: { "Content-Type": "text/html" } });
       }
 
       if (!code || !state) {
