@@ -1,110 +1,50 @@
 
 
-# Integração Bidirecional com Google Calendar
+# Seletor de Calendários + Sync Bidirecional
 
-## Visão Geral
+## Problemas Identificados
 
-Cada usuário poderá conectar sua conta Google para sincronizar tarefas com o Google Calendar. Não existe um conector nativo do Google Calendar na plataforma, então a integração será feita via Google OAuth2 + API REST do Google Calendar através de Edge Functions.
-
-## Pré-requisitos (ação do usuário)
-
-Será necessário criar credenciais OAuth2 no Google Cloud Console:
-1. Criar projeto no Google Cloud Console
-2. Ativar a Google Calendar API
-3. Criar credenciais OAuth2 (Web Application)
-4. Configurar redirect URI apontando para a edge function de callback
-5. Fornecer `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` como secrets do projeto
-
-## Arquitetura
-
-```text
-┌─────────────┐    OAuth2     ┌──────────────────┐    API    ┌─────────────┐
-│  Frontend   │ ──────────▶   │  Edge Functions  │ ───────▶  │ Google Cal  │
-│  (Settings) │  ◀──────────  │  (token mgmt)    │ ◀───────  │    API      │
-└─────────────┘               └──────────────────┘           └─────────────┘
-                                      │
-                              ┌───────┴───────┐
-                              │ google_tokens  │
-                              │   (tabela)     │
-                              └───────────────┘
-```
+1. **Sem seletor de calendário**: Após conectar, o usuário não pode escolher qual calendário usar — sempre usa "primary". A API do Google permite listar todos os calendários do usuário.
+2. **Sync unidirecional**: Atualmente só sincroniza Tarefas → Google Calendar. Não importa eventos do Google Calendar como tarefas.
 
 ## Mudanças
 
-### 1. Migração — Tabela `google_calendar_tokens`
+### 1. Adicionar ação `list-calendars` na Edge Function `google-calendar-sync`
 
-Armazena tokens OAuth2 por usuário:
-- `user_id` (uuid, FK profiles, unique)
-- `access_token` (text, encrypted)
-- `refresh_token` (text, encrypted)
-- `token_expires_at` (timestamptz)
-- `calendar_id` (text, default 'primary')
-- `sync_enabled` (boolean, default true)
-- `last_synced_at` (timestamptz)
+Novo action que chama `GET /calendar/v3/users/me/calendarList` com o access_token do usuário e retorna a lista de calendários (id, summary, primary, backgroundColor).
 
-RLS: usuário lê/atualiza apenas seu próprio registro; super_admin lê todos.
+### 2. Adicionar `listCalendars` no hook `useGoogleCalendar`
 
-### 2. Edge Function `google-calendar-auth` — Fluxo OAuth2
+Nova query que busca a lista de calendários quando o usuário está conectado. Retorna array de `{ id, summary, primary }`.
 
-- **GET** `?action=authorize`: Gera URL de autorização Google e redireciona o usuário
-- **GET** `?action=callback&code=...`: Recebe o código, troca por tokens, salva na tabela
-- **POST** `?action=disconnect`: Remove tokens do usuário
+### 3. Adicionar seletor de calendário na Settings
 
-### 3. Edge Function `google-calendar-sync` — Sincronização
+Após conectar, exibir um `<Select>` com os calendários disponíveis. Ao selecionar, atualiza `calendar_id` na tabela `google_calendar_tokens` via `updateSettings`.
 
-- **POST** `?action=list-events`: Lista eventos do Calendar (período configurável)
-- **POST** `?action=create-event`: Cria evento a partir de uma tarefa (título, data, descrição)
-- **POST** `?action=update-event`: Atualiza evento existente
-- **POST** `?action=delete-event`: Remove evento
-- **POST** `?action=sync-tasks`: Sincroniza todas as tarefas com due_date para o Calendar
+### 4. Adicionar sync bidirecional (Google → Tarefas)
 
-Lógica de refresh automático: antes de cada chamada à API, verifica se o `access_token` expirou e usa o `refresh_token` para renovar.
+Nova ação `import-events` na edge function `google-calendar-sync`:
+- Busca eventos do Google Calendar do período (próximos 30 dias)
+- Para cada evento que não tenha uma tarefa correspondente (verificando por `google_event_id`), cria uma nova tarefa com:
+  - `title` = event summary
+  - `description` = event description
+  - `due_date` = event start dateTime
+  - `google_event_id` = event id
+  - `quadrant` = 'schedule' (padrão para eventos importados)
+  - `status` = 'pending'
+- Eventos que já têm tarefa correspondente: atualiza título/descrição/data se modificados no Google
 
-### 4. Migração — Coluna `google_event_id` na tabela `tasks`
+### 5. Botão "Importar eventos" na Settings + opção no sync
 
-Adicionar coluna `google_event_id text` na tabela `tasks` para mapear tarefa ↔ evento do Calendar. Quando uma tarefa com due_date é criada/atualizada, sincroniza automaticamente.
+- Adicionar botão "Importar do Calendar" na seção Google Calendar das Settings
+- O "Sincronizar agora" passará a fazer sync bidirecional (exporta tarefas + importa eventos)
 
-### 5. Hook `useGoogleCalendar` (`src/hooks/useGoogleCalendar.ts`)
+### 6. Hook `useGoogleCalendar` — expor `importEvents`
 
-- `isConnected`: verifica se existe token válido
-- `connect()`: redireciona para a edge function de auth
-- `disconnect()`: remove tokens
-- `listEvents(start, end)`: lista eventos
-- `syncTask(task)`: cria/atualiza evento a partir de tarefa
-- `syncAllTasks()`: sincroniza todas as tarefas com due_date
+Nova mutation que chama a action `import-events`.
 
-### 6. Seção "Google Calendar" na página Settings (`src/pages/SettingsPage.tsx`)
-
-Novo Card com:
-- Botão "Conectar Google Calendar" (quando desconectado)
-- Status da conexão + email conectado (quando conectado)
-- Toggle para ativar/desativar sincronização automática
-- Botão "Sincronizar agora" para forçar sync manual
-- Botão "Desconectar"
-
-### 7. Integração automática — Trigger no `useTasks`
-
-Quando uma tarefa com `due_date` for criada ou atualizada:
-- Se o usuário tem Calendar conectado e sync_enabled = true
-- Automaticamente cria/atualiza o evento correspondente no Google Calendar
-- Armazena o `google_event_id` na tarefa
-
-### 8. Secrets necessários
-
-- `GOOGLE_CLIENT_ID` — ID do cliente OAuth2
-- `GOOGLE_CLIENT_SECRET` — Secret do cliente OAuth2
-
-### Arquivos criados/modificados
-- 1 migração SQL (tabela `google_calendar_tokens` + coluna `google_event_id` em tasks)
-- `supabase/functions/google-calendar-auth/index.ts` — fluxo OAuth2
-- `supabase/functions/google-calendar-sync/index.ts` — operações Calendar API
-- `src/hooks/useGoogleCalendar.ts` — hook frontend
-- `src/pages/SettingsPage.tsx` — nova seção Google Calendar
-- `src/hooks/useTasks.ts` — auto-sync ao criar/atualizar tarefa com due_date
-- `supabase/config.toml` — config das novas edge functions
-
-### Limitações
-- Tokens ficam no banco (criptografia via pgcrypto recomendada para produção)
-- Rate limits da Google Calendar API (1M queries/dia gratuito, suficiente)
-- Cada usuário precisa autorizar individualmente sua conta Google
+### Arquivos modificados
+- `supabase/functions/google-calendar-sync/index.ts` — actions `list-calendars` e `import-events`
+- `src/hooks/useGoogleCalendar.ts` — `listCalendars` query + `importEvents` mutation
+- `src/pages/SettingsPage.tsx` — seletor de calendário + botão importar
 
