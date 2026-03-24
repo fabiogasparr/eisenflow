@@ -192,7 +192,7 @@ export function useGoogleCalendar() {
     connect,
     disconnect,
     syncAllTasks,
-    importEvents,
+    
     syncTask,
     updateSettings,
   };
