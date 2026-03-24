@@ -185,6 +185,10 @@ export default function AdminPage() {
               <Users className="h-4 w-4" />
               Usuários
             </TabsTrigger>
+            <TabsTrigger value="tenants" className="gap-2">
+              <Building2 className="h-4 w-4" />
+              Tenants
+            </TabsTrigger>
             <TabsTrigger value="plans" className="gap-2">
               <CreditCard className="h-4 w-4" />
               Planos
