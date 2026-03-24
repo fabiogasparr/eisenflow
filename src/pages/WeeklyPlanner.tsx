@@ -278,6 +278,34 @@ export default function WeeklyPlanner() {
   // Monthly state
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
 
+  // Compute timeMin/timeMax for Google Calendar events
+  const { timeMin, timeMax } = useMemo(() => {
+    if (viewMode === 'weekly') {
+      const start = currentWeekStart;
+      const end = addDays(start, 7);
+      return { timeMin: start.toISOString(), timeMax: end.toISOString() };
+    } else {
+      const start = startOfMonth(currentMonth);
+      const end = addDays(endOfMonth(currentMonth), 1);
+      return { timeMin: start.toISOString(), timeMax: end.toISOString() };
+    }
+  }, [viewMode, currentWeekStart, currentMonth]);
+
+  const { data: googleEvents = [], isLoading: googleEventsLoading } = useGoogleCalendarEvents(timeMin, timeMax);
+
+  const getGoogleEventsForDay = (day: Date) =>
+    googleEvents.filter((e) => {
+      const dateStr = e.start.dateTime || e.start.date;
+      return dateStr && isSameDay(new Date(dateStr), day);
+    });
+
+  // Weekly state
+  const [currentWeekStart, setCurrentWeekStart] = useState(() =>
+    startOfWeek(new Date(), { weekStartsOn: 1 })
+  );
+  // Monthly state
+  const [currentMonth, setCurrentMonth] = useState(() => new Date());
+
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
 
