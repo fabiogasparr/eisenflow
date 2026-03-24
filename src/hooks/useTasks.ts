@@ -55,7 +55,8 @@ export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
           created_by: user.id,
           tags: input.tags ?? [],
           recurrence_rule: input.recurrence_rule ?? null,
-        })
+          tenant_id: activeTenantId ?? null,
+        } as any)
         .select()
         .single();
       if (error) throw error;
