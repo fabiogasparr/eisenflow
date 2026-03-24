@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Users, ListTodo, Trophy, CreditCard, ChevronDown, ChevronUp, Flame, Target, Clock, Zap } from 'lucide-react';
+import { Users, ListTodo, Trophy, CreditCard, ChevronDown, ChevronUp, Flame, Target, Clock, Zap, Building2 } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
 
