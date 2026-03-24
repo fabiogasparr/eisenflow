@@ -47,8 +47,20 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
+    const { error, data } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
+
+    // Check if user is disabled
+    const { data: profile } = await supabase
+      .from('profiles')
+      .select('disabled')
+      .eq('user_id', data.user.id)
+      .maybeSingle();
+
+    if ((profile as any)?.disabled) {
+      await supabase.auth.signOut();
+      throw new Error('Sua conta foi desativada. Entre em contato com o administrador.');
+    }
   };
 
   const signOut = async () => {

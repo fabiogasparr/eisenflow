@@ -58,14 +58,14 @@ export default function AdminPage() {
 
     const fetchData = async () => {
       const [profilesRes, tasksRes, completedRes, gamificationRes, allTasksRes] = await Promise.all([
-        supabase.from('profiles').select('user_id, display_name, created_at, preferred_language, disabled' as any),
+        supabase.from('profiles').select('user_id, display_name, created_at, preferred_language, disabled'),
         supabase.from('tasks').select('id', { count: 'exact', head: true }),
         supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
         supabase.from('gamification').select('*'),
         supabase.from('tasks').select('created_by, status'),
       ]);
 
-      setProfiles((profilesRes.data as any as UserProfile[]) || []);
+      setProfiles((profilesRes.data as UserProfile[]) || []);
 
       // Build gamification map
       const gMap: Record<string, UserGamification> = {};
