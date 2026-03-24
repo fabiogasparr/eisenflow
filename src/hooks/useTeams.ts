@@ -57,11 +57,11 @@ export function useTeams() {
   });
 
   const createTeam = useMutation({
-    mutationFn: async (input: { name: string; description?: string }) => {
+    mutationFn: async (input: { name: string; description?: string; tenant_id?: string | null }) => {
       if (!user) throw new Error('Not authenticated');
       const { data, error } = await supabase
         .from('teams')
-        .insert({ ...input, created_by: user.id })
+        .insert({ name: input.name, description: input.description, created_by: user.id, tenant_id: input.tenant_id ?? null } as any)
         .select()
         .single();
       if (error) throw error;
