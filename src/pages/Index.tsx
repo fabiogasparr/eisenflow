@@ -9,8 +9,10 @@ import { FocusMode } from '@/components/FocusMode';
 import { useTasks } from '@/hooks/useTasks';
 import { useGamification } from '@/hooks/useGamification';
 import { useLanguage } from '@/i18n/LanguageContext';
+import { usePullToRefresh } from '@/hooks/usePullToRefresh';
+import { useIsMobile } from '@/hooks/use-mobile';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Play } from 'lucide-react';
+import { Play, RefreshCw } from 'lucide-react';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -18,8 +20,14 @@ import { QUADRANT_CONFIG } from '@/types/task';
 
 export default function Index() {
   const { t, language } = useLanguage();
-  const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask } = useTasks();
+  const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask, refetch } = useTasks();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+
+  const { containerRef, pullDistance, isRefreshing, isPulling, handlers: pullHandlers } = usePullToRefresh({
+    onRefresh: async () => { await refetch(); },
+    disabled: !isMobile,
+  });
   const { recordAction } = useGamification();
   const [searchQuery, setSearchQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
@@ -117,8 +125,28 @@ export default function Index() {
 
   return (
     <AppLayout onSearch={setSearchQuery} onFocusMode={() => setFocusOpen(true)} onCreateTask={() => setCreateOpen(true)}>
-      <div className="p-2 md:p-6 h-full flex flex-col">
-
+      <div
+        ref={containerRef}
+        className="p-2 md:p-6 h-full flex flex-col overflow-auto"
+        {...pullHandlers}
+      >
+        {/* Pull-to-refresh indicator */}
+        {(isPulling || isRefreshing) && (
+          <div
+            className="flex items-center justify-center py-2 transition-all"
+            style={{ height: pullDistance > 0 ? pullDistance : isRefreshing ? 36 : 0 }}
+          >
+            <RefreshCw
+              className={`h-5 w-5 text-primary transition-transform ${
+                isRefreshing ? 'animate-spin' : ''
+              }`}
+              style={{
+                transform: !isRefreshing ? `rotate(${Math.min(pullDistance * 4, 360)}deg)` : undefined,
+                opacity: Math.min(pullDistance / 60, 1),
+              }}
+            />
+          </div>
+        )}
         {/* In Progress Section */}
         {inProgressTasks.length > 0 && (
           <div className="mb-4 rounded-xl border-2 border-primary/30 bg-primary/5 overflow-hidden">
