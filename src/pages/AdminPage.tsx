@@ -75,7 +75,7 @@ export default function AdminPage() {
     if (!isSuperAdmin) return;
 
     const fetchData = async () => {
-      const [profilesRes, tasksRes, completedRes, gamificationRes, allTasksRes, teamsRes, teamMembersRes] = await Promise.all([
+      const [profilesRes, tasksRes, completedRes, gamificationRes, allTasksRes, teamsRes, teamMembersRes, tenantsRes, tenantMembersRes] = await Promise.all([
         supabase.from('profiles').select('user_id, display_name, created_at, preferred_language, disabled'),
         supabase.from('tasks').select('id', { count: 'exact', head: true }),
         supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
@@ -83,6 +83,8 @@ export default function AdminPage() {
         supabase.from('tasks').select('created_by, status'),
         supabase.from('teams').select('id, name, description, created_at, created_by'),
         supabase.from('team_members').select('team_id, user_id, role, joined_at'),
+        supabase.from('tenants').select('*'),
+        supabase.from('tenant_members').select('*'),
       ]);
 
       setProfiles((profilesRes.data as UserProfile[]) || []);
