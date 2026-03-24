@@ -316,27 +316,30 @@ export default function AdminPage() {
               <div className="space-y-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg font-semibold">Times / Tenants</h2>
-                    <p className="text-sm text-muted-foreground">{teamsData.length} time(s) cadastrado(s)</p>
+                    <h2 className="text-lg font-semibold">Organizações (Tenants)</h2>
+                    <p className="text-sm text-muted-foreground">{tenantsData.length} organização(ões) cadastrada(s)</p>
                   </div>
                 </div>
-                {teamsData.length === 0 ? (
+                {tenantsData.length === 0 ? (
                   <Card>
                     <CardContent className="flex items-center justify-center py-12 text-muted-foreground">
-                      Nenhum time encontrado.
+                      Nenhuma organização encontrada.
                     </CardContent>
                   </Card>
                 ) : (
-                  teamsData.map(team => {
-                    const members = teamMembersMap[team.id] || [];
-                    const isExpanded = expandedTeam === team.id;
+                  tenantsData.map((tenant: any) => {
+                    const members = tenantMembersData[tenant.id] || [];
+                    const isExpanded = expandedTeam === tenant.id;
                     return (
-                      <Card key={team.id}>
-                        <CardHeader className="cursor-pointer" onClick={() => setExpandedTeam(isExpanded ? null : team.id)}>
+                      <Card key={tenant.id}>
+                        <CardHeader className="cursor-pointer" onClick={() => setExpandedTeam(isExpanded ? null : tenant.id)}>
                           <div className="flex items-center justify-between">
                             <div>
-                              <CardTitle className="text-base">{team.name}</CardTitle>
-                              {team.description && <CardDescription>{team.description}</CardDescription>}
+                              <CardTitle className="text-base flex items-center gap-2">
+                                <Building2 className="h-4 w-4" />
+                                {tenant.name}
+                              </CardTitle>
+                              <CardDescription>{tenant.slug}</CardDescription>
                             </div>
                             <div className="flex items-center gap-3">
                               <Badge variant="secondary">
@@ -344,7 +347,7 @@ export default function AdminPage() {
                                 {members.length} membro(s)
                               </Badge>
                               <span className="text-xs text-muted-foreground">
-                                Criado em {new Date(team.created_at).toLocaleDateString('pt-BR')}
+                                Criado em {new Date(tenant.created_at).toLocaleDateString('pt-BR')}
                               </span>
                               <Button variant="ghost" size="icon">
                                 {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -363,11 +366,11 @@ export default function AdminPage() {
                                 </TableRow>
                               </TableHeader>
                               <TableBody>
-                                {members.map(m => (
+                                {members.map((m: any) => (
                                   <TableRow key={m.user_id}>
                                     <TableCell className="font-medium">{m.display_name || '—'}</TableCell>
                                     <TableCell>
-                                      <Badge variant={m.role === 'admin' ? 'default' : m.role === 'manager' ? 'secondary' : 'outline'}>
+                                      <Badge variant={m.role === 'owner' ? 'default' : m.role === 'admin' ? 'secondary' : 'outline'}>
                                         {m.role}
                                       </Badge>
                                     </TableCell>
