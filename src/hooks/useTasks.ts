@@ -57,10 +57,14 @@ export function useTasks() {
         .select()
         .single();
       if (error) throw error;
-      return data;
+      return data as Task;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      // Auto-sync to Google Calendar if task has due_date
+      if (data?.due_date) {
+        syncTaskToCalendar?.(data as Task);
+      }
     },
     onError: (err: Error) => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
