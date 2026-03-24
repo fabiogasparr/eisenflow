@@ -106,6 +106,25 @@ export default function AdminPage() {
       });
       setTaskCountMap(tMap);
 
+      // Build teams data
+      setTeamsData((teamsRes.data as TeamInfo[]) || []);
+
+      // Build team members map with profile names
+      const profileMap: Record<string, string | null> = {};
+      (profilesRes.data || []).forEach((p: any) => { profileMap[p.user_id] = p.display_name; });
+
+      const tmMap: Record<string, TeamMemberInfo[]> = {};
+      (teamMembersRes.data || []).forEach((m: any) => {
+        if (!tmMap[m.team_id]) tmMap[m.team_id] = [];
+        tmMap[m.team_id].push({
+          user_id: m.user_id,
+          role: m.role,
+          joined_at: m.joined_at,
+          display_name: profileMap[m.user_id] || null,
+        });
+      });
+      setTeamMembersMap(tmMap);
+
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
       const activeUsers = (gamificationRes.data || []).filter(
