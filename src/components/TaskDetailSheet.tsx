@@ -58,7 +58,7 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
   return (
     <>
     <Sheet open={!!task} onOpenChange={() => onClose()}>
-      <SheetContent className="sm:max-w-md overflow-y-auto">
+      <SheetContent side={isMobile ? "bottom" : "right"} className={isMobile ? "max-h-[85dvh] rounded-t-2xl overflow-y-auto" : "sm:max-w-md overflow-y-auto"}>
         <SheetHeader>
           <div className="flex items-center gap-2">
             <span className="text-2xl">{config.emoji}</span>

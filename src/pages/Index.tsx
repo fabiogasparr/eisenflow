@@ -120,7 +120,7 @@ export default function Index() {
               </span>
             </div>
             <ScrollArea className="max-h-[180px]">
-              <div className="p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
+              <div className="p-2 md:p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2">
                 {inProgressTasks.map((task) => {
                   const config = QUADRANT_CONFIG[task.quadrant];
                   const borderColor = QUADRANT_BORDER_COLORS[task.quadrant] ?? '';
