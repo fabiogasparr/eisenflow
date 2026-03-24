@@ -20,8 +20,14 @@ import { QUADRANT_CONFIG } from '@/types/task';
 
 export default function Index() {
   const { t, language } = useLanguage();
-  const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask } = useTasks();
+  const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask, refetch } = useTasks();
   const { toast } = useToast();
+  const isMobile = useIsMobile();
+
+  const { containerRef, pullDistance, isRefreshing, isPulling, handlers: pullHandlers } = usePullToRefresh({
+    onRefresh: async () => { await refetch(); },
+    disabled: !isMobile,
+  });
   const { recordAction } = useGamification();
   const [searchQuery, setSearchQuery] = useState('');
   const [createOpen, setCreateOpen] = useState(false);
