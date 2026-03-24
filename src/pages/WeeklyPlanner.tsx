@@ -124,21 +124,30 @@ function GoogleEventCard({ event }: { event: GoogleEvent }) {
 function DayColumn({
   date,
   tasks,
+  googleEvents,
   isToday,
   locale,
   onTaskClick,
   compact,
+  eventsLoading,
 }: {
   date: Date;
   tasks: Task[];
+  googleEvents: GoogleEvent[];
   isToday: boolean;
   locale: Locale;
   onTaskClick: (t: Task) => void;
   compact?: boolean;
+  eventsLoading?: boolean;
 }) {
   const { t } = useLanguage();
   const dayId = format(date, 'yyyy-MM-dd');
   const { isOver, setNodeRef } = useDroppable({ id: dayId });
+  const totalCount = tasks.length + googleEvents.length;
+
+  // Filter out google events that already have a corresponding task (by google_event_id)
+  const taskGoogleIds = new Set(tasks.filter(t => t.google_event_id).map(t => t.google_event_id));
+  const uniqueGoogleEvents = googleEvents.filter(e => !taskGoogleIds.has(e.id));
 
   if (compact) {
     return (
@@ -152,18 +161,22 @@ function DayColumn({
           <p className={`text-sm font-bold ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
             {format(date, 'd')}
           </p>
-          {tasks.length > 0 && (
+          {totalCount > 0 && (
             <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
-              {tasks.length}
+              {totalCount}
             </span>
           )}
         </div>
         <ScrollArea className="flex-1 p-1">
           <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-1">
+              {uniqueGoogleEvents.map((event) => (
+                <GoogleEventCard key={`ge-${event.id}`} event={event} />
+              ))}
               {tasks.map((task) => (
                 <DraggableWeekTask key={task.id} task={task} onClick={onTaskClick} />
               ))}
+              {eventsLoading && <Skeleton className="h-6 w-full rounded-md" />}
             </div>
           </SortableContext>
         </ScrollArea>
@@ -189,12 +202,15 @@ function DayColumn({
       <ScrollArea className="flex-1 p-2">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1">
-            {tasks.length === 0 ? (
+            {uniqueGoogleEvents.map((event) => (
+              <GoogleEventCard key={`ge-${event.id}`} event={event} />
+            ))}
+            {tasks.map((task) => (
+              <DraggableWeekTask key={task.id} task={task} onClick={onTaskClick} />
+            ))}
+            {eventsLoading && <Skeleton className="h-6 w-full rounded-md" />}
+            {totalCount === 0 && !eventsLoading && (
               <p className="text-center text-[10px] text-muted-foreground py-6">{t('noTasks')}</p>
-            ) : (
-              tasks.map((task) => (
-                <DraggableWeekTask key={task.id} task={task} onClick={onTaskClick} />
-              ))
             )}
           </div>
         </SortableContext>
