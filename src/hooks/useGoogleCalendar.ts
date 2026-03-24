@@ -21,6 +21,24 @@ export function useGoogleCalendar() {
     return () => window.removeEventListener('message', handler);
   }, [queryClient, toast]);
 
+  // Auto-import events once per session when connected + sync enabled
+  const autoImportDone = useCallback(() => {
+    return sessionStorage.getItem('gcal-auto-imported') === 'true';
+  }, []);
+
+  useEffect(() => {
+    if (tokenQuery.data?.sync_enabled && !autoImportDone()) {
+      sessionStorage.setItem('gcal-auto-imported', 'true');
+      supabase.functions.invoke('google-calendar-sync', {
+        body: { action: 'import-events' },
+      }).then(({ error }) => {
+        if (!error) {
+          queryClient.invalidateQueries({ queryKey: ['tasks'] });
+        }
+      }).catch(console.error);
+    }
+  }, [tokenQuery.data?.sync_enabled, autoImportDone, queryClient]);
+
   const tokenQuery = useQuery({
     queryKey: ['google-calendar-token', user?.id],
     queryFn: async () => {
