@@ -13,6 +13,7 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { usePullToRefresh } from '@/hooks/usePullToRefresh';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Skeleton } from '@/components/ui/skeleton';
 import { Play, RefreshCw } from 'lucide-react';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { supabase } from '@/integrations/supabase/client';
