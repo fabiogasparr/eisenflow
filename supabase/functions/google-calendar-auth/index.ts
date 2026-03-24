@@ -144,12 +144,7 @@ Deno.serve(async (req) => {
 
       // Success - close popup window and notify parent
       return new Response(
-        `<html><body><script>
-          if (window.opener) {
-            window.opener.postMessage({ type: 'google-calendar-connected' }, '*');
-          }
-          window.close();
-        </script><p>Google Calendar conectado com sucesso! Pode fechar esta aba.</p></body></html>`,
+        styledPage('Google Calendar conectado!', 'Esta janela será fechada automaticamente...', true, true),
         { headers: { "Content-Type": "text/html" } }
       );
     }
