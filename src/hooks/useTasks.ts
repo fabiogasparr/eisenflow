@@ -5,7 +5,7 @@ import { useAuth } from '@/hooks/useAuth';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { useToast } from '@/hooks/use-toast';
 
-export function useTasks() {
+export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
