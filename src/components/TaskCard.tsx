@@ -135,6 +135,12 @@ export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps)
             {task.title}
           </p>
           <div className="flex items-center gap-1.5 shrink-0">
+            {task.google_event_id && (
+              <span className="flex items-center gap-0.5 rounded-full bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-medium text-blue-600 dark:text-blue-400" title="Google Calendar">
+                <CalendarIcon className="h-2.5 w-2.5" />
+                <span className="hidden sm:inline">GCal</span>
+              </span>
+            )}
             {task.recurrence_rule && (
               <RefreshCw className="h-3 w-3 text-muted-foreground" />
             )}
