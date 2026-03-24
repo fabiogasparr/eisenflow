@@ -248,15 +248,6 @@ export default function SettingsPage() {
                     {language === 'pt-BR' ? 'Sincronizar agora' : 'Sync now'}
                   </Button>
                   <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => gcal.importEvents.mutate()}
-                    disabled={gcal.importEvents.isPending}
-                  >
-                    <Download className={`h-4 w-4 mr-1 ${gcal.importEvents.isPending ? 'animate-spin' : ''}`} />
-                    {language === 'pt-BR' ? 'Importar do Calendar' : 'Import from Calendar'}
-                  </Button>
-                  <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => gcal.disconnect.mutate()}
