@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
-import { Users, ListTodo, Trophy, CreditCard, ChevronDown, ChevronUp, Flame, Target, Clock, Zap } from 'lucide-react';
+import { Users, ListTodo, Trophy, CreditCard, ChevronDown, ChevronUp, Flame, Target, Clock, Zap, Building2 } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
 
@@ -34,6 +34,21 @@ interface UserGamification {
   total_pomodoros: number;
 }
 
+interface TeamInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  created_by: string;
+}
+
+interface TeamMemberInfo {
+  user_id: string;
+  role: string;
+  joined_at: string;
+  display_name: string | null;
+}
+
 interface OverviewStats {
   totalUsers: number;
   totalTasks: number;
@@ -51,18 +66,23 @@ export default function AdminPage() {
   const [stats, setStats] = useState<OverviewStats>({ totalUsers: 0, totalTasks: 0, completedTasks: 0, activeUsers7d: 0 });
   const [loadingData, setLoadingData] = useState(true);
   const [expandedUser, setExpandedUser] = useState<string | null>(null);
+  const [expandedTeam, setExpandedTeam] = useState<string | null>(null);
   const [togglingUser, setTogglingUser] = useState<string | null>(null);
+  const [teamsData, setTeamsData] = useState<TeamInfo[]>([]);
+  const [teamMembersMap, setTeamMembersMap] = useState<Record<string, TeamMemberInfo[]>>({});
 
   useEffect(() => {
     if (!isSuperAdmin) return;
 
     const fetchData = async () => {
-      const [profilesRes, tasksRes, completedRes, gamificationRes, allTasksRes] = await Promise.all([
+      const [profilesRes, tasksRes, completedRes, gamificationRes, allTasksRes, teamsRes, teamMembersRes] = await Promise.all([
         supabase.from('profiles').select('user_id, display_name, created_at, preferred_language, disabled'),
         supabase.from('tasks').select('id', { count: 'exact', head: true }),
         supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
         supabase.from('gamification').select('*'),
         supabase.from('tasks').select('created_by, status'),
+        supabase.from('teams').select('id, name, description, created_at, created_by'),
+        supabase.from('team_members').select('team_id, user_id, role, joined_at'),
       ]);
 
       setProfiles((profilesRes.data as UserProfile[]) || []);
@@ -85,6 +105,25 @@ export default function AdminPage() {
         }
       });
       setTaskCountMap(tMap);
+
+      // Build teams data
+      setTeamsData((teamsRes.data as TeamInfo[]) || []);
+
+      // Build team members map with profile names
+      const profileMap: Record<string, string | null> = {};
+      (profilesRes.data || []).forEach((p: any) => { profileMap[p.user_id] = p.display_name; });
+
+      const tmMap: Record<string, TeamMemberInfo[]> = {};
+      (teamMembersRes.data || []).forEach((m: any) => {
+        if (!tmMap[m.team_id]) tmMap[m.team_id] = [];
+        tmMap[m.team_id].push({
+          user_id: m.user_id,
+          role: m.role,
+          joined_at: m.joined_at,
+          display_name: profileMap[m.user_id] || null,
+        });
+      });
+      setTeamMembersMap(tmMap);
 
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
@@ -145,6 +184,10 @@ export default function AdminPage() {
             <TabsTrigger value="users" className="gap-2">
               <Users className="h-4 w-4" />
               Usuários
+            </TabsTrigger>
+            <TabsTrigger value="tenants" className="gap-2">
+              <Building2 className="h-4 w-4" />
+              Tenants
             </TabsTrigger>
             <TabsTrigger value="plans" className="gap-2">
               <CreditCard className="h-4 w-4" />
@@ -247,6 +290,93 @@ export default function AdminPage() {
               </Card>
             )}
           </TabsContent>
+
+          <TabsContent value="tenants">
+            {loadingData ? (
+              <div className="flex justify-center py-12">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">Times / Tenants</h2>
+                    <p className="text-sm text-muted-foreground">{teamsData.length} time(s) cadastrado(s)</p>
+                  </div>
+                </div>
+                {teamsData.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex items-center justify-center py-12 text-muted-foreground">
+                      Nenhum time encontrado.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  teamsData.map(team => {
+                    const members = teamMembersMap[team.id] || [];
+                    const isExpanded = expandedTeam === team.id;
+                    return (
+                      <Card key={team.id}>
+                        <CardHeader className="cursor-pointer" onClick={() => setExpandedTeam(isExpanded ? null : team.id)}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="text-base">{team.name}</CardTitle>
+                              {team.description && <CardDescription>{team.description}</CardDescription>}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <Badge variant="secondary">
+                                <Users className="h-3 w-3 mr-1" />
+                                {members.length} membro(s)
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                Criado em {new Date(team.created_at).toLocaleDateString('pt-BR')}
+                              </span>
+                              <Button variant="ghost" size="icon">
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Membro</TableHead>
+                                  <TableHead>Papel</TableHead>
+                                  <TableHead>Entrada</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {members.map(m => (
+                                  <TableRow key={m.user_id}>
+                                    <TableCell className="font-medium">{m.display_name || '—'}</TableCell>
+                                    <TableCell>
+                                      <Badge variant={m.role === 'admin' ? 'default' : m.role === 'manager' ? 'secondary' : 'outline'}>
+                                        {m.role}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground">
+                                      {new Date(m.joined_at).toLocaleDateString('pt-BR')}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                                {members.length === 0 && (
+                                  <TableRow>
+                                    <TableCell colSpan={3} className="text-center text-muted-foreground">Nenhum membro</TableCell>
+                                  </TableRow>
+                                )}
+                              </TableBody>
+                            </Table>
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </TabsContent>
+
 
           <TabsContent value="plans">
             <Card>
