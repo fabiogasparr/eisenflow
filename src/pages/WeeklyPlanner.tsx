@@ -455,10 +455,12 @@ export default function WeeklyPlanner() {
                       key={format(day, 'yyyy-MM-dd')}
                       date={day}
                       tasks={getTasksForDay(day)}
+                      googleEvents={getGoogleEventsForDay(day)}
                       isToday={isSameDay(day, new Date())}
                       locale={locale}
                       onTaskClick={setSelectedTask}
                       compact
+                      eventsLoading={googleEventsLoading}
                     />
                   ))}
                 </div>
