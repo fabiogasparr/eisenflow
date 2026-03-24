@@ -3,11 +3,13 @@ import { AppLayout } from '@/components/AppLayout';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTasks } from '@/hooks/useTasks';
 import { useCalendarSettings } from '@/hooks/useCalendarSettings';
+import { useGoogleCalendarEvents, type GoogleEvent, type CalendarItem } from '@/hooks/useGoogleCalendarEvents';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { Skeleton } from '@/components/ui/skeleton';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
-import { ChevronLeft, ChevronRight, GripVertical } from 'lucide-react';
+import { ChevronLeft, ChevronRight, GripVertical, Calendar as CalendarIcon, ExternalLink } from 'lucide-react';
 import {
   format, startOfWeek, addDays, isSameDay, addWeeks, subWeeks,
   startOfMonth, endOfMonth, addMonths, subMonths, getDay,
@@ -82,24 +84,70 @@ function DraggableWeekTask({ task, onClick }: { task: Task; onClick: (t: Task) =
   );
 }
 
+function GoogleEventCard({ event }: { event: GoogleEvent }) {
+  const startTime = event.start.dateTime
+    ? format(new Date(event.start.dateTime), 'HH:mm')
+    : null;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <a
+          href={event.htmlLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex items-center gap-1 rounded-md border-l-[3px] border-l-blue-500 border bg-blue-500/5 p-1.5 shadow-sm hover:shadow-md hover:bg-blue-500/10 transition-all cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <CalendarIcon className="h-2.5 w-2.5 text-blue-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-medium leading-tight truncate text-foreground">
+              {event.summary}
+            </p>
+            {startTime && (
+              <p className="text-[9px] text-blue-500 font-medium">{startTime}</p>
+            )}
+          </div>
+          <ExternalLink className="h-2.5 w-2.5 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </a>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[250px]">
+        <p className="text-xs font-medium">{event.summary}</p>
+        {startTime && <p className="text-[10px] text-muted-foreground">🕐 {startTime}</p>}
+        {event.description && <p className="text-[10px] text-muted-foreground mt-1 line-clamp-3">{event.description}</p>}
+        <p className="text-[10px] text-blue-500 mt-1">Google Calendar ↗</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function DayColumn({
   date,
   tasks,
+  googleEvents,
   isToday,
   locale,
   onTaskClick,
   compact,
+  eventsLoading,
 }: {
   date: Date;
   tasks: Task[];
+  googleEvents: GoogleEvent[];
   isToday: boolean;
   locale: Locale;
   onTaskClick: (t: Task) => void;
   compact?: boolean;
+  eventsLoading?: boolean;
 }) {
   const { t } = useLanguage();
   const dayId = format(date, 'yyyy-MM-dd');
   const { isOver, setNodeRef } = useDroppable({ id: dayId });
+  const totalCount = tasks.length + googleEvents.length;
+
+  // Filter out google events that already have a corresponding task (by google_event_id)
+  const taskGoogleIds = new Set(tasks.filter(t => t.google_event_id).map(t => t.google_event_id));
+  const uniqueGoogleEvents = googleEvents.filter(e => !taskGoogleIds.has(e.id));
 
   if (compact) {
     return (
@@ -113,18 +161,22 @@ function DayColumn({
           <p className={`text-sm font-bold ${isToday ? 'text-primary' : 'text-muted-foreground'}`}>
             {format(date, 'd')}
           </p>
-          {tasks.length > 0 && (
+          {totalCount > 0 && (
             <span className="inline-flex items-center justify-center h-4 min-w-4 px-1 rounded-full bg-primary/15 text-[10px] font-semibold text-primary">
-              {tasks.length}
+              {totalCount}
             </span>
           )}
         </div>
         <ScrollArea className="flex-1 p-1">
           <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
             <div className="space-y-1">
+              {uniqueGoogleEvents.map((event) => (
+                <GoogleEventCard key={`ge-${event.id}`} event={event} />
+              ))}
               {tasks.map((task) => (
                 <DraggableWeekTask key={task.id} task={task} onClick={onTaskClick} />
               ))}
+              {eventsLoading && <Skeleton className="h-6 w-full rounded-md" />}
             </div>
           </SortableContext>
         </ScrollArea>
@@ -150,12 +202,15 @@ function DayColumn({
       <ScrollArea className="flex-1 p-2">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1">
-            {tasks.length === 0 ? (
+            {uniqueGoogleEvents.map((event) => (
+              <GoogleEventCard key={`ge-${event.id}`} event={event} />
+            ))}
+            {tasks.map((task) => (
+              <DraggableWeekTask key={task.id} task={task} onClick={onTaskClick} />
+            ))}
+            {eventsLoading && <Skeleton className="h-6 w-full rounded-md" />}
+            {totalCount === 0 && !eventsLoading && (
               <p className="text-center text-[10px] text-muted-foreground py-6">{t('noTasks')}</p>
-            ) : (
-              tasks.map((task) => (
-                <DraggableWeekTask key={task.id} task={task} onClick={onTaskClick} />
-              ))
             )}
           </div>
         </SortableContext>
@@ -222,6 +277,27 @@ export default function WeeklyPlanner() {
   );
   // Monthly state
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
+
+  // Compute timeMin/timeMax for Google Calendar events
+  const { timeMin, timeMax } = useMemo(() => {
+    if (viewMode === 'weekly') {
+      const start = currentWeekStart;
+      const end = addDays(start, 7);
+      return { timeMin: start.toISOString(), timeMax: end.toISOString() };
+    } else {
+      const start = startOfMonth(currentMonth);
+      const end = addDays(endOfMonth(currentMonth), 1);
+      return { timeMin: start.toISOString(), timeMax: end.toISOString() };
+    }
+  }, [viewMode, currentWeekStart, currentMonth]);
+
+  const { data: googleEvents = [], isLoading: googleEventsLoading } = useGoogleCalendarEvents(timeMin, timeMax);
+
+  const getGoogleEventsForDay = (day: Date) =>
+    googleEvents.filter((e) => {
+      const dateStr = e.start.dateTime || e.start.date;
+      return dateStr && isSameDay(new Date(dateStr), day);
+    });
 
   const [selectedTask, setSelectedTask] = useState<Task | null>(null);
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -356,9 +432,11 @@ export default function WeeklyPlanner() {
                     key={format(day, 'yyyy-MM-dd')}
                     date={day}
                     tasks={getTasksForDay(day)}
+                    googleEvents={getGoogleEventsForDay(day)}
                     isToday={isSameDay(day, new Date())}
                     locale={locale}
                     onTaskClick={setSelectedTask}
+                    eventsLoading={googleEventsLoading}
                   />
                 ))}
               </div>
@@ -377,10 +455,12 @@ export default function WeeklyPlanner() {
                       key={format(day, 'yyyy-MM-dd')}
                       date={day}
                       tasks={getTasksForDay(day)}
+                      googleEvents={getGoogleEventsForDay(day)}
                       isToday={isSameDay(day, new Date())}
                       locale={locale}
                       onTaskClick={setSelectedTask}
                       compact
+                      eventsLoading={googleEventsLoading}
                     />
                   ))}
                 </div>
