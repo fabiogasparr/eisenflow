@@ -136,6 +136,7 @@ export function useTasks() {
   return {
     tasks: tasksQuery.data ?? [],
     isLoading: tasksQuery.isLoading,
+    refetch: tasksQuery.refetch,
     createTask,
     updateTask,
     moveToQuadrant,
