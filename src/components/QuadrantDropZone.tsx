@@ -9,9 +9,11 @@ interface QuadrantDropZoneProps {
   quadrant: Quadrant;
   tasks: Task[];
   onTaskClick?: (task: Task) => void;
+  onComplete?: (task: Task) => void;
+  onDelete?: (task: Task) => void;
 }
 
-export function QuadrantDropZone({ quadrant, tasks, onTaskClick }: QuadrantDropZoneProps) {
+export function QuadrantDropZone({ quadrant, tasks, onTaskClick, onComplete, onDelete }: QuadrantDropZoneProps) {
   const { t } = useLanguage();
   const config = QUADRANT_CONFIG[quadrant];
 
@@ -45,7 +47,7 @@ export function QuadrantDropZone({ quadrant, tasks, onTaskClick }: QuadrantDropZ
               <p className="text-center text-xs text-muted-foreground py-4">{t('noTasks')}</p>
             ) : (
               tasks.map((task) => (
-                <TaskCard key={task.id} task={task} onClick={onTaskClick} />
+                <TaskCard key={task.id} task={task} onClick={onTaskClick} onComplete={onComplete} onDelete={onDelete} />
               ))
             )}
           </div>
