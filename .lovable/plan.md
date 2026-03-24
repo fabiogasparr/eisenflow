@@ -1,35 +1,45 @@
 
 
-# Visualizar Usuários por Tenant (Time)
+# Melhorar Visualização Mobile e Fluidez do App
 
-## Problema
-O super admin não consegue ver os times e seus membros porque as políticas RLS das tabelas `teams` e `team_members` só permitem acesso a membros do próprio time.
+## Problemas Identificados
+
+1. **TaskCard** chama `useSubtasks(task.id)` para cada tarefa — isso gera uma query individual por card, causando lentidão (N+1 queries)
+2. **TaskDetailSheet** no mobile (imagem do usuário) ocupa a tela inteira mas com muito espaço desperdiçado e scroll longo
+3. **QuadrantDropZone** usa `max-h-[40vh]` que no mobile (grid 1 coluna) fica muito comprimido
+4. **TaskCard** tem `animate-pulse` para in_progress — animação CSS contínua prejudica performance
+5. **Drag grip** invisível no mobile (só aparece no hover) — touch não tem hover
 
 ## Solução
 
-### 1. Migração — RLS para super admin ler todos os times e membros
+### 1. Eliminar N+1 queries nos TaskCards (`src/components/TaskCard.tsx`)
+- Remover `useSubtasks(task.id)` do TaskCard — cada card faz uma query separada ao banco
+- Mover a contagem de subtasks para dados pré-carregados ou simplesmente não exibir no card da matriz (exibir apenas no TaskDetailSheet)
+- Impacto: reduz drasticamente o número de queries e melhora a fluidez de scroll
 
-```sql
-CREATE POLICY "Super admins can view all teams"
-ON public.teams FOR SELECT TO authenticated
-USING (is_super_admin());
+### 2. Melhorar TaskCard para mobile (`src/components/TaskCard.tsx`)
+- Remover `animate-pulse` do status in_progress (substituir por indicador estático: bolinha verde pulsante via CSS `animate-ping` apenas no dot, não no card inteiro)
+- Tornar o grip handle sempre visível no mobile via `opacity-60 md:opacity-0 md:group-hover:opacity-60`
+- Adicionar info visual de prazo (due date) como badge compacto quando existir
 
-CREATE POLICY "Super admins can view all team members"
-ON public.team_members FOR SELECT TO authenticated
-USING (is_super_admin());
-```
+### 3. Ajustar QuadrantDropZone para mobile (`src/components/QuadrantDropZone.tsx`)
+- Mudar `max-h-[40vh]` para `max-h-[35vh] md:max-h-[calc(50vh-80px)]` — no mobile os 4 quadrantes empilhados precisam de altura controlada
+- Reduzir padding do header de `py-3` para `py-2` no mobile para ganhar espaço
+- Compactar a área vazia (reduzir `py-8` para `py-4`)
 
-### 2. Adicionar aba "Tenants" na página Admin (`src/pages/AdminPage.tsx`)
+### 4. Melhorar TaskDetailSheet no mobile (`src/components/TaskDetailSheet.tsx`)
+- Usar `side="bottom"` no Sheet para mobile (mais natural no celular, desliza de baixo para cima)
+- Definir `max-h-[85dvh]` para não cobrir a tela inteira
+- Agrupar campos em seções colapsáveis ou mais compactas
 
-- Nova aba entre "Usuários" e "Planos" com ícone `Building2`
-- Fetch de `teams` (todos os times) e `team_members` com join em `profiles` para mostrar nomes
-- Cada time exibido como um Card com:
-  - Nome do time, descrição, data de criação
-  - Contagem de membros
-  - Lista expansível de membros com nome, papel (admin/manager/member) e data de entrada
-- Dados carregados junto com o fetch inicial no `useEffect`
+### 5. Otimizar a página Index para mobile (`src/pages/Index.tsx`)
+- Reduzir padding de `p-4 md:p-6` para `p-2 md:p-6`
+- Reduzir gap do grid de `gap-3` para `gap-2 md:gap-3`
+- Seção In Progress: reduzir padding interno
 
 ### Arquivos modificados
-- `src/pages/AdminPage.tsx` — adicionar estado, fetch e aba "Tenants"
-- 1 migração SQL — políticas RLS para `teams` e `team_members`
+- `src/components/TaskCard.tsx` — remover useSubtasks, melhorar visual mobile
+- `src/components/QuadrantDropZone.tsx` — ajustar alturas e espaçamentos mobile
+- `src/components/TaskDetailSheet.tsx` — sheet bottom no mobile, layout compacto
+- `src/pages/Index.tsx` — reduzir espaçamentos no mobile
 
