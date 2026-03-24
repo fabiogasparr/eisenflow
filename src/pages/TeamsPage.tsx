@@ -68,7 +68,7 @@ export default function TeamsPage() {
 
   const handleCreate = async () => {
     if (!newTeamName.trim()) return;
-    await createTeam.mutateAsync({ name: newTeamName, description: newTeamDesc || undefined });
+    await createTeam.mutateAsync({ name: newTeamName, description: newTeamDesc || undefined, tenant_id: activeTenantId });
     setNewTeamName('');
     setNewTeamDesc('');
     setCreateOpen(false);
