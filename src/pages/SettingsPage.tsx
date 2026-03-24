@@ -3,12 +3,15 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { useCalendarSettings } from '@/hooks/useCalendarSettings';
 import { usePomodoroSettings } from '@/hooks/usePomodoroSettings';
 import { useWhatsApp } from '@/hooks/useWhatsApp';
+import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { WhatsAppQRCode } from '@/components/WhatsAppQRCode';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
+import { Button } from '@/components/ui/button';
+import { Calendar, RefreshCw, Unplug, CheckCircle2 } from 'lucide-react';
 
 export default function SettingsPage() {
   const { t, language, setLanguage } = useLanguage();
