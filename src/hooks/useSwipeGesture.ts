@@ -5,6 +5,7 @@ interface SwipeGestureOptions {
   onSwipeLeft?: () => void;
   onSwipeRight?: () => void;
   disabled?: boolean;
+  confirmLeft?: boolean;
 }
 
 export function useSwipeGesture({
@@ -12,13 +13,24 @@ export function useSwipeGesture({
   onSwipeLeft,
   onSwipeRight,
   disabled = false,
+  confirmLeft = false,
 }: SwipeGestureOptions) {
   const [offsetX, setOffsetX] = useState(0);
   const [isSwiping, setIsSwiping] = useState(false);
   const [dismissed, setDismissed] = useState(false);
+  const [pendingDelete, setPendingDelete] = useState(false);
   const startX = useRef(0);
   const startY = useRef(0);
   const locked = useRef<'horizontal' | 'vertical' | null>(null);
+  const pendingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const cancelPending = useCallback(() => {
+    setPendingDelete(false);
+    if (pendingTimer.current) {
+      clearTimeout(pendingTimer.current);
+      pendingTimer.current = null;
+    }
+  }, []);
 
   const onTouchStart = useCallback(
     (e: React.TouchEvent) => {
@@ -53,7 +65,6 @@ export function useSwipeGesture({
 
       e.preventDefault();
       setIsSwiping(true);
-      // Add resistance past threshold
       const capped = Math.abs(dx) > threshold
         ? Math.sign(dx) * (threshold + (Math.abs(dx) - threshold) * 0.3)
         : dx;
@@ -70,29 +81,70 @@ export function useSwipeGesture({
     }
 
     if (Math.abs(offsetX) >= threshold) {
-      // Dismiss animation
       const direction = offsetX > 0 ? 1 : -1;
-      setOffsetX(direction * 400);
-      setDismissed(true);
 
-      setTimeout(() => {
-        if (direction > 0) onSwipeRight?.();
-        else onSwipeLeft?.();
-        // Reset after action
-        setOffsetX(0);
-        setDismissed(false);
-        setIsSwiping(false);
-      }, 250);
+      if (direction > 0) {
+        // Right swipe → complete (no confirm needed)
+        setOffsetX(direction * 400);
+        setDismissed(true);
+        setTimeout(() => {
+          onSwipeRight?.();
+          setOffsetX(0);
+          setDismissed(false);
+          setIsSwiping(false);
+        }, 250);
+      } else if (direction < 0) {
+        if (confirmLeft && !pendingDelete) {
+          // First swipe left → show confirm state
+          setPendingDelete(true);
+          setOffsetX(0);
+          setIsSwiping(false);
+          // Auto-cancel after 3 seconds
+          pendingTimer.current = setTimeout(() => {
+            setPendingDelete(false);
+          }, 3000);
+        } else {
+          // Second swipe or no confirm needed → delete
+          cancelPending();
+          setOffsetX(direction * 400);
+          setDismissed(true);
+          setTimeout(() => {
+            onSwipeLeft?.();
+            setOffsetX(0);
+            setDismissed(false);
+            setIsSwiping(false);
+          }, 250);
+        }
+      }
     } else {
       setOffsetX(0);
       setIsSwiping(false);
     }
-  }, [offsetX, threshold, onSwipeLeft, onSwipeRight]);
+  }, [offsetX, threshold, onSwipeLeft, onSwipeRight, confirmLeft, pendingDelete, cancelPending]);
+
+  const confirmDelete = useCallback(() => {
+    cancelPending();
+    setOffsetX(-400);
+    setDismissed(true);
+    setTimeout(() => {
+      onSwipeLeft?.();
+      setOffsetX(0);
+      setDismissed(false);
+      setIsSwiping(false);
+    }, 250);
+  }, [onSwipeLeft, cancelPending]);
+
+  const cancelDelete = useCallback(() => {
+    cancelPending();
+  }, [cancelPending]);
 
   return {
     offsetX,
     isSwiping,
     dismissed,
+    pendingDelete,
+    confirmDelete,
+    cancelDelete,
     handlers: { onTouchStart, onTouchMove, onTouchEnd },
   };
 }
