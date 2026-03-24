@@ -165,7 +165,9 @@ export default function Index() {
                 key={q}
                 quadrant={q}
                 tasks={tasksByQuadrant[q]}
-                onTaskClick={setSelectedTask} />
+                onTaskClick={setSelectedTask}
+                onComplete={handleSwipeComplete}
+                onDelete={handleSwipeDelete} />
               )}
             </div>
           </div>
