@@ -1,9 +1,9 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, RefreshCw } from 'lucide-react';
+import { GripVertical, RefreshCw, CalendarIcon } from 'lucide-react';
 import type { Task } from '@/types/task';
 import { useLanguage } from '@/i18n/LanguageContext';
-import { useSubtasks } from '@/hooks/useSubtasks';
+import { format, isPast, isToday } from 'date-fns';
 
 const QUADRANT_BORDER_COLORS: Record<string, string> = {
   do: 'border-l-quadrant-do',
@@ -22,7 +22,6 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
   const borderColor = QUADRANT_BORDER_COLORS[task.quadrant] ?? '';
   const isInProgress = task.status === 'in_progress';
   const isCompleted = task.status === 'completed';
-  const { completedCount, totalCount } = useSubtasks(task.id);
 
   const {
     attributes,
@@ -39,20 +38,27 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
     opacity: isDragging ? 0.5 : isCompleted ? 0.6 : 1,
   };
 
+  const dueDateInfo = task.due_date ? (() => {
+    const d = new Date(task.due_date);
+    const overdue = isPast(d) && !isToday(d) && !isCompleted;
+    const today = isToday(d);
+    return { label: format(d, 'dd/MM'), overdue, today };
+  })() : null;
+
   return (
     <div
       ref={setNodeRef}
       style={style}
       className={`group rounded-lg border-l-4 border bg-card p-2.5 shadow-sm hover:shadow-md transition-all cursor-pointer ${borderColor} ${
         isDragging ? 'ring-2 ring-primary z-50' : ''
-      } ${isInProgress ? 'animate-pulse ring-1 ring-primary/30' : ''}`}
+      } ${isInProgress ? 'ring-1 ring-primary/30' : ''}`}
       onClick={() => onClick?.(task)}
     >
       <div className="flex items-center gap-2">
         <button
           {...attributes}
           {...listeners}
-          className="cursor-grab opacity-0 group-hover:opacity-60 transition-opacity shrink-0"
+          className="cursor-grab opacity-60 md:opacity-0 md:group-hover:opacity-60 transition-opacity shrink-0"
           onClick={(e) => e.stopPropagation()}
         >
           <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
@@ -66,13 +72,20 @@ export function TaskCard({ task, onClick }: TaskCardProps) {
           {task.recurrence_rule && (
             <RefreshCw className="h-3 w-3 text-muted-foreground" />
           )}
-          {totalCount > 0 && (
-            <span className="text-[10px] text-muted-foreground font-medium">
-              {completedCount}/{totalCount} ✓
+          {dueDateInfo && (
+            <span className={`flex items-center gap-0.5 text-[10px] font-medium ${
+              dueDateInfo.overdue ? 'text-destructive' : dueDateInfo.today ? 'text-primary' : 'text-muted-foreground'
+            }`}>
+              <CalendarIcon className="h-2.5 w-2.5" />
+              {dueDateInfo.label}
             </span>
           )}
           {isInProgress && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+            <span className="flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+                <span className="relative inline-flex rounded-full h-1.5 w-1.5 bg-primary"></span>
+              </span>
               {t('inProgress') ?? 'Em progresso'}
             </span>
           )}

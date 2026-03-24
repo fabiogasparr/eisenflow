@@ -26,23 +26,23 @@ export function QuadrantDropZone({ quadrant, tasks, onTaskClick }: QuadrantDropZ
           : 'border-border bg-card/50'
       }`}
     >
-      <div className={`flex items-center gap-2 px-4 py-3 border-b bg-quadrant-${quadrant}-bg`}>
+      <div className={`flex items-center gap-2 px-3 py-2 md:px-4 md:py-3 border-b bg-quadrant-${quadrant}-bg`}>
         <span className="text-lg">{config.emoji}</span>
         <div>
           <h3 className={`font-display text-sm font-bold text-quadrant-${quadrant}`}>
             {t(config.labelKey)}
           </h3>
-          <p className="text-xs text-muted-foreground">{t(config.descKey)}</p>
+          <p className="text-xs text-muted-foreground hidden sm:block">{t(config.descKey)}</p>
         </div>
         <span className={`ml-auto rounded-full px-2 py-0.5 text-xs font-semibold bg-quadrant-${quadrant}/10 text-quadrant-${quadrant}`}>
           {tasks.length}
         </span>
       </div>
-      <ScrollArea className="flex-1 p-3 min-h-[100px] max-h-[40vh] sm:max-h-[calc(50vh-80px)]">
+      <ScrollArea className="flex-1 p-2 md:p-3 min-h-[80px] max-h-[35vh] md:max-h-[calc(50vh-80px)]">
         <SortableContext items={tasks.map(t => t.id)} strategy={verticalListSortingStrategy}>
-          <div className="space-y-2">
+          <div className="space-y-1.5 md:space-y-2">
             {tasks.length === 0 ? (
-              <p className="text-center text-xs text-muted-foreground py-8">{t('noTasks')}</p>
+              <p className="text-center text-xs text-muted-foreground py-4">{t('noTasks')}</p>
             ) : (
               tasks.map((task) => (
                 <TaskCard key={task.id} task={task} onClick={onTaskClick} />

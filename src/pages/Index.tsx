@@ -146,7 +146,7 @@ export default function Index() {
 
         {/* Matrix Grid */}
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
             <div className="contents">
               {quadrants.map((q) =>
               <QuadrantDropZone
