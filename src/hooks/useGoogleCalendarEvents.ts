@@ -11,13 +11,9 @@ export interface GoogleEvent {
   htmlLink: string;
 }
 
-export interface CalendarItem {
-  type: 'task';
-  data: import('@/types/task').Task;
-} | {
-  type: 'google-event';
-  data: GoogleEvent;
-}
+export type CalendarItem =
+  | { type: 'task'; data: import('@/types/task').Task }
+  | { type: 'google-event'; data: GoogleEvent };
 
 export function useGoogleCalendarEvents(timeMin: string | null, timeMax: string | null) {
   const { isConnected, tokenData } = useGoogleCalendar();
