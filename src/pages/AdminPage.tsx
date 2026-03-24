@@ -378,6 +378,7 @@ export default function AdminPage() {
           </TabsContent>
 
 
+          <TabsContent value="plans">
             <Card>
               <CardHeader>
                 <CardTitle>Gestão de Planos</CardTitle>
