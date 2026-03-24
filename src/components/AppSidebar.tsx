@@ -22,7 +22,7 @@ import { Button } from '@/components/ui/button';
 export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const { signOut, user } = useAuth();
   const location = useLocation();
   const [isSuperAdmin, setIsSuperAdmin] = useState(false);
