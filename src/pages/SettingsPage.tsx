@@ -18,6 +18,7 @@ export default function SettingsPage() {
   const calendar = useCalendarSettings();
   const pomo = usePomodoroSettings();
   const whatsapp = useWhatsApp();
+  const gcal = useGoogleCalendar();
 
   return (
     <AppLayout>
