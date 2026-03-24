@@ -1,6 +1,6 @@
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, RefreshCw, CalendarIcon, CheckCircle, Trash2 } from 'lucide-react';
+import { GripVertical, RefreshCw, CalendarIcon, CheckCircle, Trash2, X } from 'lucide-react';
 import type { Task } from '@/types/task';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { format, isPast, isToday } from 'date-fns';
@@ -21,7 +21,7 @@ interface TaskCardProps {
 }
 
 export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps) {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const borderColor = QUADRANT_BORDER_COLORS[task.quadrant] ?? '';
   const isInProgress = task.status === 'in_progress';
   const isCompleted = task.status === 'completed';
@@ -35,11 +35,12 @@ export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps)
     isDragging,
   } = useSortable({ id: task.id, data: { task } });
 
-  const { offsetX, isSwiping, dismissed, handlers } = useSwipeGesture({
+  const { offsetX, isSwiping, dismissed, pendingDelete, confirmDelete, cancelDelete, handlers } = useSwipeGesture({
     threshold: 80,
     disabled: isDragging || isCompleted,
     onSwipeRight: () => onComplete?.(task),
     onSwipeLeft: () => onDelete?.(task),
+    confirmLeft: true,
   });
 
   const style = {
@@ -57,6 +58,32 @@ export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps)
 
   const swipeProgress = Math.min(Math.abs(offsetX) / 80, 1);
 
+  // Pending delete confirmation overlay
+  if (pendingDelete) {
+    return (
+      <div ref={setNodeRef} style={style} className="relative overflow-hidden rounded-lg">
+        <div className="flex items-center gap-2 bg-destructive/10 border border-destructive/30 rounded-lg p-2.5">
+          <Trash2 className="h-4 w-4 text-destructive shrink-0" />
+          <p className="text-xs font-medium text-destructive flex-1 truncate">
+            {language === 'pt-BR' ? 'Deletar?' : 'Delete?'}
+          </p>
+          <button
+            onClick={(e) => { e.stopPropagation(); confirmDelete(); }}
+            className="text-xs font-semibold bg-destructive text-destructive-foreground px-3 py-1 rounded-md"
+          >
+            {language === 'pt-BR' ? 'Confirmar' : 'Confirm'}
+          </button>
+          <button
+            onClick={(e) => { e.stopPropagation(); cancelDelete(); }}
+            className="text-muted-foreground p-1"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div
       ref={setNodeRef}
@@ -66,14 +93,12 @@ export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps)
       {/* Swipe backgrounds */}
       {(isSwiping || dismissed) && (
         <>
-          {/* Right swipe - Complete (green) */}
           <div
             className="absolute inset-0 flex items-center pl-4 rounded-lg bg-emerald-500/90"
             style={{ opacity: offsetX > 0 ? swipeProgress : 0 }}
           >
             <CheckCircle className="h-5 w-5 text-white" />
           </div>
-          {/* Left swipe - Delete (red) */}
           <div
             className="absolute inset-0 flex items-center justify-end pr-4 rounded-lg bg-destructive/90"
             style={{ opacity: offsetX < 0 ? swipeProgress : 0 }}
