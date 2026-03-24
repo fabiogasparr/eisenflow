@@ -21,7 +21,8 @@ import { QUADRANT_CONFIG } from '@/types/task';
 
 export default function Index() {
   const { t, language } = useLanguage();
-  const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask, refetch } = useTasks();
+  const gcal = useGoogleCalendar();
+  const { tasks, isLoading, createTask, moveToQuadrant, updateTask, deleteTask, refetch } = useTasks(gcal.syncTask);
   const { toast } = useToast();
   const isMobile = useIsMobile();
 
