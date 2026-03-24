@@ -188,6 +188,31 @@ export default function Index() {
         )}
 
         {/* Matrix Grid */}
+        {isLoading ? (
+          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
+            {quadrants.map((q) => {
+              const config = QUADRANT_CONFIG[q];
+              return (
+                <div key={q} className="rounded-xl border bg-card/50 flex flex-col">
+                  <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+                    <span className="text-base">{config.emoji}</span>
+                    <Skeleton className="h-4 w-24" />
+                  </div>
+                  <div className="p-2 space-y-2 flex-1">
+                    {[1, 2, 3].map((i) => (
+                      <div key={i} className="rounded-lg border bg-card p-2.5 space-y-2 animate-fade-in" style={{ animationDelay: `${i * 100}ms` }}>
+                        <div className="flex items-center gap-2">
+                          <Skeleton className="h-3.5 w-3.5 rounded" />
+                          <Skeleton className="h-4 flex-1" />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
             <div className="contents">
@@ -206,6 +231,7 @@ export default function Index() {
             {activeTask ? <TaskCard task={activeTask} /> : null}
           </DragOverlay>
         </DndContext>
+        )}
 
         <CreateTaskDialog
           open={createOpen}
