@@ -594,6 +594,50 @@ export type Database = {
           },
         ]
       }
+      tenant_invites: {
+        Row: {
+          created_at: string
+          expires_at: string
+          id: string
+          invite_code: string
+          invited_by: string
+          invited_email: string | null
+          role: Database["public"]["Enums"]["tenant_role"]
+          status: Database["public"]["Enums"]["invite_status"]
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          invite_code?: string
+          invited_by: string
+          invited_email?: string | null
+          role?: Database["public"]["Enums"]["tenant_role"]
+          status?: Database["public"]["Enums"]["invite_status"]
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          expires_at?: string
+          id?: string
+          invite_code?: string
+          invited_by?: string
+          invited_email?: string | null
+          role?: Database["public"]["Enums"]["tenant_role"]
+          status?: Database["public"]["Enums"]["invite_status"]
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_invites_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_members: {
         Row: {
           id: string
