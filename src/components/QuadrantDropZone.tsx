@@ -9,6 +9,8 @@ interface QuadrantDropZoneProps {
   quadrant: Quadrant;
   tasks: Task[];
   onTaskClick?: (task: Task) => void;
+  onComplete?: (task: Task) => void;
+  onDelete?: (task: Task) => void;
 }
 
 export function QuadrantDropZone({ quadrant, tasks, onTaskClick }: QuadrantDropZoneProps) {
