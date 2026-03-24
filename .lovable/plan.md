@@ -1,47 +1,35 @@
 
 
-# Promover fabio.gasparr@gmail.com a Super Admin
+# Visualizar Usuários por Tenant (Time)
 
-O usuário foi encontrado: **Fabio** (`ebaffc33-ad4b-45e1-bde3-e42e62cde9d9`).
+## Problema
+O super admin não consegue ver os times e seus membros porque as políticas RLS das tabelas `teams` e `team_members` só permitem acesso a membros do próprio time.
 
-O valor `super_admin` ainda não existe no enum `app_role` (atual: `admin`, `member`), então precisa de uma migração primeiro.
+## Solução
 
-## Passos
-
-### 1. Migração — Adicionar `super_admin` ao enum + função `is_super_admin()`
-
-```sql
-ALTER TYPE public.app_role ADD VALUE 'super_admin';
-```
-
-Criar função auxiliar:
-```sql
-CREATE OR REPLACE FUNCTION public.is_super_admin()
-RETURNS boolean
-LANGUAGE sql STABLE SECURITY DEFINER SET search_path = public
-AS $$
-  SELECT EXISTS (
-    SELECT 1 FROM public.user_roles
-    WHERE user_id = auth.uid() AND role = 'super_admin'
-  )
-$$;
-```
-
-### 2. Migração — RLS para super_admin acessar dados globais
-
-Políticas permitindo super_admin ler todas as `profiles`, `user_roles`, `tasks` e `gamification`.
-
-### 3. Inserir role para o usuário Fabio
+### 1. Migração — RLS para super admin ler todos os times e membros
 
 ```sql
-INSERT INTO public.user_roles (user_id, role)
-VALUES ('ebaffc33-ad4b-45e1-bde3-e42e62cde9d9', 'super_admin');
+CREATE POLICY "Super admins can view all teams"
+ON public.teams FOR SELECT TO authenticated
+USING (is_super_admin());
+
+CREATE POLICY "Super admins can view all team members"
+ON public.team_members FOR SELECT TO authenticated
+USING (is_super_admin());
 ```
 
-### 4. Criar página Admin e hook de guarda
+### 2. Adicionar aba "Tenants" na página Admin (`src/pages/AdminPage.tsx`)
 
-- `src/hooks/useAdminGuard.ts` — verifica se usuário tem role `super_admin`
-- `src/pages/AdminPage.tsx` — dashboard com abas: Usuários, Visão Geral, Planos (em breve)
-- Atualizar `src/App.tsx` com rota `/admin`
-- Atualizar `src/components/AppSidebar.tsx` com link condicional para Admin
+- Nova aba entre "Usuários" e "Planos" com ícone `Building2`
+- Fetch de `teams` (todos os times) e `team_members` com join em `profiles` para mostrar nomes
+- Cada time exibido como um Card com:
+  - Nome do time, descrição, data de criação
+  - Contagem de membros
+  - Lista expansível de membros com nome, papel (admin/manager/member) e data de entrada
+- Dados carregados junto com o fetch inicial no `useEffect`
+
+### Arquivos modificados
+- `src/pages/AdminPage.tsx` — adicionar estado, fetch e aba "Tenants"
+- 1 migração SQL — políticas RLS para `teams` e `team_members`
 
