@@ -1,45 +1,45 @@
 
 
-# Melhorar Visualização Mobile e Fluidez do App
+# Swipe Gestures nos Task Cards (Mobile)
 
-## Problemas Identificados
+## O que será feito
 
-1. **TaskCard** chama `useSubtasks(task.id)` para cada tarefa — isso gera uma query individual por card, causando lentidão (N+1 queries)
-2. **TaskDetailSheet** no mobile (imagem do usuário) ocupa a tela inteira mas com muito espaço desperdiçado e scroll longo
-3. **QuadrantDropZone** usa `max-h-[40vh]` que no mobile (grid 1 coluna) fica muito comprimido
-4. **TaskCard** tem `animate-pulse` para in_progress — animação CSS contínua prejudica performance
-5. **Drag grip** invisível no mobile (só aparece no hover) — touch não tem hover
+Adicionar gestos de deslizar (swipe) nos task cards no mobile:
+- **Swipe para a direita** → Completar tarefa (ícone verde com check)
+- **Swipe para a esquerda** → Deletar tarefa (ícone vermelho com lixeira)
 
-## Solução
+A implementação será feita com CSS transforms e touch events nativos (sem dependência externa), mantendo compatibilidade com o drag-and-drop existente do dnd-kit.
 
-### 1. Eliminar N+1 queries nos TaskCards (`src/components/TaskCard.tsx`)
-- Remover `useSubtasks(task.id)` do TaskCard — cada card faz uma query separada ao banco
-- Mover a contagem de subtasks para dados pré-carregados ou simplesmente não exibir no card da matriz (exibir apenas no TaskDetailSheet)
-- Impacto: reduz drasticamente o número de queries e melhora a fluidez de scroll
+## Mudanças
 
-### 2. Melhorar TaskCard para mobile (`src/components/TaskCard.tsx`)
-- Remover `animate-pulse` do status in_progress (substituir por indicador estático: bolinha verde pulsante via CSS `animate-ping` apenas no dot, não no card inteiro)
-- Tornar o grip handle sempre visível no mobile via `opacity-60 md:opacity-0 md:group-hover:opacity-60`
-- Adicionar info visual de prazo (due date) como badge compacto quando existir
+### 1. Criar hook `useSwipeGesture` (`src/hooks/useSwipeGesture.ts`)
+- Detecta touch start/move/end com threshold de 80px para ativar ação
+- Retorna o offset X atual e handlers de touch
+- Só ativa no mobile (ignora se `pointer: fine` / mouse)
+- Cancela o swipe se o movimento vertical for maior que o horizontal (scroll)
 
-### 3. Ajustar QuadrantDropZone para mobile (`src/components/QuadrantDropZone.tsx`)
-- Mudar `max-h-[40vh]` para `max-h-[35vh] md:max-h-[calc(50vh-80px)]` — no mobile os 4 quadrantes empilhados precisam de altura controlada
-- Reduzir padding do header de `py-3` para `py-2` no mobile para ganhar espaço
-- Compactar a área vazia (reduzir `py-8` para `py-4`)
+### 2. Atualizar `TaskCard` (`src/components/TaskCard.tsx`)
+- Aceitar novos props opcionais: `onComplete?(task)` e `onDelete?(task)`
+- Envolver o card num container com `overflow-hidden` que revela fundo colorido:
+  - Fundo verde com ícone `CheckCircle` aparece ao deslizar direita
+  - Fundo vermelho com ícone `Trash2` aparece ao deslizar esquerda
+- Aplicar o hook de swipe no card; ao soltar acima do threshold, executar ação com animação de saída
+- No desktop (sem touch), comportamento inalterado
 
-### 4. Melhorar TaskDetailSheet no mobile (`src/components/TaskDetailSheet.tsx`)
-- Usar `side="bottom"` no Sheet para mobile (mais natural no celular, desliza de baixo para cima)
-- Definir `max-h-[85dvh]` para não cobrir a tela inteira
-- Agrupar campos em seções colapsáveis ou mais compactas
+### 3. Atualizar `QuadrantDropZone` (`src/components/QuadrantDropZone.tsx`)
+- Passar `onComplete` e `onDelete` para cada `TaskCard`
 
-### 5. Otimizar a página Index para mobile (`src/pages/Index.tsx`)
-- Reduzir padding de `p-4 md:p-6` para `p-2 md:p-6`
-- Reduzir gap do grid de `gap-3` para `gap-2 md:gap-3`
-- Seção In Progress: reduzir padding interno
+### 4. Atualizar `Index.tsx` (`src/pages/Index.tsx`)
+- Passar callbacks `onSwipeComplete` e `onSwipeDelete` para `QuadrantDropZone`
+- Reutilizar a lógica existente de `updateTask` e `deleteTask`
 
-### Arquivos modificados
-- `src/components/TaskCard.tsx` — remover useSubtasks, melhorar visual mobile
-- `src/components/QuadrantDropZone.tsx` — ajustar alturas e espaçamentos mobile
-- `src/components/TaskDetailSheet.tsx` — sheet bottom no mobile, layout compacto
-- `src/pages/Index.tsx` — reduzir espaçamentos no mobile
+### 5. Atualizar `WeeklyPlanner.tsx`
+- Passar os mesmos callbacks para os `DraggableWeekTask` que usam a mesma lógica
+
+### Detalhes técnicos
+- Touch events nativos (`onTouchStart/Move/End`) para zero dependências
+- `transform: translateX(offset)` com `transition` no release para animação suave
+- Threshold de 80px para evitar ativação acidental
+- Swipe desabilitado durante drag do dnd-kit (checar `isDragging`)
+- Ações com feedback visual: card desliza para fora + toast de confirmação
 
