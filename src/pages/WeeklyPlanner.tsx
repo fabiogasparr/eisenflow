@@ -84,6 +84,43 @@ function DraggableWeekTask({ task, onClick }: { task: Task; onClick: (t: Task) =
   );
 }
 
+function GoogleEventCard({ event }: { event: GoogleEvent }) {
+  const startTime = event.start.dateTime
+    ? format(new Date(event.start.dateTime), 'HH:mm')
+    : null;
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <a
+          href={event.htmlLink}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="group flex items-center gap-1 rounded-md border-l-[3px] border-l-blue-500 border bg-blue-500/5 p-1.5 shadow-sm hover:shadow-md hover:bg-blue-500/10 transition-all cursor-pointer"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <CalendarIcon className="h-2.5 w-2.5 text-blue-500 shrink-0" />
+          <div className="flex-1 min-w-0">
+            <p className="text-[11px] font-medium leading-tight truncate text-foreground">
+              {event.summary}
+            </p>
+            {startTime && (
+              <p className="text-[9px] text-blue-500 font-medium">{startTime}</p>
+            )}
+          </div>
+          <ExternalLink className="h-2.5 w-2.5 text-blue-400 opacity-0 group-hover:opacity-100 transition-opacity shrink-0" />
+        </a>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="max-w-[250px]">
+        <p className="text-xs font-medium">{event.summary}</p>
+        {startTime && <p className="text-[10px] text-muted-foreground">🕐 {startTime}</p>}
+        {event.description && <p className="text-[10px] text-muted-foreground mt-1 line-clamp-3">{event.description}</p>}
+        <p className="text-[10px] text-blue-500 mt-1">Google Calendar ↗</p>
+      </TooltipContent>
+    </Tooltip>
+  );
+}
+
 function DayColumn({
   date,
   tasks,
