@@ -40,6 +40,7 @@ export default function Projects() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { teams } = useTeams();
+  const { activeTenantId } = useTenantContext();
   const navigate = useNavigate();
   const [createOpen, setCreateOpen] = useState(false);
   const [name, setName] = useState('');
