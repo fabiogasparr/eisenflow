@@ -70,6 +70,8 @@ export default function AdminPage() {
   const [togglingUser, setTogglingUser] = useState<string | null>(null);
   const [teamsData, setTeamsData] = useState<TeamInfo[]>([]);
   const [teamMembersMap, setTeamMembersMap] = useState<Record<string, TeamMemberInfo[]>>({});
+  const [tenantsData, setTenantsData] = useState<any[]>([]);
+  const [tenantMembersData, setTenantMembersData] = useState<Record<string, any[]>>({});
 
   useEffect(() => {
     if (!isSuperAdmin) return;
