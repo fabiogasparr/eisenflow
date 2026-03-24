@@ -179,3 +179,115 @@ export function useTenantMembers(tenantId: string | null) {
     removeMember,
   };
 }
+
+export interface TenantInvite {
+  id: string;
+  tenant_id: string;
+  invited_by: string;
+  invited_email: string | null;
+  invite_code: string;
+  status: 'pending' | 'accepted' | 'expired' | 'cancelled';
+  role: 'owner' | 'admin' | 'member' | 'guest';
+  created_at: string;
+  expires_at: string;
+}
+
+export function useTenantInvites(tenantId: string | null) {
+  const { user } = useAuth();
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+
+  const invitesQuery = useQuery({
+    queryKey: ['tenant_invites', tenantId],
+    queryFn: async (): Promise<TenantInvite[]> => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from('tenant_invites')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as TenantInvite[];
+    },
+    enabled: !!tenantId,
+  });
+
+  const createInvite = useMutation({
+    mutationFn: async (input: { tenantId: string; email: string; role?: TenantInvite['role'] }) => {
+      if (!user) throw new Error('Not authenticated');
+      const { data, error } = await supabase
+        .from('tenant_invites')
+        .insert({
+          tenant_id: input.tenantId,
+          invited_by: user.id,
+          invited_email: input.email,
+          role: input.role || 'member',
+        } as any)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as TenantInvite;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant_invites', tenantId] });
+      toast({ title: '✅', description: 'Convite enviado!' });
+    },
+    onError: (err: Error) => toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
+  });
+
+  const acceptInvite = useMutation({
+    mutationFn: async (inviteCode: string) => {
+      if (!user) throw new Error('Not authenticated');
+      const { data: invite, error: findErr } = await supabase
+        .from('tenant_invites')
+        .select('*')
+        .eq('invite_code', inviteCode)
+        .eq('status', 'pending')
+        .single();
+      if (findErr || !invite) throw new Error('Convite inválido ou expirado');
+
+      const inv = invite as any;
+      const { error: memberErr } = await supabase
+        .from('tenant_members')
+        .insert({
+          tenant_id: inv.tenant_id,
+          user_id: user.id,
+          role: inv.role,
+        });
+      if (memberErr) throw memberErr;
+
+      await supabase
+        .from('tenant_invites')
+        .update({ status: 'accepted' } as any)
+        .eq('id', inv.id);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['my-tenants'] });
+      queryClient.invalidateQueries({ queryKey: ['my-tenant-memberships'] });
+      queryClient.invalidateQueries({ queryKey: ['tenant_members'] });
+      queryClient.invalidateQueries({ queryKey: ['tenants'] });
+      toast({ title: '🎉', description: 'Você entrou na organização!' });
+    },
+    onError: (err: Error) => toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
+  });
+
+  const cancelInvite = useMutation({
+    mutationFn: async (inviteId: string) => {
+      const { error } = await supabase
+        .from('tenant_invites')
+        .update({ status: 'cancelled' } as any)
+        .eq('id', inviteId);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenant_invites', tenantId] }),
+  });
+
+  return {
+    invites: invitesQuery.data ?? [],
+    isLoading: invitesQuery.isLoading,
+    createInvite,
+    acceptInvite,
+    cancelInvite,
+  };
+}

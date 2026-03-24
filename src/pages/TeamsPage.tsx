@@ -6,6 +6,7 @@ import { AppLayout } from '@/components/AppLayout';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTeams, useTeamMembers, useTeamInvites, type Team } from '@/hooks/useTeams';
 import { useAuth } from '@/hooks/useAuth';
+import { useTenantContext } from '@/hooks/useTenantContext';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -59,6 +60,7 @@ export default function TeamsPage() {
   const { language } = useLanguage();
   const pt = language === 'pt-BR';
   const { teams, isLoading, createTeam } = useTeams();
+  const { activeTenantId } = useTenantContext();
   const [createOpen, setCreateOpen] = useState(false);
   const [selectedTeam, setSelectedTeam] = useState<Team | null>(null);
   const [newTeamName, setNewTeamName] = useState('');
@@ -66,7 +68,7 @@ export default function TeamsPage() {
 
   const handleCreate = async () => {
     if (!newTeamName.trim()) return;
-    await createTeam.mutateAsync({ name: newTeamName, description: newTeamDesc || undefined });
+    await createTeam.mutateAsync({ name: newTeamName, description: newTeamDesc || undefined, tenant_id: activeTenantId });
     setNewTeamName('');
     setNewTeamDesc('');
     setCreateOpen(false);
