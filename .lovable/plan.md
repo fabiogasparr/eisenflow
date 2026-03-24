@@ -1,39 +1,75 @@
 
 
-# Melhorias no Google Calendar: Tela de Callback + Import Automático
+# Calendário Unificado: App + Google Calendar
 
-## Problemas
+## Problema
 
-1. **Tela de callback feia**: Após autorizar o Google, o popup mostra HTML cru com script visível (screenshot do usuário)
-2. **Botão "Importar do Calendar" desnecessário**: O usuário quer que os eventos sejam importados automaticamente quando sincronizar, sem ação manual separada
+1. **Eventos do Google não aparecem no calendário** — O calendário atual (`WeeklyPlanner`) só mostra tarefas do banco de dados. Eventos do Google Calendar só aparecem se forem importados como tarefas (criando duplicação).
+2. **Sem visualização mesclada** — Não há forma de ver eventos nativos do Google Calendar lado a lado com as tarefas do app.
+3. **Evento de 24/abril pode não ter sido importado** — A importação automática roda uma vez por sessão e pode ter falhado ou o evento pode estar fora do range de 30 dias.
+
+## Solução
+
+Criar um calendário unificado que busca eventos diretamente da API do Google Calendar (via edge function) e os exibe junto com as tarefas do app, sem precisar importá-los como tarefas.
 
 ## Mudanças
 
-### 1. Melhorar tela de callback (`supabase/functions/google-calendar-auth/index.ts`)
+### 1. Hook `useGoogleCalendarEvents` (novo: `src/hooks/useGoogleCalendarEvents.ts`)
 
-Substituir o HTML simples da resposta de sucesso (linha 155-163) por uma página estilizada com:
-- Background branco, fonte sans-serif, ícone de check verde (SVG inline)
-- Mensagem "Google Calendar conectado com sucesso!"
-- Texto secundário "Esta janela será fechada automaticamente..."
-- O script de `postMessage` + `window.close()` continua funcionando igual, mas fica oculto no HTML bem formatado
-- Fazer o mesmo para a página de erro (linha 112-114 e 148-151)
+- Query que chama `google-calendar-sync` com action `list-events`, passando `timeMin`/`timeMax` baseados no período visível (semana ou mês atual)
+- Retorna array de eventos Google com `{ id, summary, description, start, end, htmlLink }`
+- Re-fetches quando o período muda (navegação semana/mês)
+- Só ativa se Google Calendar estiver conectado
 
-### 2. Remover botão "Importar do Calendar" (`src/pages/SettingsPage.tsx`)
+### 2. Tipo `CalendarItem` (union type)
 
-- Remover o botão de importação separado (linhas 250-258)
-- O "Sincronizar agora" já faz export + import bidirecionalmente (lógica atual do `syncAllTasks`)
+```text
+CalendarItem = 
+  | { type: 'task'; data: Task }
+  | { type: 'google-event'; data: GoogleEvent }
+```
 
-### 3. Import automático ao carregar tarefas (`src/hooks/useGoogleCalendar.ts`)
+Permite diferenciar visualmente e tratar cada tipo de item.
 
-- Adicionar um `useEffect` que, quando `isConnected && sync_enabled`, dispara automaticamente o `import-events` uma vez por sessão (usando flag em `sessionStorage` para evitar repetição)
-- Isso garante que ao abrir o app, eventos do Google são importados sem precisar clicar nada
+### 3. Atualizar `WeeklyPlanner.tsx`
 
-### 4. Remover `importEvents` do hook público
+- Importar `useGoogleCalendar` e o novo `useGoogleCalendarEvents`
+- Passar `timeMin`/`timeMax` baseados no período visível
+- No `getTasksForDay`, mesclar tarefas + eventos Google, ordenados por horário
+- Renderizar eventos Google com estilo diferenciado (ícone do Google Calendar, cor azul, sem drag-and-drop)
+- Eventos Google são read-only no calendário (clicáveis para abrir no Google Calendar via `htmlLink`)
 
-- Manter apenas internamente; remover do retorno do hook e da Settings
+### 4. Componente `GoogleEventCard` (inline no WeeklyPlanner ou componente separado)
 
-### Arquivos modificados
-- `supabase/functions/google-calendar-auth/index.ts` — HTML bonito no callback
-- `src/pages/SettingsPage.tsx` — remover botão importar
-- `src/hooks/useGoogleCalendar.ts` — auto-import ao carregar
+- Visual diferente das tarefas: borda azul Google, ícone de calendário, horário visível
+- Sem grip/drag (não são arrastáveis)
+- Click abre o evento no Google Calendar (nova aba)
+- Tooltip com detalhes (horário, descrição)
+
+### 5. Ajustar edge function `google-calendar-sync`
+
+- A action `list-events` já existe e funciona
+- Garantir que aceita `timeMin`/`timeMax` como parâmetros do body (já aceita)
+- Nenhuma mudança necessária na edge function
+
+### 6. Indicador de loading
+
+- Skeleton sutil enquanto eventos Google carregam
+- Badge "Google Calendar" no header quando eventos estão sendo exibidos
+
+## Arquivos
+
+| Arquivo | Ação |
+|---------|------|
+| `src/hooks/useGoogleCalendarEvents.ts` | Criar — query de eventos por período |
+| `src/pages/WeeklyPlanner.tsx` | Modificar — mesclar eventos Google + tarefas |
+| `src/hooks/useGoogleCalendar.ts` | Sem mudanças |
+| `supabase/functions/google-calendar-sync/index.ts` | Sem mudanças |
+
+## Detalhes técnicos
+
+- Eventos Google são buscados via `supabase.functions.invoke('google-calendar-sync', { body: { action: 'list-events', timeMin, timeMax } })`
+- O período é recalculado quando o usuário navega (semana anterior/próxima, mês anterior/próximo)
+- `staleTime` de 5 minutos para evitar chamadas excessivas à API do Google
+- Eventos Google sem `dateTime` (eventos de dia inteiro) usam `date` como referência
 
