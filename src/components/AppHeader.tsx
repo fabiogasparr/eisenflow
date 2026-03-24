@@ -24,10 +24,46 @@ interface AppHeaderProps {
 export function AppHeader({ onSearch, onFocusMode, onCreateTask }: AppHeaderProps) {
   const { t, language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
+  const { tenants, activeTenant, setActiveTenantId } = useTenantContext();
 
   return (
     <header className="flex h-14 items-center gap-2 sm:gap-3 border-b bg-card/80 backdrop-blur-sm px-2 sm:px-4">
       <SidebarTrigger className="shrink-0" />
+
+      {/* Tenant Selector */}
+      {tenants.length > 0 && (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground shrink-0 max-w-[180px]">
+              <Building2 className="h-4 w-4 shrink-0" />
+              <span className="truncate text-xs">{activeTenant?.name || '—'}</span>
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-56">
+            <DropdownMenuLabel className="text-xs text-muted-foreground">
+              {language === 'pt-BR' ? 'Organização' : 'Organization'}
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            {tenants.map((tenant) => (
+              <DropdownMenuItem
+                key={tenant.id}
+                onClick={() => setActiveTenantId(tenant.id)}
+                className="gap-2"
+              >
+                {tenant.logo_url ? (
+                  <img src={tenant.logo_url} alt="" className="h-4 w-4 rounded object-cover" />
+                ) : (
+                  <Building2 className="h-4 w-4 text-muted-foreground" />
+                )}
+                <span className="truncate flex-1">{tenant.name}</span>
+                {activeTenant?.id === tenant.id && (
+                  <Check className="h-3.5 w-3.5 text-primary shrink-0" />
+                )}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
+      )}
 
       <div className="relative flex-1 max-w-md hidden sm:block">
         <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
