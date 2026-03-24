@@ -18,6 +18,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTeams } from '@/hooks/useTeams';
+import { useTenantContext } from '@/hooks/useTenantContext';
 
 const QUADRANT_META: Record<string, { label: string; labelPt: string; color: string }> = {
   do: { label: 'Do', labelPt: 'Fazer', color: 'bg-green-500' },
