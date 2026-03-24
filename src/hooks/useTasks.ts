@@ -106,8 +106,12 @@ export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      // Auto-sync to Google Calendar if task has due_date
+      if (data?.due_date) {
+        syncTaskToCalendar?.(data as Task);
+      }
     },
     onError: (err: Error) => {
       toast({ title: 'Error', description: err.message, variant: 'destructive' });
