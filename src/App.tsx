@@ -18,6 +18,7 @@ import TeamsPage from "./pages/TeamsPage";
 import AIChatPage from "./pages/AIChatPage";
 import DelegatedPage from "./pages/DelegatedPage";
 import JoinTeamPage from "./pages/JoinTeamPage";
+import AdminPage from "./pages/AdminPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -52,6 +53,7 @@ const AppRoutes = () => (
     <Route path="/delegated" element={<ProtectedRoute><DelegatedPage /></ProtectedRoute>} />
     <Route path="/chat" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
+    <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>
 );

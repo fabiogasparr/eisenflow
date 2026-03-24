@@ -1,8 +1,10 @@
-import { Grid3X3, FolderKanban, BarChart3, Settings, LogOut, Zap, CalendarDays, Trophy, Users, MessageSquare, Share2 } from 'lucide-react';
+import { Grid3X3, FolderKanban, BarChart3, Settings, LogOut, Zap, CalendarDays, Trophy, Users, MessageSquare, Share2, ShieldCheck } from 'lucide-react';
 import { NavLink } from '@/components/NavLink';
 import { useLocation } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
+import { useEffect, useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
 import {
   Sidebar,
   SidebarContent,
@@ -20,8 +22,20 @@ export function AppSidebar() {
   const { state } = useSidebar();
   const collapsed = state === 'collapsed';
   const { t } = useLanguage();
-  const { signOut } = useAuth();
+  const { signOut, user } = useAuth();
   const location = useLocation();
+  const [isSuperAdmin, setIsSuperAdmin] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'super_admin')
+      .maybeSingle()
+      .then(({ data }) => setIsSuperAdmin(!!data));
+  }, [user]);
 
   const items = [
     { title: t('matrix'), url: '/', icon: Grid3X3 },
@@ -33,6 +47,7 @@ export function AppSidebar() {
     { title: t('metrics'), url: '/metrics', icon: BarChart3 },
     { title: t('gamification'), url: '/gamification', icon: Trophy },
     { title: t('settings'), url: '/settings', icon: Settings },
+    ...(isSuperAdmin ? [{ title: 'Admin', url: '/admin', icon: ShieldCheck }] : []),
   ];
 
   return (

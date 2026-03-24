@@ -649,6 +649,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_super_admin: { Args: never; Returns: boolean }
       is_task_shared_with: {
         Args: { _task_id: string; _user_id: string }
         Returns: boolean
@@ -659,7 +660,7 @@ export type Database = {
       }
     }
     Enums: {
-      app_role: "admin" | "member"
+      app_role: "admin" | "member" | "super_admin"
       delegation_status: "pending" | "accepted" | "completed" | "rejected"
       invite_status: "pending" | "accepted" | "expired" | "cancelled"
       share_permission: "view" | "edit"
@@ -793,7 +794,7 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "member"],
+      app_role: ["admin", "member", "super_admin"],
       delegation_status: ["pending", "accepted", "completed", "rejected"],
       invite_status: ["pending", "accepted", "expired", "cancelled"],
       share_permission: ["view", "edit"],
