@@ -94,6 +94,18 @@ export default function Index() {
     }
   };
 
+  const handleSwipeComplete = async (task: Task) => {
+    await updateTask.mutateAsync({ id: task.id, status: 'completed' });
+    recordAction.mutate('complete');
+    toast({ title: language === 'pt-BR' ? 'Tarefa concluída!' : 'Task completed!' });
+  };
+
+  const handleSwipeDelete = async (task: Task) => {
+    if (task.quadrant === 'eliminate') recordAction.mutate('eliminate');
+    await deleteTask.mutateAsync(task.id);
+    toast({ title: language === 'pt-BR' ? 'Tarefa excluída' : 'Task deleted', variant: 'destructive' });
+  };
+
   const quadrants: Quadrant[] = ['do', 'schedule', 'delegate', 'eliminate'];
 
   const QUADRANT_BORDER_COLORS: Record<string, string> = {
