@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { AppLayout } from '@/components/AppLayout';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTenants, useTenantMembers, useTenantInvites, type Tenant } from '@/hooks/useTenants';
