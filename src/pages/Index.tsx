@@ -105,7 +105,7 @@ export default function Index() {
 
   return (
     <AppLayout onSearch={setSearchQuery} onFocusMode={() => setFocusOpen(true)} onCreateTask={() => setCreateOpen(true)}>
-      <div className="p-4 md:p-6 h-full flex flex-col">
+      <div className="p-2 md:p-6 h-full flex flex-col">
 
         {/* In Progress Section */}
         {inProgressTasks.length > 0 && (
