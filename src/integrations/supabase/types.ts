@@ -649,6 +649,7 @@ export type Database = {
         }
         Returns: boolean
       }
+      is_super_admin: { Args: never; Returns: boolean }
       is_task_shared_with: {
         Args: { _task_id: string; _user_id: string }
         Returns: boolean
