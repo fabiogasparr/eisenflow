@@ -291,7 +291,93 @@ export default function AdminPage() {
             )}
           </TabsContent>
 
-          <TabsContent value="plans">
+          <TabsContent value="tenants">
+            {loadingData ? (
+              <div className="flex justify-center py-12">
+                <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+              </div>
+            ) : (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg font-semibold">Times / Tenants</h2>
+                    <p className="text-sm text-muted-foreground">{teamsData.length} time(s) cadastrado(s)</p>
+                  </div>
+                </div>
+                {teamsData.length === 0 ? (
+                  <Card>
+                    <CardContent className="flex items-center justify-center py-12 text-muted-foreground">
+                      Nenhum time encontrado.
+                    </CardContent>
+                  </Card>
+                ) : (
+                  teamsData.map(team => {
+                    const members = teamMembersMap[team.id] || [];
+                    const isExpanded = expandedTeam === team.id;
+                    return (
+                      <Card key={team.id}>
+                        <CardHeader className="cursor-pointer" onClick={() => setExpandedTeam(isExpanded ? null : team.id)}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <CardTitle className="text-base">{team.name}</CardTitle>
+                              {team.description && <CardDescription>{team.description}</CardDescription>}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              <Badge variant="secondary">
+                                <Users className="h-3 w-3 mr-1" />
+                                {members.length} membro(s)
+                              </Badge>
+                              <span className="text-xs text-muted-foreground">
+                                Criado em {new Date(team.created_at).toLocaleDateString('pt-BR')}
+                              </span>
+                              <Button variant="ghost" size="icon">
+                                {isExpanded ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+                              </Button>
+                            </div>
+                          </div>
+                        </CardHeader>
+                        {isExpanded && (
+                          <CardContent>
+                            <Table>
+                              <TableHeader>
+                                <TableRow>
+                                  <TableHead>Membro</TableHead>
+                                  <TableHead>Papel</TableHead>
+                                  <TableHead>Entrada</TableHead>
+                                </TableRow>
+                              </TableHeader>
+                              <TableBody>
+                                {members.map(m => (
+                                  <TableRow key={m.user_id}>
+                                    <TableCell className="font-medium">{m.display_name || '—'}</TableCell>
+                                    <TableCell>
+                                      <Badge variant={m.role === 'admin' ? 'default' : m.role === 'manager' ? 'secondary' : 'outline'}>
+                                        {m.role}
+                                      </Badge>
+                                    </TableCell>
+                                    <TableCell className="text-muted-foreground">
+                                      {new Date(m.joined_at).toLocaleDateString('pt-BR')}
+                                    </TableCell>
+                                  </TableRow>
+                                ))}
+                                {members.length === 0 && (
+                                  <TableRow>
+                                    <TableCell colSpan={3} className="text-center text-muted-foreground">Nenhum membro</TableCell>
+                                  </TableRow>
+                                )}
+                              </TableBody>
+                            </Table>
+                          </CardContent>
+                        )}
+                      </Card>
+                    );
+                  })
+                )}
+              </div>
+            )}
+          </TabsContent>
+
+
             <Card>
               <CardHeader>
                 <CardTitle>Gestão de Planos</CardTitle>
