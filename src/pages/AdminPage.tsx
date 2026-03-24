@@ -34,6 +34,21 @@ interface UserGamification {
   total_pomodoros: number;
 }
 
+interface TeamInfo {
+  id: string;
+  name: string;
+  description: string | null;
+  created_at: string;
+  created_by: string;
+}
+
+interface TeamMemberInfo {
+  user_id: string;
+  role: string;
+  joined_at: string;
+  display_name: string | null;
+}
+
 interface OverviewStats {
   totalUsers: number;
   totalTasks: number;
