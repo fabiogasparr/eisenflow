@@ -1,58 +1,66 @@
 
 
-# Auto-criar Tenant Pessoal para cada Usuário
+# Correção do Loop Infinito no WhatsApp Webhook
 
 ## Problema
 
-Atualmente, um usuário precisa ir manualmente à página de Organização para criar um tenant. O usuário espera que, ao se cadastrar, já tenha automaticamente seu próprio "workspace pessoal" (tenant), pois ele é tanto um usuário quanto uma organização.
+O bot está gerando mensagens em loop infinito. O fluxo é:
+
+```text
+1. Usuário envia mensagem para si mesmo
+2. Webhook recebe (fromMe=true) → processa → envia resposta via API
+3. A resposta enviada pelo bot TAMBÉM é um MESSAGES_UPSERT com fromMe=true
+4. Webhook recebe a resposta do bot → processa como nova mensagem → envia outra resposta
+5. Repete infinitamente
+```
+
+Como `accept_messages_from = 'self_only'` e as respostas do bot são enviadas pelo mesmo número (`fromMe=true`), o webhook não consegue distinguir entre mensagens do usuário e respostas do próprio bot.
 
 ## Solução
 
-Criar automaticamente um tenant pessoal para cada novo usuário no momento do cadastro, via trigger no banco de dados.
+Duas camadas de proteção:
+
+### 1. Deduplicação por Message ID
+
+Criar uma tabela `whatsapp_processed_messages` para rastrear IDs de mensagens já processadas. Cada evento MESSAGES_UPSERT tem um `msgData.key.id` único. Se já foi processado, ignorar.
+
+### 2. Detecção de mensagens enviadas via API
+
+A Evolution API marca mensagens enviadas via API com campos específicos (ex: `msgData.key.id` começa com padrões específicos, ou `msgData.messageTimestamp` é muito recente comparado ao processamento). A forma mais robusta é verificar se o `remoteJid` do destinatário é o próprio número do bot — nesse caso, apenas processar se NÃO for uma mensagem já presente na tabela de dedup.
+
+### 3. Rate limiting por usuário
+
+Adicionar um check temporal: ignorar mensagens do mesmo usuário se a última foi processada há menos de 3 segundos.
 
 ## Mudanças
 
-### 1. Trigger no banco: auto-criar tenant ao criar profile
-
-Criar uma função `handle_new_user_tenant()` que dispara após INSERT na tabela `profiles`:
-- Cria um tenant com `name = display_name`, `slug = user_id` (garante unicidade), `created_by = user_id`
-- O trigger existente `handle_new_tenant` já insere o usuário como `owner` em `tenant_members` automaticamente
+### Migração SQL — tabela de dedup
 
 ```sql
-CREATE OR REPLACE FUNCTION public.handle_new_user_tenant()
-RETURNS trigger
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $$
-BEGIN
-  INSERT INTO public.tenants (name, slug, created_by)
-  VALUES (
-    COALESCE(NEW.display_name, 'Meu Workspace'),
-    NEW.user_id::text,
-    NEW.user_id
-  );
-  RETURN NEW;
-END;
-$$;
+CREATE TABLE public.whatsapp_processed_messages (
+  message_id TEXT PRIMARY KEY,
+  instance_name TEXT NOT NULL,
+  processed_at TIMESTAMPTZ DEFAULT now()
+);
 
-CREATE TRIGGER on_profile_created_create_tenant
-  AFTER INSERT ON public.profiles
-  FOR EACH ROW EXECUTE FUNCTION public.handle_new_user_tenant();
+-- Auto-cleanup de registros antigos (>24h)
+CREATE INDEX idx_wpm_processed_at ON public.whatsapp_processed_messages(processed_at);
 ```
 
-### 2. Migração para usuários existentes
+### Edge Function `whatsapp-webhook/index.ts`
 
-Script SQL que cria tenants para todos os usuários que ainda não possuem um:
-- Para cada `profiles.user_id` que não está em `tenant_members`, cria um tenant pessoal
+No handler de MESSAGES_UPSERT (linha ~567), antes de processar:
 
-### 3. Ajustar `useTenantContext` — auto-selecionar tenant
-
-Já existe a lógica de auto-selecionar o primeiro tenant. Com o tenant pessoal sempre existindo, o contexto será preenchido automaticamente ao logar.
+1. Extrair `messageId = msgData.key?.id`
+2. Verificar se já existe em `whatsapp_processed_messages` — se sim, ignorar
+3. Inserir o `messageId` na tabela antes de processar
+4. Adicionar check temporal: buscar último registro do usuário e ignorar se < 3 segundos
+5. Adicionar cleanup periódico (deletar registros > 24h)
 
 ### Arquivos modificados
+
 | Arquivo | Ação |
 |---------|------|
-| Migração SQL | Trigger + backfill de tenants existentes |
-| Nenhum arquivo frontend | O comportamento já funciona com o tenant auto-criado |
+| Migração SQL | Tabela `whatsapp_processed_messages` |
+| `supabase/functions/whatsapp-webhook/index.ts` | Dedup + rate limit antes de processar mensagem |
 
