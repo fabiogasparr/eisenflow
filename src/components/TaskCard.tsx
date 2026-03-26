@@ -124,7 +124,7 @@ export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps)
           <button
             {...attributes}
             {...listeners}
-            className="cursor-grab opacity-60 md:opacity-0 md:group-hover:opacity-60 transition-opacity shrink-0"
+            className="cursor-grab opacity-60 transition-opacity shrink-0"
             onClick={(e) => e.stopPropagation()}
           >
             <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
