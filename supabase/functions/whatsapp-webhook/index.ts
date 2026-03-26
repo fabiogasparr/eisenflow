@@ -571,9 +571,31 @@ Deno.serve(async (req) => {
       const messageText = msgData.message?.conversation ||
         msgData.message?.extendedTextMessage?.text || ''
       const fromMe = msgData.key?.fromMe === true
+      const messageId = msgData.key?.id
 
       if (!messageText.trim()) {
         return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
+      }
+
+      // ── Deduplication: skip if message already processed ──
+      if (messageId) {
+        const { data: existing } = await supabaseAdmin
+          .from('whatsapp_processed_messages')
+          .select('message_id')
+          .eq('message_id', messageId)
+          .maybeSingle()
+
+        if (existing) {
+          console.log(`[dedup] Message ${messageId} already processed, skipping`)
+          return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
+        }
+
+        // Mark as processed immediately (before any processing)
+        await supabaseAdmin
+          .from('whatsapp_processed_messages')
+          .insert({ message_id: messageId, instance_name: instanceName })
+          .then(() => {})
+          .catch(() => {}) // ignore duplicate key errors from race conditions
       }
 
       const { data: conn } = await supabaseAdmin
@@ -590,7 +612,33 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
       }
 
+      // ── Rate limiting: ignore if last message processed < 3 seconds ago ──
       const userId = conn.user_id
+      const { data: recentMsg } = await supabaseAdmin
+        .from('whatsapp_processed_messages')
+        .select('processed_at')
+        .eq('instance_name', instanceName)
+        .neq('message_id', messageId || '')
+        .order('processed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+
+      if (recentMsg?.processed_at) {
+        const elapsed = Date.now() - new Date(recentMsg.processed_at).getTime()
+        if (elapsed < 3000) {
+          console.log(`[rate-limit] Last message ${elapsed}ms ago, skipping`)
+          return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
+        }
+      }
+
+      // ── Periodic cleanup: remove processed messages older than 24h ──
+      supabaseAdmin
+        .from('whatsapp_processed_messages')
+        .delete()
+        .lt('processed_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString())
+        .then(() => {})
+        .catch(() => {})
+
       let replyText = ''
 
       // ── Route: structured commands (/) or AI processing ──
