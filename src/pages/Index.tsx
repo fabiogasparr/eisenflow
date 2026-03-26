@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, useSensor, useSensors } from '@dnd-kit/core';
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { AppLayout } from '@/components/AppLayout';
 import { QuadrantDropZone } from '@/components/QuadrantDropZone';
 import { TaskCard } from '@/components/TaskCard';
