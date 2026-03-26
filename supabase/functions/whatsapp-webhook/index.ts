@@ -607,9 +607,16 @@ Deno.serve(async (req) => {
       if (!conn) return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
 
       const acceptFrom = conn.accept_messages_from || 'self_only'
-      if (acceptFrom === 'self_only' && !fromMe) {
-        console.log('Ignored message: not from self')
-        return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
+      if (acceptFrom === 'self_only') {
+        // Must be fromMe AND the conversation must be with self (remoteJid = own number)
+        const remoteJid = msgData.key?.remoteJid || ''
+        const ownNumber = (conn.phone_number || '').replace(/\D/g, '')
+        const remoteNumber = remoteJid.replace(/@.*$/, '').replace(/\D/g, '')
+
+        if (!fromMe || !ownNumber || remoteNumber !== ownNumber) {
+          console.log(`Ignored: self_only mode, fromMe=${fromMe}, remote=${remoteNumber}, own=${ownNumber}`)
+          return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
+        }
       }
 
       // ── Rate limiting: ignore if last message processed < 3 seconds ago ──
