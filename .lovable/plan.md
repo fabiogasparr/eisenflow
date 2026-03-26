@@ -1,29 +1,52 @@
 
 
-# Correção do Arrastar e Soltar
+# Correção: Assistente respondendo mensagens para outros contatos
 
 ## Problema
 
-O drag-and-drop usa apenas `PointerSensor`, que não funciona bem em dispositivos touch. Além disso, o `useSwipeGesture` no `TaskCard` captura os eventos de toque (`onTouchStart/Move/End`) antes do sensor de drag conseguir ativá-los, criando um conflito.
+O filtro atual (linha 610) verifica apenas `fromMe === true`. Porém, **toda mensagem enviada do telefone do usuário** tem `fromMe: true` — seja para si mesmo ou para qualquer outro contato. O webhook processa e responde a todas elas.
+
+## Causa raiz
+
+Na Evolution API, o campo `msgData.key.remoteJid` indica o destinatário/remetente da conversa:
+- Mensagem para si mesmo: `remoteJid` = número do próprio usuário (ex: `5511943246689@s.whatsapp.net`)
+- Mensagem para outro contato: `remoteJid` = número do outro contato
+
+O código **não verifica o `remoteJid`**, apenas o `fromMe`.
 
 ## Solução
 
-### 1. Adicionar `TouchSensor` nos sensores (Index.tsx e WeeklyPlanner.tsx)
+Quando `accept_messages_from = 'self_only'`, adicionar uma verificação de que o `remoteJid` corresponde ao número do usuário cadastrado em `whatsapp_connections.phone_number`. Se não corresponder, ignorar a mensagem.
 
-Importar `TouchSensor` do `@dnd-kit/core` e adicioná-lo ao array de sensores com `activationConstraint: { delay: 250, tolerance: 5 }`. O delay permite distinguir entre toque rápido (swipe) e toque longo (drag).
+## Mudança
 
-### 2. Desabilitar swipe quando drag está ativo
+### `supabase/functions/whatsapp-webhook/index.ts`
 
-No `TaskCard`, o `useSwipeGesture` já recebe `disabled: isDragging`. Isso está correto, mas o conflito ocorre porque ambos reagem ao mesmo evento. Com o `TouchSensor` usando delay, o drag só ativa após segurar 250ms, permitindo que o swipe funcione normalmente em toques rápidos.
+Após buscar a conexão (linha 601-607), antes do filtro `acceptFrom` (linha 609-613):
 
-### 3. Melhorar o grip handle no TaskCard
+```typescript
+const acceptFrom = conn.accept_messages_from || 'self_only';
 
-O botão de grip (`GripVertical`) tem `opacity-0` no desktop com hover. No mobile, ele deveria estar sempre visível para indicar que é arrastável.
+if (acceptFrom === 'self_only') {
+  // Must be fromMe AND the conversation must be with self (remoteJid = own number)
+  const remoteJid = msgData.key?.remoteJid || '';
+  const ownNumber = (conn.phone_number || '').replace(/\D/g, '');
+  const remoteNumber = remoteJid.replace(/@.*$/, '').replace(/\D/g, '');
 
-### Arquivos modificados
+  if (!fromMe || !ownNumber || remoteNumber !== ownNumber) {
+    console.log(`Ignored: self_only mode, fromMe=${fromMe}, remote=${remoteNumber}, own=${ownNumber}`);
+    return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders });
+  }
+}
+```
 
-| Arquivo | Mudança |
-|---------|---------|
-| `src/pages/Index.tsx` | Adicionar `TouchSensor` com delay de 250ms |
-| `src/pages/WeeklyPlanner.tsx` | Adicionar `TouchSensor` com delay de 250ms |
+Isso garante que:
+1. Apenas mensagens enviadas pelo próprio usuário (`fromMe`) são consideradas
+2. A conversa deve ser consigo mesmo (`remoteJid` = próprio número)
+3. Mensagens para outros contatos são completamente ignoradas
+
+### Arquivo modificado
+| Arquivo | Ação |
+|---------|------|
+| `supabase/functions/whatsapp-webhook/index.ts` | Substituir filtro nas linhas 609-613 |
 
