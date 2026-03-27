@@ -3,6 +3,7 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { useTasks } from '@/hooks/useTasks';
 import { useGamification } from '@/hooks/useGamification';
 import { usePomodoroSettings } from '@/hooks/usePomodoroSettings';
+import { useFocusSessions, useTaskFocusTime } from '@/hooks/useFocusSessions';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -24,6 +25,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
   const { tasks, updateTask } = useTasks();
   const { recordAction } = useGamification();
   const pomodoro = usePomodoroSettings();
+  const focusSessions = useFocusSessions();
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
@@ -35,6 +37,8 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
 
   // Track saved timer state per task so switching doesn't reset
   const taskTimers = useRef<Record<string, { timeLeft: number; elapsed: number; phase: PomodoroPhase; pomodoroCount: number }>>({});
+
+  const { data: activeTaskTotalFocus } = useTaskFocusTime(activeTaskId);
 
   const isPomodoroEnabled = pomodoro.enabled;
 
@@ -117,6 +121,13 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     return () => clearInterval(interval);
   }, [running, isPomodoroEnabled, handlePhaseEnd, recordAction]);
 
+  // End session on close
+  useEffect(() => {
+    if (!open && running) {
+      focusSessions.endSession();
+    }
+  }, [open]);
+
   // Escape key
   useEffect(() => {
     if (!open) return;
@@ -149,12 +160,14 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
 
     // Save current task's timer before switching
     saveCurrentTimer();
-    if (running) setRunning(false);
+    if (running) {
+      setRunning(false);
+      focusSessions.pauseSession();
+    }
 
     // Check if we have a saved timer for the new task
     const saved = taskTimers.current[task.id];
     if (saved) {
-      // Restore saved state
       setActiveTaskId(task.id);
       setTimeLeft(saved.timeLeft);
       setElapsed(saved.elapsed);
@@ -162,8 +175,8 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       setPomodoroCount(saved.pomodoroCount);
       setRunning(true);
       playResumeSound();
+      focusSessions.resumeSession(task.id, saved.phase);
     } else {
-      // Brand new task — start fresh
       setActiveTaskId(task.id);
       setPhase('focus');
       setPomodoroCount(0);
@@ -174,6 +187,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       }
       setRunning(true);
       playStartSound();
+      focusSessions.startSession(task.id, 'focus');
       if (task.status === 'pending') {
         updateTask.mutate({ id: task.id, status: 'in_progress' });
       }
@@ -182,7 +196,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
 
   const handleRestart = () => {
     if (!activeTaskId) return;
-    // Clear saved timer for this task
+    focusSessions.endSession();
     delete taskTimers.current[activeTaskId];
     setPhase('focus');
     setPomodoroCount(0);
@@ -193,6 +207,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     }
     setRunning(true);
     playStartSound();
+    focusSessions.startSession(activeTaskId, 'focus');
     toast.info(
       language === 'pt-BR' ? '🔄 Timer reiniciado!' : '🔄 Timer restarted!'
     );
@@ -200,7 +215,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
 
   const handleCompleteTask = () => {
     if (activeTask) {
-      // Clean up saved timer
+      focusSessions.endSession();
       delete taskTimers.current[activeTask.id];
       updateTask.mutate({ id: activeTask.id, status: 'completed' });
       playCompleteSound();
@@ -215,8 +230,10 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
   const handlePauseResume = () => {
     if (running) {
       playPauseSound();
+      focusSessions.pauseSession();
     } else {
       playResumeSound();
+      if (activeTaskId) focusSessions.resumeSession(activeTaskId, phase);
     }
     setRunning(!running);
   };
@@ -398,6 +415,12 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
                   <p className="text-muted-foreground">{activeTask.description}</p>
                 )}
                 <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
+                  {activeTaskTotalFocus != null && activeTaskTotalFocus > 0 && (
+                    <span className="flex items-center gap-1 text-quadrant-do">
+                      <Zap className="h-4 w-4" />
+                      {Math.floor(activeTaskTotalFocus / 60)}{language === 'pt-BR' ? 'min focados' : 'min focused'}
+                    </span>
+                  )}
                   {activeTask.due_date && (
                     <span className="flex items-center gap-1">
                       <Clock className="h-4 w-4" />
