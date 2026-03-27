@@ -121,6 +121,13 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     return () => clearInterval(interval);
   }, [running, isPomodoroEnabled, handlePhaseEnd, recordAction]);
 
+  // End session on close
+  useEffect(() => {
+    if (!open && running) {
+      focusSessions.endSession();
+    }
+  }, [open]);
+
   // Escape key
   useEffect(() => {
     if (!open) return;
