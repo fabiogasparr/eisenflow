@@ -408,6 +408,12 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
                   <p className="text-muted-foreground">{activeTask.description}</p>
                 )}
                 <div className="flex items-center justify-center gap-4 text-sm text-muted-foreground">
+                  {activeTaskTotalFocus != null && activeTaskTotalFocus > 0 && (
+                    <span className="flex items-center gap-1 text-quadrant-do">
+                      <Zap className="h-4 w-4" />
+                      {Math.floor(activeTaskTotalFocus / 60)}{language === 'pt-BR' ? 'min focados' : 'min focused'}
+                    </span>
+                  )}
                   {activeTask.due_date && (
                     <span className="flex items-center gap-1">
                       <Clock className="h-4 w-4" />
