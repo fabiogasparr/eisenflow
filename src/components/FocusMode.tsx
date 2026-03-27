@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTasks } from '@/hooks/useTasks';
 import { useGamification } from '@/hooks/useGamification';
@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { QUADRANT_CONFIG, type Task } from '@/types/task';
-import { X, CheckCircle, Play, Clock, Zap, Target, Timer, Coffee, SkipForward, Pause } from 'lucide-react';
+import { X, CheckCircle, Play, Clock, Zap, Target, Timer, Coffee, SkipForward, Pause, RotateCcw } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { playStartSound, playPauseSound, playResumeSound, playFocusEndSound, playBreakEndSound, playCompleteSound } from '@/lib/focusSounds';
@@ -32,6 +32,9 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
   const [phase, setPhase] = useState<PomodoroPhase>('focus');
   const [pomodoroCount, setPomodoroCount] = useState(0);
   const [sessionPomodoros, setSessionPomodoros] = useState(0);
+
+  // Track saved timer state per task so switching doesn't reset
+  const taskTimers = useRef<Record<string, { timeLeft: number; elapsed: number; phase: PomodoroPhase; pomodoroCount: number }>>({});
 
   const isPomodoroEnabled = pomodoro.enabled;
 
@@ -130,8 +133,57 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     return `${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
   };
 
-  const handleStartTask = (task: Task) => {
-    setActiveTaskId(task.id);
+  // Save current task's timer state
+  const saveCurrentTimer = useCallback(() => {
+    if (activeTaskId) {
+      taskTimers.current[activeTaskId] = { timeLeft, elapsed, phase, pomodoroCount };
+    }
+  }, [activeTaskId, timeLeft, elapsed, phase, pomodoroCount]);
+
+  const handleSelectTask = (task: Task) => {
+    // Clicking the same active task → toggle pause/resume
+    if (task.id === activeTaskId) {
+      handlePauseResume();
+      return;
+    }
+
+    // Save current task's timer before switching
+    saveCurrentTimer();
+    if (running) setRunning(false);
+
+    // Check if we have a saved timer for the new task
+    const saved = taskTimers.current[task.id];
+    if (saved) {
+      // Restore saved state
+      setActiveTaskId(task.id);
+      setTimeLeft(saved.timeLeft);
+      setElapsed(saved.elapsed);
+      setPhase(saved.phase);
+      setPomodoroCount(saved.pomodoroCount);
+      setRunning(true);
+      playResumeSound();
+    } else {
+      // Brand new task — start fresh
+      setActiveTaskId(task.id);
+      setPhase('focus');
+      setPomodoroCount(0);
+      if (isPomodoroEnabled) {
+        setTimeLeft(getPhaseDuration('focus'));
+      } else {
+        setElapsed(0);
+      }
+      setRunning(true);
+      playStartSound();
+      if (task.status === 'pending') {
+        updateTask.mutate({ id: task.id, status: 'in_progress' });
+      }
+    }
+  };
+
+  const handleRestart = () => {
+    if (!activeTaskId) return;
+    // Clear saved timer for this task
+    delete taskTimers.current[activeTaskId];
     setPhase('focus');
     setPomodoroCount(0);
     if (isPomodoroEnabled) {
@@ -141,13 +193,15 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     }
     setRunning(true);
     playStartSound();
-    if (task.status === 'pending') {
-      updateTask.mutate({ id: task.id, status: 'in_progress' });
-    }
+    toast.info(
+      language === 'pt-BR' ? '🔄 Timer reiniciado!' : '🔄 Timer restarted!'
+    );
   };
 
   const handleCompleteTask = () => {
     if (activeTask) {
+      // Clean up saved timer
+      delete taskTimers.current[activeTask.id];
       updateTask.mutate({ id: activeTask.id, status: 'completed' });
       playCompleteSound();
       recordAction.mutate('complete');
@@ -274,6 +328,15 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
                       <><Play className="h-3.5 w-3.5" /> {language === 'pt-BR' ? 'Retomar' : 'Resume'}</>
                     )}
                   </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleRestart}
+                    className="gap-1.5"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5" />
+                    {language === 'pt-BR' ? 'Reiniciar' : 'Restart'}
+                  </Button>
                   {isPomodoroEnabled && isBreak && (
                     <Button
                       variant="outline"
@@ -364,35 +427,54 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
                   </p>
                 </div>
               ) : (
-                doTasks.map((task) => (
-                  <button
-                    key={task.id}
-                    onClick={() => handleStartTask(task)}
-                    className={`w-full text-left rounded-lg border p-3 transition-all hover:shadow-md ${
-                      activeTaskId === task.id
-                        ? 'border-quadrant-do bg-quadrant-do-bg ring-1 ring-quadrant-do'
-                        : 'bg-card hover:bg-accent'
-                    }`}
-                  >
-                    <p className="text-sm font-medium truncate">{task.title}</p>
-                    {task.description && (
-                      <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
-                    )}
-                    <div className="flex items-center gap-2 mt-2">
-                      {task.estimated_time && (
-                        <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
-                          <Timer className="h-2.5 w-2.5" />
-                          {task.estimated_time}{t('minutes')}
-                        </span>
+                doTasks.map((task) => {
+                  const isActive = activeTaskId === task.id;
+                  const hasSavedTimer = !!taskTimers.current[task.id];
+                  return (
+                    <button
+                      key={task.id}
+                      onClick={() => handleSelectTask(task)}
+                      className={`w-full text-left rounded-lg border p-3 transition-all hover:shadow-md ${
+                        isActive
+                          ? 'border-quadrant-do bg-quadrant-do-bg ring-1 ring-quadrant-do'
+                          : 'bg-card hover:bg-accent'
+                      }`}
+                    >
+                      <p className="text-sm font-medium truncate">{task.title}</p>
+                      {task.description && (
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{task.description}</p>
                       )}
-                      {task.status === 'in_progress' && (
-                        <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-quadrant-do/10 text-quadrant-do">
-                          {language === 'pt-BR' ? 'Em andamento' : 'In progress'}
-                        </Badge>
-                      )}
-                    </div>
-                  </button>
-                ))
+                      <div className="flex items-center gap-2 mt-2">
+                        {task.estimated_time && (
+                          <span className="text-[10px] text-muted-foreground flex items-center gap-0.5">
+                            <Timer className="h-2.5 w-2.5" />
+                            {task.estimated_time}{t('minutes')}
+                          </span>
+                        )}
+                        {isActive && running && (
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-quadrant-do/10 text-quadrant-do">
+                            {language === 'pt-BR' ? 'Em foco' : 'Focusing'}
+                          </Badge>
+                        )}
+                        {isActive && !running && (
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-muted text-muted-foreground">
+                            {language === 'pt-BR' ? 'Pausado' : 'Paused'}
+                          </Badge>
+                        )}
+                        {!isActive && hasSavedTimer && (
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-amber-500/10 text-amber-600">
+                            {language === 'pt-BR' ? 'Iniciado' : 'Started'}
+                          </Badge>
+                        )}
+                        {!isActive && !hasSavedTimer && task.status === 'in_progress' && (
+                          <Badge variant="secondary" className="text-[10px] h-4 px-1.5 bg-quadrant-do/10 text-quadrant-do">
+                            {language === 'pt-BR' ? 'Em andamento' : 'In progress'}
+                          </Badge>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })
               )}
             </div>
           </ScrollArea>
