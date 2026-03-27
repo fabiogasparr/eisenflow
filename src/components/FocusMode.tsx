@@ -25,6 +25,8 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
   const { tasks, updateTask } = useTasks();
   const { recordAction } = useGamification();
   const pomodoro = usePomodoroSettings();
+  const focusSessions = useFocusSessions();
+  const { data: activeTaskTotalFocus } = useTaskFocusTime(activeTaskId);
 
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [timeLeft, setTimeLeft] = useState(0);
