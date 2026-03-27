@@ -306,11 +306,51 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
                 </Badge>
               )}
 
-              {/* Timer */}
+              {/* Timer with circular progress */}
               <div className="space-y-4">
-                <p className={`font-display text-7xl font-bold tracking-tight tabular-nums ${phaseColor}`}>
-                  {isPomodoroEnabled ? formatTime(timeLeft) : formatTime(elapsed)}
-                </p>
+                {(() => {
+                  const totalDuration = isPomodoroEnabled ? getPhaseDuration(phase) : (activeTask?.estimated_time ? activeTask.estimated_time * 60 : 0);
+                  const currentTime = isPomodoroEnabled ? timeLeft : elapsed;
+                  const progress = totalDuration > 0
+                    ? (isPomodoroEnabled ? (totalDuration - currentTime) / totalDuration : Math.min(currentTime / totalDuration, 1))
+                    : 0;
+                  const size = 260;
+                  const strokeWidth = 6;
+                  const radius = (size - strokeWidth) / 2;
+                  const circumference = 2 * Math.PI * radius;
+                  const strokeDashoffset = circumference * (1 - progress);
+                  const ringColor = isBreak ? 'hsl(var(--chart-4))' : 'hsl(var(--quadrant-do))';
+
+                  return (
+                    <div className="relative inline-flex items-center justify-center mx-auto" style={{ width: size, height: size }}>
+                      <svg className="absolute inset-0 -rotate-90" width={size} height={size}>
+                        <circle
+                          cx={size / 2}
+                          cy={size / 2}
+                          r={radius}
+                          fill="none"
+                          stroke="hsl(var(--muted))"
+                          strokeWidth={strokeWidth}
+                        />
+                        <circle
+                          cx={size / 2}
+                          cy={size / 2}
+                          r={radius}
+                          fill="none"
+                          stroke={ringColor}
+                          strokeWidth={strokeWidth}
+                          strokeLinecap="round"
+                          strokeDasharray={circumference}
+                          strokeDashoffset={strokeDashoffset}
+                          className="transition-[stroke-dashoffset] duration-1000 ease-linear"
+                        />
+                      </svg>
+                      <p className={`font-display text-6xl font-bold tracking-tight tabular-nums ${phaseColor}`}>
+                        {isPomodoroEnabled ? formatTime(timeLeft) : formatTime(elapsed)}
+                      </p>
+                    </div>
+                  );
+                })()}
 
                 {/* Pomodoro dots */}
                 {pomodoroIndicator}
