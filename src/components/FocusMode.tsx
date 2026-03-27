@@ -153,12 +153,14 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
 
     // Save current task's timer before switching
     saveCurrentTimer();
-    if (running) setRunning(false);
+    if (running) {
+      setRunning(false);
+      focusSessions.pauseSession();
+    }
 
     // Check if we have a saved timer for the new task
     const saved = taskTimers.current[task.id];
     if (saved) {
-      // Restore saved state
       setActiveTaskId(task.id);
       setTimeLeft(saved.timeLeft);
       setElapsed(saved.elapsed);
@@ -166,8 +168,8 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       setPomodoroCount(saved.pomodoroCount);
       setRunning(true);
       playResumeSound();
+      focusSessions.resumeSession(task.id, saved.phase);
     } else {
-      // Brand new task — start fresh
       setActiveTaskId(task.id);
       setPhase('focus');
       setPomodoroCount(0);
@@ -178,6 +180,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
       }
       setRunning(true);
       playStartSound();
+      focusSessions.startSession(task.id, 'focus');
       if (task.status === 'pending') {
         updateTask.mutate({ id: task.id, status: 'in_progress' });
       }
@@ -186,7 +189,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
 
   const handleRestart = () => {
     if (!activeTaskId) return;
-    // Clear saved timer for this task
+    focusSessions.endSession();
     delete taskTimers.current[activeTaskId];
     setPhase('focus');
     setPomodoroCount(0);
@@ -197,6 +200,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
     }
     setRunning(true);
     playStartSound();
+    focusSessions.startSession(activeTaskId, 'focus');
     toast.info(
       language === 'pt-BR' ? '🔄 Timer reiniciado!' : '🔄 Timer restarted!'
     );
@@ -204,7 +208,7 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
 
   const handleCompleteTask = () => {
     if (activeTask) {
-      // Clean up saved timer
+      focusSessions.endSession();
       delete taskTimers.current[activeTask.id];
       updateTask.mutate({ id: activeTask.id, status: 'completed' });
       playCompleteSound();
@@ -219,8 +223,10 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
   const handlePauseResume = () => {
     if (running) {
       playPauseSound();
+      focusSessions.pauseSession();
     } else {
       playResumeSound();
+      if (activeTaskId) focusSessions.resumeSession(activeTaskId, phase);
     }
     setRunning(!running);
   };
