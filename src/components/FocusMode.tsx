@@ -38,6 +38,8 @@ export function FocusMode({ open, onClose }: FocusModeProps) {
   // Track saved timer state per task so switching doesn't reset
   const taskTimers = useRef<Record<string, { timeLeft: number; elapsed: number; phase: PomodoroPhase; pomodoroCount: number }>>({});
 
+  const { data: activeTaskTotalFocus } = useTaskFocusTime(activeTaskId);
+
   const isPomodoroEnabled = pomodoro.enabled;
 
   const doTasks = useMemo(
