@@ -813,6 +813,7 @@ export type Database = {
           instance_name: string
           phone_number: string | null
           qr_code: string | null
+          reminder_times: string
           reminders_enabled: boolean
           report_time: string | null
           status: string
@@ -830,6 +831,7 @@ export type Database = {
           instance_name: string
           phone_number?: string | null
           qr_code?: string | null
+          reminder_times?: string
           reminders_enabled?: boolean
           report_time?: string | null
           status?: string
@@ -847,6 +849,7 @@ export type Database = {
           instance_name?: string
           phone_number?: string | null
           qr_code?: string | null
+          reminder_times?: string
           reminders_enabled?: boolean
           report_time?: string | null
           status?: string

@@ -5,6 +5,7 @@ import { usePomodoroSettings } from '@/hooks/usePomodoroSettings';
 import { useWhatsApp } from '@/hooks/useWhatsApp';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { WhatsAppQRCode } from '@/components/WhatsAppQRCode';
+import { ReminderTimesEditor } from '@/components/ReminderTimesEditor';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -64,6 +65,13 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => whatsapp.updateSettings.mutate({ reminders_enabled: v })}
                   />
                 </div>
+                {whatsapp.connection.reminders_enabled && (
+                  <ReminderTimesEditor
+                    times={whatsapp.connection.reminder_times || '08:00,12:00,18:00'}
+                    onSave={(times) => whatsapp.updateSettings.mutate({ reminder_times: times })}
+                    language={language}
+                  />
+                )}
                 <div className="flex items-center justify-between">
                   <Label htmlFor="wa-report">{t('whatsappDailyReport')}</Label>
                   <Switch
