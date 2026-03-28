@@ -20,6 +20,12 @@ Deno.serve(async (req) => {
 
     console.log('Starting deadline reminders check...')
 
+    // Cleanup: delete sent reminders older than 48h
+    await supabaseAdmin
+      .from('whatsapp_sent_reminders')
+      .delete()
+      .lt('sent_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
+
     // Get all connected users with reminders enabled
     const { data: connections, error: connErr } = await supabaseAdmin
       .from('whatsapp_connections')
@@ -59,20 +65,16 @@ Deno.serve(async (req) => {
           })
           if (infoRes.ok) {
             const infoData = await infoRes.json()
-            console.log(`Evolution API fetchInstances response:`, JSON.stringify(infoData).substring(0, 1000))
             const instance = Array.isArray(infoData) ? infoData[0] : infoData
             const owner = instance?.ownerJid || instance?.instance?.owner || instance?.owner || instance?.instance?.wuid || null
             if (owner) {
               phoneNumber = owner.replace(/@.*$/, '')
               console.log(`Found phone number from Evolution API: ${phoneNumber}`)
-              // Persist it so we don't need to fetch again
               await supabaseAdmin
                 .from('whatsapp_connections')
                 .update({ phone_number: phoneNumber })
                 .eq('user_id', conn.user_id)
             }
-          } else {
-            console.error(`Evolution API fetchInstances failed: ${infoRes.status}`)
           }
         } catch (e) {
           console.error(`Failed to fetch phone from Evolution API:`, e)
@@ -80,7 +82,7 @@ Deno.serve(async (req) => {
       }
 
       if (!phoneNumber) {
-        console.log(`Skipping user ${conn.user_id}: no phone number even after API fetch`)
+        console.log(`Skipping user ${conn.user_id}: no phone number`)
         continue
       }
 
@@ -100,26 +102,48 @@ Deno.serve(async (req) => {
         continue
       }
 
-      console.log(`Found ${tasks?.length ?? 0} tasks with upcoming deadlines for user ${conn.user_id}`)
-
       if (!tasks || tasks.length === 0) continue
 
-      // Group by urgency
-      const dueNow: string[] = []
-      const due1h: string[] = []
-      const due24h: string[] = []
+      // Check which reminders were already sent
+      const taskIds = tasks.map(t => t.id)
+      const { data: alreadySent } = await supabaseAdmin
+        .from('whatsapp_sent_reminders')
+        .select('task_id, reminder_type')
+        .eq('user_id', conn.user_id)
+        .in('task_id', taskIds)
+
+      const sentSet = new Set((alreadySent || []).map(r => `${r.task_id}:${r.reminder_type}`))
+
+      // Classify and filter tasks
+      const dueNow: { title: string; id: string }[] = []
+      const due1h: { title: string; id: string }[] = []
+      const due24h: { title: string; id: string }[] = []
 
       for (const task of tasks) {
         const dueTime = new Date(task.due_date!).getTime()
         const diff = dueTime - now.getTime()
 
+        let type: string
         if (diff <= 0) {
-          dueNow.push(task.title)
+          type = 'now'
         } else if (diff <= 60 * 60 * 1000) {
-          due1h.push(task.title)
+          type = '1h'
         } else {
-          due24h.push(task.title)
+          type = '24h'
         }
+
+        // Skip if already sent
+        if (sentSet.has(`${task.id}:${type}`)) continue
+
+        if (type === 'now') dueNow.push({ title: task.title, id: task.id })
+        else if (type === '1h') due1h.push({ title: task.title, id: task.id })
+        else due24h.push({ title: task.title, id: task.id })
+      }
+
+      const allPending = [...dueNow, ...due1h, ...due24h]
+      if (allPending.length === 0) {
+        console.log(`All reminders already sent for user ${conn.user_id}`)
+        continue
       }
 
       // Build message
@@ -127,24 +151,24 @@ Deno.serve(async (req) => {
 
       if (dueNow.length > 0) {
         lines.push('🔴 *Vencendo agora:*')
-        dueNow.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`))
+        dueNow.forEach((t, i) => lines.push(`  ${i + 1}. ${t.title}`))
         lines.push('')
       }
       if (due1h.length > 0) {
         lines.push('🟡 *Próxima 1 hora:*')
-        due1h.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`))
+        due1h.forEach((t, i) => lines.push(`  ${i + 1}. ${t.title}`))
         lines.push('')
       }
       if (due24h.length > 0) {
         lines.push('🔵 *Próximas 24 horas:*')
-        due24h.forEach((t, i) => lines.push(`  ${i + 1}. ${t}`))
+        due24h.forEach((t, i) => lines.push(`  ${i + 1}. ${t.title}`))
         lines.push('')
       }
 
       lines.push('Use /listar para ver detalhes.')
-
       const message = lines.join('\n')
-      console.log(`Sending reminder to ${conn.phone_number}: ${tasks.length} tasks`)
+
+      console.log(`Sending reminder to ${phoneNumber}: ${allPending.length} new tasks`)
 
       try {
         const sendRes = await fetch(`${EVOLUTION_API_URL}/message/sendText/${conn.instance_name}`, {
@@ -154,18 +178,29 @@ Deno.serve(async (req) => {
             apikey: EVOLUTION_API_KEY,
           },
           body: JSON.stringify({
-            number: conn.phone_number,
+            number: phoneNumber,
             text: message,
           }),
         })
 
-        const sendBody = await sendRes.text()
-        console.log(`Evolution API response [${sendRes.status}]: ${sendBody}`)
-
         if (!sendRes.ok) {
-          console.error(`Failed to send to ${conn.user_id}: ${sendRes.status} ${sendBody}`)
+          const errBody = await sendRes.text()
+          console.error(`Failed to send to ${conn.user_id}: ${sendRes.status} ${errBody}`)
         } else {
           totalSent++
+
+          // Record sent reminders to prevent duplicates
+          const records = [
+            ...dueNow.map(t => ({ user_id: conn.user_id, task_id: t.id, reminder_type: 'now' })),
+            ...due1h.map(t => ({ user_id: conn.user_id, task_id: t.id, reminder_type: '1h' })),
+            ...due24h.map(t => ({ user_id: conn.user_id, task_id: t.id, reminder_type: '24h' })),
+          ]
+
+          if (records.length > 0) {
+            await supabaseAdmin
+              .from('whatsapp_sent_reminders')
+              .upsert(records, { onConflict: 'user_id,task_id,reminder_type' })
+          }
         }
       } catch (sendErr) {
         console.error(`Failed to send reminder to ${conn.user_id}:`, sendErr)
