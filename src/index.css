@@ -115,9 +115,19 @@
   body {
     @apply bg-background text-foreground;
     font-family: 'Inter', sans-serif;
+    -webkit-tap-highlight-color: transparent;
   }
 
   h1, h2, h3, h4, h5, h6 {
     font-family: 'Space Grotesk', sans-serif;
+  }
+}
+
+@layer utilities {
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .pb-safe-14 {
+    padding-bottom: calc(3.5rem + env(safe-area-inset-bottom, 0px));
   }
 }

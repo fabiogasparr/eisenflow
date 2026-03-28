@@ -224,7 +224,8 @@ export default function Index() {
                 tasks={tasksByQuadrant[q]}
                 onTaskClick={setSelectedTask}
                 onComplete={handleSwipeComplete}
-                onDelete={handleSwipeDelete} />
+                onDelete={handleSwipeDelete}
+                defaultCollapsed={q !== 'do'} />
               )}
             </div>
           </div>
