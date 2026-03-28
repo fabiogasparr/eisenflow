@@ -66,11 +66,47 @@ export default function SettingsPage() {
                   />
                 </div>
                 {whatsapp.connection.reminders_enabled && (
-                  <ReminderTimesEditor
-                    times={whatsapp.connection.reminder_times || '08:00,12:00,18:00'}
-                    onSave={(times) => whatsapp.updateSettings.mutate({ reminder_times: times })}
-                    language={language}
-                  />
+                  <>
+                    <ReminderTimesEditor
+                      times={whatsapp.connection.reminder_times || '08:00,12:00,18:00'}
+                      onSave={(times) => whatsapp.updateSettings.mutate({ reminder_times: times })}
+                      language={language}
+                    />
+                    <div className="space-y-1.5">
+                      <Label className="text-xs">
+                        {language === 'pt-BR' ? 'Fuso horário' : 'Timezone'}
+                      </Label>
+                      <Select
+                        value={whatsapp.connection.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
+                        onValueChange={(v) => whatsapp.updateSettings.mutate({ timezone: v })}
+                      >
+                        <SelectTrigger className="w-full sm:w-72">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="America/Sao_Paulo">🇧🇷 São Paulo (UTC-3)</SelectItem>
+                          <SelectItem value="America/Manaus">🇧🇷 Manaus (UTC-4)</SelectItem>
+                          <SelectItem value="America/Belem">🇧🇷 Belém (UTC-3)</SelectItem>
+                          <SelectItem value="America/Fortaleza">🇧🇷 Fortaleza (UTC-3)</SelectItem>
+                          <SelectItem value="America/Recife">🇧🇷 Recife (UTC-3)</SelectItem>
+                          <SelectItem value="America/Cuiaba">🇧🇷 Cuiabá (UTC-4)</SelectItem>
+                          <SelectItem value="America/Rio_Branco">🇧🇷 Rio Branco (UTC-5)</SelectItem>
+                          <SelectItem value="America/Noronha">🇧🇷 Noronha (UTC-2)</SelectItem>
+                          <SelectItem value="America/New_York">🇺🇸 New York (UTC-5)</SelectItem>
+                          <SelectItem value="America/Chicago">🇺🇸 Chicago (UTC-6)</SelectItem>
+                          <SelectItem value="America/Los_Angeles">🇺🇸 Los Angeles (UTC-8)</SelectItem>
+                          <SelectItem value="America/Argentina/Buenos_Aires">🇦🇷 Buenos Aires (UTC-3)</SelectItem>
+                          <SelectItem value="America/Bogota">🇨🇴 Bogotá (UTC-5)</SelectItem>
+                          <SelectItem value="America/Santiago">🇨🇱 Santiago (UTC-4)</SelectItem>
+                          <SelectItem value="America/Mexico_City">🇲🇽 Cidade do México (UTC-6)</SelectItem>
+                          <SelectItem value="Europe/Lisbon">🇵🇹 Lisboa (UTC+0)</SelectItem>
+                          <SelectItem value="Europe/London">🇬🇧 Londres (UTC+0)</SelectItem>
+                          <SelectItem value="Europe/Berlin">🇩🇪 Berlim (UTC+1)</SelectItem>
+                          <SelectItem value="Asia/Tokyo">🇯🇵 Tóquio (UTC+9)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </>
                 )}
                 <div className="flex items-center justify-between">
                   <Label htmlFor="wa-report">{t('whatsappDailyReport')}</Label>

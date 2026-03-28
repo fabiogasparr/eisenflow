@@ -817,6 +817,7 @@ export type Database = {
           reminders_enabled: boolean
           report_time: string | null
           status: string
+          timezone: string
           updated_at: string
           user_id: string
           weekly_report_day: number
@@ -835,6 +836,7 @@ export type Database = {
           reminders_enabled?: boolean
           report_time?: string | null
           status?: string
+          timezone?: string
           updated_at?: string
           user_id: string
           weekly_report_day?: number
@@ -853,6 +855,7 @@ export type Database = {
           reminders_enabled?: boolean
           report_time?: string | null
           status?: string
+          timezone?: string
           updated_at?: string
           user_id?: string
           weekly_report_day?: number
