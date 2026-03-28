@@ -1,56 +1,40 @@
 
 
-# Correção: Lembretes WhatsApp Duplicados a cada 15 min
+# Horários Personalizados para Lembretes de Prazo do WhatsApp
 
-## Problema
+## Situação Atual
 
-1. **Dois cron jobs duplicados** chamando `whatsapp-deadline-reminders`: um a cada 15 min (job 5) e outro a cada 30 min (job 3)
-2. **Sem controle de deduplicação** — a função envia o mesmo lembrete toda vez que roda, sem verificar se já enviou
+Os lembretes de prazo são disparados por um cron job fixo nos horários 8h, 12h e 18h. O usuário não tem como personalizar esses horários. A tabela `whatsapp_connections` não possui campo para armazenar horários de lembrete customizados.
 
 ## Solução
 
-### 1. Remover cron jobs duplicados e criar um único com frequência adequada
+### 1. Adicionar coluna na tabela `whatsapp_connections`
 
-Deletar ambos os jobs (3 e 5) e criar um único job que roda **a cada 4 horas** (3x ao dia: manhã, tarde, noite). Lembretes de 24h não precisam ser enviados a cada 15 minutos.
+Adicionar `reminder_times` (tipo `text`, default `'08:00,12:00,18:00'`) para armazenar os horários escolhidos pelo usuário, separados por vírgula.
 
-```sql
-SELECT cron.unschedule(3);
-SELECT cron.unschedule(5);
+### 2. Atualizar a UI de configurações (SettingsPage.tsx)
 
-SELECT cron.schedule(
-  'whatsapp-deadline-reminders-4h',
-  '0 8,12,18 * * *',  -- 8h, 12h, 18h
-  $$ ... $$
-);
-```
+Quando `reminders_enabled` estiver ativo, exibir um campo para gerenciar até 5 horários de lembrete. Cada horário será um input `type="time"` com botão de remover, e um botão "Adicionar horário".
 
-### 2. Adicionar tabela de controle de lembretes enviados
+### 3. Atualizar o hook useWhatsApp
 
-Criar `whatsapp_sent_reminders` para rastrear quais lembretes já foram enviados por tarefa/usuário/tipo, evitando reenvio.
+Adicionar `reminder_times` ao tipo `WhatsAppConnection` e ao `updateSettings`.
 
-```sql
-CREATE TABLE public.whatsapp_sent_reminders (
-  id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  user_id uuid NOT NULL,
-  task_id uuid NOT NULL REFERENCES public.tasks(id) ON DELETE CASCADE,
-  reminder_type text NOT NULL, -- '24h', '1h', 'now'
-  sent_at timestamptz DEFAULT now(),
-  UNIQUE(user_id, task_id, reminder_type)
-);
-```
+### 4. Atualizar a Edge Function `whatsapp-deadline-reminders`
 
-### 3. Atualizar edge function para verificar antes de enviar
+Em vez de rodar em horário fixo (cron roda a cada hora), a função verifica se o horário atual bate com algum dos `reminder_times` do usuário (com tolerância de ±30 min). Alterar o cron para rodar **a cada hora** para cobrir qualquer combinação de horários.
 
-Na `whatsapp-deadline-reminders/index.ts`:
-- Antes de enviar, consultar `whatsapp_sent_reminders` para ver se o lembrete daquela tarefa/tipo já foi enviado
-- Após enviar com sucesso, inserir registro na tabela
-- Cleanup automático: deletar registros com mais de 48h
+### 5. Atualizar o cron job
 
-### Arquivos modificados
+Mudar de `0 8,12,18 * * *` para `0 * * * *` (a cada hora cheia), e a função filtra apenas os usuários cujo `reminder_times` inclui a hora atual.
 
-| Recurso | Ação |
+## Arquivos modificados
+
+| Arquivo | Ação |
 |---------|------|
-| Cron jobs (SQL direto) | Deletar jobs 3 e 5, criar 1 novo |
-| Migração SQL | Tabela `whatsapp_sent_reminders` |
-| `supabase/functions/whatsapp-deadline-reminders/index.ts` | Dedup check antes de enviar |
+| Migração SQL | Adicionar coluna `reminder_times` |
+| `src/hooks/useWhatsApp.ts` | Adicionar campo ao tipo |
+| `src/pages/SettingsPage.tsx` | UI para gerenciar horários |
+| `supabase/functions/whatsapp-deadline-reminders/index.ts` | Filtrar por horário do usuário |
+| Cron job (SQL insert) | Alterar para `0 * * * *` |
 
