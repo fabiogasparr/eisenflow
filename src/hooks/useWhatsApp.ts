@@ -18,6 +18,7 @@ export interface WhatsAppConnection {
   report_time: string;
   weekly_report_time: string;
   accept_messages_from: 'self_only' | 'all';
+  reminder_times: string;
   created_at: string;
   updated_at: string;
 }
