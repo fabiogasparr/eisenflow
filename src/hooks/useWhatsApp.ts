@@ -51,7 +51,15 @@ export function useWhatsApp() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: async () => {
+      // Auto-detect browser timezone on first connection
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+      if (tz && user) {
+        await (supabase as any)
+          .from('whatsapp_connections')
+          .update({ timezone: tz })
+          .eq('user_id', user.id);
+      }
       queryClient.invalidateQueries({ queryKey: ['whatsapp-connection'] });
     },
     onError: (err: Error) => {
