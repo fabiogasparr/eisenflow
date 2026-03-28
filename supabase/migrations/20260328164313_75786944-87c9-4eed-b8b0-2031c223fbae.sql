@@ -1,0 +1,1 @@
+ALTER TABLE public.whatsapp_connections ADD COLUMN reminder_times text NOT NULL DEFAULT '08:00,12:00,18:00';
