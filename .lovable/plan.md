@@ -1,53 +1,42 @@
 
 
-# Otimização Mobile do EisenFlow
+# Adicionar Timezone do Usuário aos Lembretes
 
-## Problemas Identificados
+## Problema
 
-1. **`App.css` com estilos conflitantes**: `#root` tem `max-width: 1280px`, `padding: 2rem` e `text-align: center` — resquícios do template Vite que limitam o layout e adicionam padding desnecessário no mobile
-2. **Sem meta tags PWA**: Falta `theme-color`, `apple-mobile-web-app-capable`, e `apple-mobile-web-app-status-bar-style` no `index.html`
-3. **Sem safe areas**: O layout não respeita `env(safe-area-inset-*)` para iPhones com notch
-4. **Bottom nav corta conteúdo**: O `pb-14` no `<main>` é fixo, mas o bottom nav pode ficar sob a safe area em iPhones
-5. **Header apertado no mobile**: Muitos elementos (tenant selector, focus mode, create, notification, theme, language) competem por espaço em 375px
-6. **Quadrantes empilhados sem accordion**: Os 4 quadrantes em coluna única ocupam muito scroll; não há forma rápida de colapsar
-7. **Fontes externas sem preconnect**: Google Fonts carregado sem `preconnect`, adicionando latência
+Os horários de lembrete (`reminder_times`) são comparados com a hora UTC do servidor. Se o usuário está em UTC-3 (São Paulo) e configura lembrete para 08:00, o sistema compara com 08:00 UTC — que é 05:00 no horário local. Os lembretes chegam no horário errado.
 
 ## Solução
 
-### 1. Limpar `App.css`
-Remover os estilos do template Vite (`#root`, `.logo`, `.card`, `.read-the-docs`) que conflitam com o layout.
+### 1. Migração SQL — adicionar coluna `timezone`
 
-### 2. Meta tags mobile no `index.html`
-Adicionar `theme-color`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, e `preconnect` para Google Fonts.
+Adicionar `timezone text NOT NULL DEFAULT 'America/Sao_Paulo'` à tabela `whatsapp_connections`. Usar timezone IANA (ex: `America/Sao_Paulo`, `America/New_York`).
 
-### 3. Safe areas no CSS e Bottom Nav
-- Adicionar `viewport-fit=cover` na meta viewport
-- Usar `env(safe-area-inset-bottom)` no bottom nav e no padding do `<main>`
-- Ajustar o `pb` do main para considerar safe area
+### 2. Edge Function — converter hora UTC para hora local
 
-### 4. Header mobile compacto
-- Esconder o tenant selector label no mobile (mostrar só o ícone)
-- Agrupar theme + language num único dropdown "⋮" no mobile
-- Manter apenas os botões essenciais visíveis (criar tarefa, focus mode)
+Na `whatsapp-deadline-reminders/index.ts`, em vez de comparar `currentHour:currentMinute` (UTC) direto com `reminder_times`, converter a hora atual para o timezone do usuário antes de comparar.
 
-### 5. Quadrantes colapsáveis no mobile
-No mobile (< 640px), cada quadrante pode ser colapsado/expandido com um toque no header. Por padrão, "Fazer Agora" vem expandido e os outros colapsados. Isso reduz drasticamente o scroll.
+```typescript
+// Converter UTC para hora local do usuário
+const userNow = new Date(now.toLocaleString('en-US', { timeZone: conn.timezone || 'America/Sao_Paulo' }));
+const userHour = userNow.getHours();
+const userMinute = userNow.getMinutes();
+```
 
-### 6. Touch feedback melhorado
-- Adicionar `active:scale-[0.98]` nos cards de tarefa para feedback tátil
-- Garantir que o grip handle esteja sempre visível no touch
+### 3. Hook `useWhatsApp` — adicionar `timezone` ao tipo
+
+Incluir `timezone: string` no `WhatsAppConnection` interface.
+
+### 4. UI em SettingsPage — seletor de timezone
+
+Adicionar um `<Select>` com os fusos horários mais comuns do Brasil e internacionais, logo abaixo do editor de horários de lembrete. Detectar automaticamente o timezone do navegador (`Intl.DateTimeFormat().resolvedOptions().timeZone`) como valor padrão.
 
 ## Arquivos modificados
 
 | Arquivo | Ação |
 |---------|------|
-| `src/App.css` | Limpar estilos do template Vite |
-| `index.html` | Meta tags mobile + preconnect |
-| `src/index.css` | Safe area utilities |
-| `src/components/BottomNav.tsx` | Safe area bottom padding |
-| `src/components/AppLayout.tsx` | Ajustar padding do main com safe area |
-| `src/components/AppHeader.tsx` | Header compacto no mobile |
-| `src/components/QuadrantDropZone.tsx` | Colapsável no mobile |
-| `src/pages/Index.tsx` | Estado de collapse dos quadrantes |
-| `src/components/TaskCard.tsx` | Touch feedback visual |
+| Migração SQL | Coluna `timezone` em `whatsapp_connections` |
+| `src/hooks/useWhatsApp.ts` | Campo `timezone` no tipo |
+| `src/pages/SettingsPage.tsx` | Seletor de fuso horário |
+| `supabase/functions/whatsapp-deadline-reminders/index.ts` | Converter UTC → timezone do usuário |
 
