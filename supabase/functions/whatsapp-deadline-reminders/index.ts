@@ -29,7 +29,7 @@ Deno.serve(async (req) => {
     // Get all connected users with reminders enabled
     const { data: connections, error: connErr } = await supabaseAdmin
       .from('whatsapp_connections')
-      .select('user_id, instance_name, phone_number, reminder_times')
+      .select('user_id, instance_name, phone_number, reminder_times, timezone')
       .eq('status', 'connected')
       .eq('reminders_enabled', true)
 
