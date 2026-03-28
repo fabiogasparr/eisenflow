@@ -1,40 +1,53 @@
 
 
-# Horários Personalizados para Lembretes de Prazo do WhatsApp
+# Otimização Mobile do EisenFlow
 
-## Situação Atual
+## Problemas Identificados
 
-Os lembretes de prazo são disparados por um cron job fixo nos horários 8h, 12h e 18h. O usuário não tem como personalizar esses horários. A tabela `whatsapp_connections` não possui campo para armazenar horários de lembrete customizados.
+1. **`App.css` com estilos conflitantes**: `#root` tem `max-width: 1280px`, `padding: 2rem` e `text-align: center` — resquícios do template Vite que limitam o layout e adicionam padding desnecessário no mobile
+2. **Sem meta tags PWA**: Falta `theme-color`, `apple-mobile-web-app-capable`, e `apple-mobile-web-app-status-bar-style` no `index.html`
+3. **Sem safe areas**: O layout não respeita `env(safe-area-inset-*)` para iPhones com notch
+4. **Bottom nav corta conteúdo**: O `pb-14` no `<main>` é fixo, mas o bottom nav pode ficar sob a safe area em iPhones
+5. **Header apertado no mobile**: Muitos elementos (tenant selector, focus mode, create, notification, theme, language) competem por espaço em 375px
+6. **Quadrantes empilhados sem accordion**: Os 4 quadrantes em coluna única ocupam muito scroll; não há forma rápida de colapsar
+7. **Fontes externas sem preconnect**: Google Fonts carregado sem `preconnect`, adicionando latência
 
 ## Solução
 
-### 1. Adicionar coluna na tabela `whatsapp_connections`
+### 1. Limpar `App.css`
+Remover os estilos do template Vite (`#root`, `.logo`, `.card`, `.read-the-docs`) que conflitam com o layout.
 
-Adicionar `reminder_times` (tipo `text`, default `'08:00,12:00,18:00'`) para armazenar os horários escolhidos pelo usuário, separados por vírgula.
+### 2. Meta tags mobile no `index.html`
+Adicionar `theme-color`, `apple-mobile-web-app-capable`, `apple-mobile-web-app-status-bar-style`, e `preconnect` para Google Fonts.
 
-### 2. Atualizar a UI de configurações (SettingsPage.tsx)
+### 3. Safe areas no CSS e Bottom Nav
+- Adicionar `viewport-fit=cover` na meta viewport
+- Usar `env(safe-area-inset-bottom)` no bottom nav e no padding do `<main>`
+- Ajustar o `pb` do main para considerar safe area
 
-Quando `reminders_enabled` estiver ativo, exibir um campo para gerenciar até 5 horários de lembrete. Cada horário será um input `type="time"` com botão de remover, e um botão "Adicionar horário".
+### 4. Header mobile compacto
+- Esconder o tenant selector label no mobile (mostrar só o ícone)
+- Agrupar theme + language num único dropdown "⋮" no mobile
+- Manter apenas os botões essenciais visíveis (criar tarefa, focus mode)
 
-### 3. Atualizar o hook useWhatsApp
+### 5. Quadrantes colapsáveis no mobile
+No mobile (< 640px), cada quadrante pode ser colapsado/expandido com um toque no header. Por padrão, "Fazer Agora" vem expandido e os outros colapsados. Isso reduz drasticamente o scroll.
 
-Adicionar `reminder_times` ao tipo `WhatsAppConnection` e ao `updateSettings`.
-
-### 4. Atualizar a Edge Function `whatsapp-deadline-reminders`
-
-Em vez de rodar em horário fixo (cron roda a cada hora), a função verifica se o horário atual bate com algum dos `reminder_times` do usuário (com tolerância de ±30 min). Alterar o cron para rodar **a cada hora** para cobrir qualquer combinação de horários.
-
-### 5. Atualizar o cron job
-
-Mudar de `0 8,12,18 * * *` para `0 * * * *` (a cada hora cheia), e a função filtra apenas os usuários cujo `reminder_times` inclui a hora atual.
+### 6. Touch feedback melhorado
+- Adicionar `active:scale-[0.98]` nos cards de tarefa para feedback tátil
+- Garantir que o grip handle esteja sempre visível no touch
 
 ## Arquivos modificados
 
 | Arquivo | Ação |
 |---------|------|
-| Migração SQL | Adicionar coluna `reminder_times` |
-| `src/hooks/useWhatsApp.ts` | Adicionar campo ao tipo |
-| `src/pages/SettingsPage.tsx` | UI para gerenciar horários |
-| `supabase/functions/whatsapp-deadline-reminders/index.ts` | Filtrar por horário do usuário |
-| Cron job (SQL insert) | Alterar para `0 * * * *` |
+| `src/App.css` | Limpar estilos do template Vite |
+| `index.html` | Meta tags mobile + preconnect |
+| `src/index.css` | Safe area utilities |
+| `src/components/BottomNav.tsx` | Safe area bottom padding |
+| `src/components/AppLayout.tsx` | Ajustar padding do main com safe area |
+| `src/components/AppHeader.tsx` | Header compacto no mobile |
+| `src/components/QuadrantDropZone.tsx` | Colapsável no mobile |
+| `src/pages/Index.tsx` | Estado de collapse dos quadrantes |
+| `src/components/TaskCard.tsx` | Touch feedback visual |
 
