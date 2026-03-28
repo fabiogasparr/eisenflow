@@ -54,18 +54,24 @@ Deno.serve(async (req) => {
     let totalSent = 0
 
     for (const conn of connections) {
-      // Check if current hour matches any of the user's reminder_times (±30 min tolerance)
+      // Convert UTC time to user's local timezone
+      const userTimezone = conn.timezone || 'America/Sao_Paulo'
+      const userNow = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }))
+      const userHour = userNow.getHours()
+      const userMinute = userNow.getMinutes()
+
+      // Check if current local hour matches any of the user's reminder_times (±30 min tolerance)
       const reminderTimes = (conn.reminder_times || '08:00,12:00,18:00').split(',').map((t: string) => t.trim())
       const matchesTime = reminderTimes.some((time: string) => {
         const [h, m] = time.split(':').map(Number)
         const reminderMinutes = h * 60 + (m || 0)
-        const currentMinutes = currentHour * 60 + currentMinute
+        const currentMinutes = userHour * 60 + userMinute
         const diff = Math.abs(currentMinutes - reminderMinutes)
         return diff <= 30 || diff >= (24 * 60 - 30) // handle midnight wrap
       })
 
       if (!matchesTime) {
-        console.log(`Skipping user ${conn.user_id}: current time ${currentHour}:${currentMinute} doesn't match reminder_times ${conn.reminder_times}`)
+        console.log(`Skipping user ${conn.user_id}: local time ${userHour}:${userMinute} (${userTimezone}) doesn't match reminder_times ${conn.reminder_times}`)
         continue
       }
       console.log(`Processing user ${conn.user_id}, phone: ${conn.phone_number}, instance: ${conn.instance_name}`)
