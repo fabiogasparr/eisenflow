@@ -111,7 +111,7 @@ export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps)
       {/* Card content */}
       <div
         {...handlers}
-        className={`relative border-l-4 border bg-card p-2.5 shadow-sm hover:shadow-md transition-shadow cursor-pointer rounded-lg ${borderColor} ${
+        className={`relative border-l-4 border bg-card p-2.5 shadow-sm hover:shadow-md transition-all cursor-pointer rounded-lg active:scale-[0.98] ${borderColor} ${
           isDragging ? 'ring-2 ring-primary z-50' : ''
         } ${isInProgress ? 'ring-1 ring-primary/30' : ''}`}
         style={{

@@ -1,4 +1,4 @@
-import { Search, Globe, Moon, Sun, Target, Plus, Building2, Check } from 'lucide-react';
+import { Search, Globe, Moon, Sun, Target, Plus, Building2, Check, MoreVertical } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -27,16 +27,16 @@ export function AppHeader({ onSearch, onFocusMode, onCreateTask }: AppHeaderProp
   const { tenants, activeTenant, setActiveTenantId } = useTenantContext();
 
   return (
-    <header className="flex h-14 items-center gap-2 sm:gap-3 border-b bg-card/80 backdrop-blur-sm px-2 sm:px-4">
+    <header className="flex h-14 items-center gap-1.5 sm:gap-3 border-b bg-card/80 backdrop-blur-sm px-2 sm:px-4">
       <SidebarTrigger className="shrink-0" />
 
       {/* Tenant Selector */}
       {tenants.length > 0 && (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground shrink-0 max-w-[180px]">
+            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground shrink-0 max-w-[140px] sm:max-w-[180px] px-1.5 sm:px-2">
               <Building2 className="h-4 w-4 shrink-0" />
-              <span className="truncate text-xs">{activeTenant?.name || '—'}</span>
+              <span className="truncate text-xs hidden sm:inline">{activeTenant?.name || '—'}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-56">
@@ -74,31 +74,55 @@ export function AppHeader({ onSearch, onFocusMode, onCreateTask }: AppHeaderProp
         />
       </div>
 
-      <div className="ml-auto flex items-center gap-2">
+      <div className="ml-auto flex items-center gap-1 sm:gap-2">
         {onFocusMode && (
-          <Button variant="outline" size="sm" onClick={onFocusMode} className="gap-1.5">
+          <Button variant="outline" size="icon" onClick={onFocusMode} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3 sm:gap-1.5">
             <Target className="h-4 w-4" />
-            <span className="hidden sm:inline">{language === 'pt-BR' ? 'Modo Foco' : 'Focus Mode'}</span>
+            <span className="hidden sm:inline text-sm">{language === 'pt-BR' ? 'Modo Foco' : 'Focus Mode'}</span>
           </Button>
         )}
         {onCreateTask && (
-          <Button size="sm" onClick={onCreateTask} className="gap-1.5 shadow-lg">
+          <Button size="icon" onClick={onCreateTask} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3 sm:gap-1.5 shadow-lg">
             <Plus className="h-4 w-4" />
-            <span className="hidden sm:inline">{t('addTask')}</span>
+            <span className="hidden sm:inline text-sm">{t('addTask')}</span>
           </Button>
         )}
         <NotificationCenter />
-        <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-muted-foreground">
+
+        {/* Desktop: separate buttons */}
+        <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-muted-foreground hidden sm:inline-flex h-8 w-8">
           {theme === 'dark' ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
         </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground">
+            <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground hidden sm:inline-flex">
               <Globe className="h-4 w-4" />
               <span className="text-xs uppercase">{language === 'pt-BR' ? 'PT' : 'EN'}</span>
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setLanguage('pt-BR')}>
+              🇧🇷 Português (BR)
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => setLanguage('en')}>
+              🇺🇸 English
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+
+        {/* Mobile: grouped menu */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon" className="text-muted-foreground sm:hidden h-8 w-8">
+              <MoreVertical className="h-4 w-4" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-48">
+            <DropdownMenuItem onClick={toggleTheme}>
+              {theme === 'dark' ? <Sun className="h-4 w-4 mr-2" /> : <Moon className="h-4 w-4 mr-2" />}
+              {theme === 'dark' ? (language === 'pt-BR' ? 'Modo Claro' : 'Light Mode') : (language === 'pt-BR' ? 'Modo Escuro' : 'Dark Mode')}
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
             <DropdownMenuItem onClick={() => setLanguage('pt-BR')}>
               🇧🇷 Português (BR)
             </DropdownMenuItem>

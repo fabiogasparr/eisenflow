@@ -21,7 +21,7 @@ export function AppLayout({ children, onSearch, onFocusMode, onCreateTask, mainC
         </div>
         <div className="flex-1 flex flex-col">
           <AppHeader onSearch={onSearch} onFocusMode={onFocusMode} onCreateTask={onCreateTask} />
-          <main className={cn("flex-1 overflow-auto min-h-0 pb-14 md:pb-0", mainClassName)}>
+          <main className={cn("flex-1 overflow-auto min-h-0 pb-safe-14 md:pb-0", mainClassName)}>
             {children}
           </main>
         </div>
