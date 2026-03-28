@@ -65,6 +65,13 @@ export default function SettingsPage() {
                     onCheckedChange={(v) => whatsapp.updateSettings.mutate({ reminders_enabled: v })}
                   />
                 </div>
+                {whatsapp.connection.reminders_enabled && (
+                  <ReminderTimesEditor
+                    times={whatsapp.connection.reminder_times || '08:00,12:00,18:00'}
+                    onSave={(times) => whatsapp.updateSettings.mutate({ reminder_times: times })}
+                    language={language}
+                  />
+                )}
                 <div className="flex items-center justify-between">
                   <Label htmlFor="wa-report">{t('whatsappDailyReport')}</Label>
                   <Switch
