@@ -75,6 +75,9 @@ export default function SettingsPage() {
                     <div className="space-y-1.5">
                       <Label className="text-xs">
                         {language === 'pt-BR' ? 'Fuso horário' : 'Timezone'}
+                        <span className="ml-2 text-muted-foreground font-normal">
+                          ({language === 'pt-BR' ? 'Detectado' : 'Detected'}: {Intl.DateTimeFormat().resolvedOptions().timeZone})
+                        </span>
                       </Label>
                       <Select
                         value={whatsapp.connection.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone}
