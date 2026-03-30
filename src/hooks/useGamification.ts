@@ -127,14 +127,14 @@ export function useGamification() {
 
       for (const badge of BADGES) {
         if (!earnedBadges.includes(badge.id) && badge.condition(fullStats)) {
-          await supabase
-            .from('user_badges')
-            .insert({ user_id: user.id, badge_id: badge.id });
-          // Toast for new badge
-          toast({
-            title: `${badge.icon} ${badge.labelPt}`,
-            description: badge.descPt,
-          });
+          const { data: awarded } = await supabase
+            .rpc('award_badge_if_earned', { _user_id: user.id, _badge_id: badge.id });
+          if (awarded) {
+            toast({
+              title: `${badge.icon} ${badge.labelPt}`,
+              description: badge.descPt,
+            });
+          }
         }
       }
     },
