@@ -919,6 +919,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      award_badge_if_earned: {
+        Args: { _badge_id: string; _user_id: string }
+        Returns: boolean
+      }
       get_team_role: {
         Args: { _team_id: string; _user_id: string }
         Returns: Database["public"]["Enums"]["team_role"]
