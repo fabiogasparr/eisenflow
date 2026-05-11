@@ -372,6 +372,62 @@ async function trimChatHistory(supabaseAdmin: any, userId: string, keepLast = 30
   }
 }
 
+// ── Helper: download image from Evolution API and upload to storage ──
+async function downloadAndStoreWhatsappImage(
+  supabaseAdmin: any,
+  instanceName: string,
+  messageData: any,
+  userId: string,
+  EVOLUTION_API_URL: string,
+  EVOLUTION_API_KEY: string,
+): Promise<{ signedUrl: string; mimeType: string } | null> {
+  try {
+    // Try Evolution API endpoint to fetch base64 of media
+    const res = await fetch(
+      `${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${instanceName}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+        body: JSON.stringify({ message: { key: messageData.key }, convertToMp4: false }),
+      },
+    )
+    if (!res.ok) {
+      console.error('getBase64FromMediaMessage failed:', res.status, await res.text())
+      return null
+    }
+    const json = await res.json()
+    const base64: string = json.base64 || json.data?.base64 || ''
+    const mimeType: string =
+      json.mimetype ||
+      json.mediaType ||
+      messageData.message?.imageMessage?.mimetype ||
+      'image/jpeg'
+    if (!base64) return null
+
+    // Decode base64 to bytes
+    const binary = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+    const ext = mimeType.split('/')[1]?.split(';')[0] || 'jpg'
+    const path = `${userId}/whatsapp/${Date.now()}-${crypto.randomUUID()}.${ext}`
+
+    const { error: upErr } = await supabaseAdmin.storage
+      .from('chat-attachments')
+      .upload(path, binary, { contentType: mimeType, upsert: false })
+    if (upErr) {
+      console.error('Storage upload failed:', upErr)
+      return null
+    }
+
+    const { data: signed } = await supabaseAdmin.storage
+      .from('chat-attachments')
+      .createSignedUrl(path, 600)
+    if (!signed?.signedUrl) return null
+    return { signedUrl: signed.signedUrl, mimeType }
+  } catch (e) {
+    console.error('downloadAndStoreWhatsappImage error:', e)
+    return null
+  }
+}
+
 // ── AI processing for natural language messages ──
 async function processWithAI(
   messageText: string,
