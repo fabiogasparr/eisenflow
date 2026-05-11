@@ -39,14 +39,17 @@ interface ChatMessage {
   role: MessageRole;
   content: string;
   imageUrls?: string[];
+  imagePaths?: string[];
   tasks?: TaskSuggestion[];
   tasksCreated?: boolean;
 }
 
 interface PendingImage {
   id: string;
-  file: File;
+  file?: File;
   previewUrl: string;
+  reused?: boolean;
+  reusedPath?: string;
 }
 
 const MAX_BYTES = 10 * 1024 * 1024;
