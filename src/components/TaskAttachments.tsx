@@ -3,10 +3,12 @@ import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
 import { useTaskAttachments, type TaskAttachment } from '@/hooks/useTaskAttachments';
 import { useSubtasks } from '@/hooks/useSubtasks';
 import { useToast } from '@/hooks/use-toast';
-import { Image as ImageIcon, Loader2, Sparkles, Trash2, Plus, X, CheckCircle2 } from 'lucide-react';
+import { Image as ImageIcon, Loader2, Sparkles, Trash2, Plus, X, CheckCircle2, RotateCcw, Save, AlertCircle } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 
 interface Props {
@@ -25,6 +27,9 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
   const [analysis, setAnalysis] = useState<{ ocr_text: string; description: string; suggested_subtasks: string[] } | null>(null);
   const [draftSubtasks, setDraftSubtasks] = useState<{ title: string; selected: boolean }[]>([]);
   const [savingSubtasks, setSavingSubtasks] = useState(false);
+  const [editedOcr, setEditedOcr] = useState('');
+  const [originalOcr, setOriginalOcr] = useState('');
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
   // Reset/seed draft list whenever a new analysis arrives
   useEffect(() => {
@@ -33,37 +38,72 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
     } else {
       setDraftSubtasks([]);
     }
+    const txt = analysis?.ocr_text ?? '';
+    setEditedOcr(txt);
+    setOriginalOcr(txt);
   }, [analysis]);
 
-  const { attachments, isLoading, upload, remove, analyze } = useTaskAttachments(taskId);
+  const { attachments, isLoading, upload, remove, analyze, updateOcr } = useTaskAttachments(taskId);
   const { addSubtask } = useSubtasks(taskId);
+
+  const runAnalyze = async (att: TaskAttachment) => {
+    setActiveAtt(att);
+    setAnalysis(null);
+    setAnalyzeError(null);
+    try {
+      const result = await analyze.mutateAsync(att.id);
+      setAnalysis(result);
+    } catch (e: any) {
+      setAnalyzeError(e?.message || (pt ? 'Falha na análise' : 'Analysis failed'));
+    }
+  };
 
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     for (const file of Array.from(files)) {
       try {
-        await upload.mutateAsync(file);
+        const att = await upload.mutateAsync(file);
+        // auto-trigger OCR preview right after upload
+        await runAnalyze(att);
       } catch (e: any) {
         toast({ title: pt ? 'Falha no upload' : 'Upload failed', description: e.message, variant: 'destructive' });
       }
     }
   };
 
-  const handleAnalyze = async (att: TaskAttachment) => {
-    setActiveAtt(att);
-    setAnalysis(null);
+  const handleAnalyze = (att: TaskAttachment) => {
+    void runAnalyze(att);
+  };
+
+  const ocrDirty = editedOcr !== originalOcr;
+
+  const handleSaveOcr = async () => {
+    if (!activeAtt || !ocrDirty) return;
     try {
-      const result = await analyze.mutateAsync(att.id);
-      setAnalysis(result);
+      await updateOcr.mutateAsync({ id: activeAtt.id, ocr_text: editedOcr });
+      setOriginalOcr(editedOcr);
+      setAnalysis((prev) => (prev ? { ...prev, ocr_text: editedOcr } : prev));
+      toast({ title: pt ? 'Texto salvo' : 'Text saved' });
     } catch (e: any) {
-      toast({ title: pt ? 'Erro na análise' : 'Analysis error', description: e.message, variant: 'destructive' });
-      setActiveAtt(null);
+      toast({ title: pt ? 'Erro ao salvar' : 'Save failed', description: e.message, variant: 'destructive' });
     }
   };
 
-  const handleAddToDescription = () => {
-    if (!analysis) return;
-    const block = `\n\n📷 ${pt ? 'Texto extraído da imagem' : 'Text extracted from image'}:\n${analysis.ocr_text}`;
+  const handleAddToDescription = async () => {
+    if (!analysis || !activeAtt) return;
+    const text = editedOcr;
+    // auto-save edits before appending so DB stays in sync
+    if (ocrDirty) {
+      try {
+        await updateOcr.mutateAsync({ id: activeAtt.id, ocr_text: text });
+        setOriginalOcr(text);
+        setAnalysis((prev) => (prev ? { ...prev, ocr_text: text } : prev));
+      } catch (e: any) {
+        toast({ title: pt ? 'Erro ao salvar' : 'Save failed', description: e.message, variant: 'destructive' });
+        return;
+      }
+    }
+    const block = `\n\n📷 ${pt ? 'Texto extraído da imagem' : 'Text extracted from image'}:\n${text}`;
     onAppendDescription((taskDescription || '') + block);
     toast({ title: pt ? 'Adicionado à descrição' : 'Added to description' });
   };
@@ -176,40 +216,83 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
         <div className="rounded-lg border p-3 space-y-3 bg-muted/50">
           <div className="flex items-start justify-between">
             <p className="text-xs font-semibold">{pt ? 'Resultado da análise' : 'Analysis result'}</p>
-            <button onClick={() => { setActiveAtt(null); setAnalysis(null); }}>
+            <button onClick={() => { setActiveAtt(null); setAnalysis(null); setAnalyzeError(null); }}>
               <X className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
           </div>
-          {!analysis ? (
+          {!analysis && !analyzeError ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {pt ? 'Analisando imagem...' : 'Analyzing image...'}
+              {pt ? 'Analisando automaticamente...' : 'Auto-analyzing...'}
+            </div>
+          ) : analyzeError ? (
+            <div className="space-y-2">
+              <div className="flex items-start gap-2 text-xs text-destructive">
+                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <span>{analyzeError}</span>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => activeAtt && runAnalyze(activeAtt)}>
+                <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                {pt ? 'Tentar novamente' : 'Retry'}
+              </Button>
             </div>
           ) : (
             <>
-              {analysis.description && (
+              {analysis!.description && (
                 <div>
                   <p className="text-[11px] uppercase text-muted-foreground mb-1">
                     {pt ? 'Descrição' : 'Description'}
                   </p>
-                  <p className="text-xs">{analysis.description}</p>
+                  <p className="text-xs">{analysis!.description}</p>
                 </div>
               )}
-              {analysis.ocr_text && (
-                <div>
-                  <p className="text-[11px] uppercase text-muted-foreground mb-1">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[11px] uppercase text-muted-foreground flex items-center gap-2">
                     {pt ? 'Texto extraído (OCR)' : 'Extracted text (OCR)'}
+                    {ocrDirty && (
+                      <Badge variant="secondary" className="text-[9px] py-0 h-4">
+                        {pt ? 'Editado' : 'Edited'}
+                      </Badge>
+                    )}
                   </p>
-                  <pre className="text-xs whitespace-pre-wrap bg-background rounded p-2 max-h-40 overflow-auto">
-                    {analysis.ocr_text}
-                  </pre>
+                  <span className="text-[10px] text-muted-foreground">{editedOcr.length}</span>
                 </div>
-              )}
-              {analysis.ocr_text && (
-                <Button size="sm" variant="outline" onClick={handleAddToDescription}>
-                  {pt ? 'Adicionar à descrição' : 'Add to description'}
-                </Button>
-              )}
+                <Textarea
+                  value={editedOcr}
+                  onChange={(e) => setEditedOcr(e.target.value)}
+                  rows={6}
+                  placeholder={pt ? 'Nenhum texto detectado. Você pode escrever aqui.' : 'No text detected. You can type here.'}
+                  className="text-xs font-mono bg-background"
+                />
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={handleSaveOcr}
+                    disabled={!ocrDirty || updateOcr.isPending}
+                  >
+                    {updateOcr.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Save className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    {pt ? 'Salvar alterações' : 'Save changes'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setEditedOcr(originalOcr)}
+                    disabled={!ocrDirty}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    {pt ? 'Desfazer' : 'Reset'}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleAddToDescription} disabled={!editedOcr.trim()}>
+                    {pt ? 'Adicionar à descrição' : 'Add to description'}
+                  </Button>
+                </div>
+              </div>
 
               {draftSubtasks.length > 0 && (
                 <div className="rounded-md border bg-background p-2 space-y-2">
