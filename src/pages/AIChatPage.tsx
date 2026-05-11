@@ -38,6 +38,7 @@ export default function AIChatPage() {
   const [input, setInput] = useState('');
   const [pending, setPending] = useState<PendingImage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
