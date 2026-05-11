@@ -379,6 +379,13 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
             </div>
           )}
 
+          <TaskAttachments
+            taskId={task.id}
+            taskTitle={task.title}
+            taskDescription={task.description}
+            onAppendDescription={(text) => onUpdate({ description: text })}
+          />
+
           <div className="flex flex-col gap-2 pt-4 border-t">
             <Button
               onClick={() => setShareOpen(true)}
