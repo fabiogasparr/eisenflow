@@ -92,6 +92,17 @@ export function useTaskAttachments(taskId: string | null) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task-attachments', taskId] }),
   });
 
+  const updateOcr = useMutation({
+    mutationFn: async ({ id, ocr_text }: { id: string; ocr_text: string }) => {
+      const { error } = await supabase
+        .from('task_attachments')
+        .update({ ocr_text })
+        .eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task-attachments', taskId] }),
+  });
+
   const analyze = useMutation({
     mutationFn: async (attachment_id: string) => {
       const { data, error } = await supabase.functions.invoke('analyze-task-image', {
