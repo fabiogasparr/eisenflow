@@ -55,13 +55,13 @@ export default function Index() {
     );
   }, [tasks, searchQuery]);
 
-  // Separate in-progress tasks from matrix tasks
+  // Separate in-progress tasks from matrix tasks (hide completed)
   const inProgressTasks = useMemo(() => {
     return filteredTasks.filter((t) => t.status === 'in_progress');
   }, [filteredTasks]);
 
   const matrixTasks = useMemo(() => {
-    return filteredTasks.filter((t) => t.status !== 'in_progress');
+    return filteredTasks.filter((t) => t.status !== 'in_progress' && t.status !== 'completed');
   }, [filteredTasks]);
 
   const tasksByQuadrant = useMemo(() => ({
