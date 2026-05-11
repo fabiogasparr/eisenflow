@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CheckCircle2, Clock, Timer, RotateCcw, Trophy } from 'lucide-react';
 import { QUADRANT_CONFIG, type Quadrant, type Task } from '@/types/task';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, ReferenceLine } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 
 type Period = 'today' | '7d' | '30d' | 'all';
 
