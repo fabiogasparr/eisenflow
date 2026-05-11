@@ -205,18 +205,90 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
                   </pre>
                 </div>
               )}
-              <div className="flex flex-wrap gap-2">
-                {analysis.ocr_text && (
-                  <Button size="sm" variant="outline" onClick={handleAddToDescription}>
-                    {pt ? 'Adicionar à descrição' : 'Add to description'}
-                  </Button>
-                )}
-                {analysis.suggested_subtasks?.length > 0 && (
-                  <Button size="sm" onClick={handleGenerateSubtasks}>
-                    {pt ? `Criar ${analysis.suggested_subtasks.length} subtarefa(s)` : `Create ${analysis.suggested_subtasks.length} subtask(s)`}
-                  </Button>
-                )}
-              </div>
+              {analysis.ocr_text && (
+                <Button size="sm" variant="outline" onClick={handleAddToDescription}>
+                  {pt ? 'Adicionar à descrição' : 'Add to description'}
+                </Button>
+              )}
+
+              {draftSubtasks.length > 0 && (
+                <div className="rounded-md border bg-background p-2 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] uppercase text-muted-foreground">
+                      {pt ? 'Subtarefas sugeridas' : 'Suggested subtasks'}{' '}
+                      <span className="normal-case">({selectedCount}/{draftSubtasks.length})</span>
+                    </p>
+                    <button
+                      type="button"
+                      className="text-[11px] text-primary hover:underline"
+                      onClick={() =>
+                        setDraftSubtasks((prev) => prev.map((d) => ({ ...d, selected: !allSelected })))
+                      }
+                    >
+                      {allSelected ? (pt ? 'Desmarcar tudo' : 'Unselect all') : (pt ? 'Selecionar tudo' : 'Select all')}
+                    </button>
+                  </div>
+
+                  <ul className="space-y-1.5 max-h-56 overflow-auto pr-1">
+                    {draftSubtasks.map((d, idx) => (
+                      <li key={idx} className="flex items-center gap-2">
+                        <Checkbox
+                          checked={d.selected}
+                          onCheckedChange={(v) =>
+                            setDraftSubtasks((prev) =>
+                              prev.map((item, i) => (i === idx ? { ...item, selected: !!v } : item)),
+                            )
+                          }
+                        />
+                        <Input
+                          value={d.title}
+                          onChange={(e) =>
+                            setDraftSubtasks((prev) =>
+                              prev.map((item, i) => (i === idx ? { ...item, title: e.target.value } : item)),
+                            )
+                          }
+                          className="h-7 text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDraftSubtasks((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          aria-label={pt ? 'Remover' : 'Remove'}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setDraftSubtasks([])}
+                      disabled={savingSubtasks}
+                    >
+                      {pt ? 'Cancelar' : 'Cancel'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleConfirmSubtasks}
+                      disabled={selectedCount === 0 || savingSubtasks}
+                    >
+                      {savingSubtasks ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      {pt
+                        ? `Confirmar e criar ${selectedCount}`
+                        : `Confirm & create ${selectedCount}`}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
