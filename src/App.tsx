@@ -48,6 +48,7 @@ const AppRoutes = () => (
     <Route path="/invite/:code" element={<JoinTeamPage />} />
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
     <Route path="/metrics" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
+    <Route path="/completed" element={<ProtectedRoute><CompletedTasks /></ProtectedRoute>} />
     <Route path="/projects" element={<ProtectedRoute><Projects /></ProtectedRoute>} />
     <Route path="/projects/:id" element={<ProtectedRoute><ProjectDetail /></ProtectedRoute>} />
     <Route path="/weekly" element={<ProtectedRoute><WeeklyPlanner /></ProtectedRoute>} />
