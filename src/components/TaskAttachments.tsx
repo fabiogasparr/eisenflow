@@ -293,8 +293,6 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
                   </Button>
                 </div>
               </div>
-            </>
-          )}
 
               {draftSubtasks.length > 0 && (
                 <div className="rounded-md border bg-background p-2 space-y-2">
