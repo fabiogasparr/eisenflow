@@ -435,6 +435,7 @@ async function processWithAI(
   userId: string,
   EVOLUTION_API_URL: string,
   EVOLUTION_API_KEY: string,
+  imageUrls: string[] = [],
 ): Promise<string> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
   if (!LOVABLE_API_KEY) {
@@ -448,8 +449,11 @@ async function processWithAI(
     getChatHistory(supabaseAdmin, userId),
   ])
 
-  // Save user message to history
-  await saveChatMessage(supabaseAdmin, userId, 'user', messageText)
+  // Save user message to history (mark image content)
+  const historyText = imageUrls.length
+    ? `${messageText || ''}${messageText ? ' ' : ''}[📷 ${imageUrls.length} imagem(ns) enviada(s)]`
+    : messageText
+  await saveChatMessage(supabaseAdmin, userId, 'user', historyText)
 
   const quadrantLabels: Record<string, string> = {
     do: 'Fazer Agora', schedule: 'Agendar', delegate: 'Delegar', eliminate: 'Eliminar'
