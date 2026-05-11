@@ -372,6 +372,62 @@ async function trimChatHistory(supabaseAdmin: any, userId: string, keepLast = 30
   }
 }
 
+// ── Helper: download image from Evolution API and upload to storage ──
+async function downloadAndStoreWhatsappImage(
+  supabaseAdmin: any,
+  instanceName: string,
+  messageData: any,
+  userId: string,
+  EVOLUTION_API_URL: string,
+  EVOLUTION_API_KEY: string,
+): Promise<{ signedUrl: string; mimeType: string } | null> {
+  try {
+    // Try Evolution API endpoint to fetch base64 of media
+    const res = await fetch(
+      `${EVOLUTION_API_URL}/chat/getBase64FromMediaMessage/${instanceName}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+        body: JSON.stringify({ message: { key: messageData.key }, convertToMp4: false }),
+      },
+    )
+    if (!res.ok) {
+      console.error('getBase64FromMediaMessage failed:', res.status, await res.text())
+      return null
+    }
+    const json = await res.json()
+    const base64: string = json.base64 || json.data?.base64 || ''
+    const mimeType: string =
+      json.mimetype ||
+      json.mediaType ||
+      messageData.message?.imageMessage?.mimetype ||
+      'image/jpeg'
+    if (!base64) return null
+
+    // Decode base64 to bytes
+    const binary = Uint8Array.from(atob(base64), (c) => c.charCodeAt(0))
+    const ext = mimeType.split('/')[1]?.split(';')[0] || 'jpg'
+    const path = `${userId}/whatsapp/${Date.now()}-${crypto.randomUUID()}.${ext}`
+
+    const { error: upErr } = await supabaseAdmin.storage
+      .from('chat-attachments')
+      .upload(path, binary, { contentType: mimeType, upsert: false })
+    if (upErr) {
+      console.error('Storage upload failed:', upErr)
+      return null
+    }
+
+    const { data: signed } = await supabaseAdmin.storage
+      .from('chat-attachments')
+      .createSignedUrl(path, 600)
+    if (!signed?.signedUrl) return null
+    return { signedUrl: signed.signedUrl, mimeType }
+  } catch (e) {
+    console.error('downloadAndStoreWhatsappImage error:', e)
+    return null
+  }
+}
+
 // ── AI processing for natural language messages ──
 async function processWithAI(
   messageText: string,
@@ -379,6 +435,7 @@ async function processWithAI(
   userId: string,
   EVOLUTION_API_URL: string,
   EVOLUTION_API_KEY: string,
+  imageUrls: string[] = [],
 ): Promise<string> {
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
   if (!LOVABLE_API_KEY) {
@@ -392,8 +449,11 @@ async function processWithAI(
     getChatHistory(supabaseAdmin, userId),
   ])
 
-  // Save user message to history
-  await saveChatMessage(supabaseAdmin, userId, 'user', messageText)
+  // Save user message to history (mark image content)
+  const historyText = imageUrls.length
+    ? `${messageText || ''}${messageText ? ' ' : ''}[📷 ${imageUrls.length} imagem(ns) enviada(s)]`
+    : messageText
+  await saveChatMessage(supabaseAdmin, userId, 'user', historyText)
 
   const quadrantLabels: Record<string, string> = {
     do: 'Fazer Agora', schedule: 'Agendar', delegate: 'Delegar', eliminate: 'Eliminar'
@@ -431,15 +491,33 @@ REGRAS:
 - Para criar tarefas, escolha o quadrante adequado com base no contexto.
 - Seja conciso e amigável nas respostas. Use emojis de forma moderada.
 - Responda sempre em português brasileiro.
-- Se a mensagem for ambígua, peça esclarecimento via chat_response.`
+- Se a mensagem for ambígua, peça esclarecimento via chat_response.
+- Quando o usuário enviar imagens (prints, fotos, recibos, anotações), faça OCR + análise visual e crie automaticamente as tarefas relevantes via create_task. Se houver várias tarefas na imagem, chame create_task várias vezes. Resuma ao final usando chat_response.`
 
   try {
+    // Build user content (multimodal if images present)
+    const userContent: any =
+      imageUrls.length > 0
+        ? [
+            {
+              type: 'text',
+              text:
+                messageText?.trim() ||
+                'Analise a(s) imagem(ns) e crie tarefas relevantes para mim.',
+            },
+            ...imageUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+          ]
+        : messageText
+
     // Build messages array with history
     const aiMessages: any[] = [
       { role: 'system', content: systemPrompt },
       ...chatHistory.map((m: any) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: messageText },
+      { role: 'user', content: userContent },
     ]
+
+    // Use vision-capable model when images are present
+    const model = imageUrls.length > 0 ? 'google/gemini-2.5-pro' : 'google/gemini-2.5-flash'
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -448,7 +526,7 @@ REGRAS:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model,
         messages: aiMessages,
         tools: AI_TOOLS,
         tool_choice: 'auto',
@@ -568,12 +646,15 @@ Deno.serve(async (req) => {
       const msgData = body.data
       if (!msgData) return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
 
+      const imageMessage = msgData.message?.imageMessage
       const messageText = msgData.message?.conversation ||
-        msgData.message?.extendedTextMessage?.text || ''
+        msgData.message?.extendedTextMessage?.text ||
+        imageMessage?.caption || ''
       const fromMe = msgData.key?.fromMe === true
       const messageId = msgData.key?.id
+      const hasImage = !!imageMessage
 
-      if (!messageText.trim()) {
+      if (!messageText.trim() && !hasImage) {
         return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
       }
 
@@ -649,10 +730,24 @@ Deno.serve(async (req) => {
       let replyText = ''
 
       // ── Route: structured commands (/) or AI processing ──
-      if (messageText.startsWith('/')) {
+      if (messageText.startsWith('/') && !hasImage) {
         replyText = await processCommand(messageText, supabaseAdmin, userId, EVOLUTION_API_URL, EVOLUTION_API_KEY)
       } else {
-        replyText = await processWithAI(messageText, supabaseAdmin, userId, EVOLUTION_API_URL, EVOLUTION_API_KEY)
+        const imageUrls: string[] = []
+        if (hasImage) {
+          const stored = await downloadAndStoreWhatsappImage(
+            supabaseAdmin, instanceName, msgData, userId,
+            EVOLUTION_API_URL, EVOLUTION_API_KEY,
+          )
+          if (stored) imageUrls.push(stored.signedUrl)
+          else replyText = '⚠️ Não consegui baixar a imagem do WhatsApp. Tente reenviar.'
+        }
+        if (!replyText) {
+          replyText = await processWithAI(
+            messageText, supabaseAdmin, userId,
+            EVOLUTION_API_URL, EVOLUTION_API_KEY, imageUrls,
+          )
+        }
       }
 
       // Send reply
