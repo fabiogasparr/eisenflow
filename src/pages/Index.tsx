@@ -152,6 +152,9 @@ export default function Index() {
             />
           </div>
         )}
+        <div className="mb-3 flex justify-end">
+          <AISuggestionsSheet />
+        </div>
         {/* In Progress Section */}
         {inProgressTasks.length > 0 && (
           <div className="mb-4 rounded-xl border-2 border-primary/30 bg-primary/5 overflow-hidden">
