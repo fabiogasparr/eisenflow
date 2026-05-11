@@ -331,14 +331,25 @@ export default function AIChatPage() {
 
                   {msg.tasks && msg.tasks.length > 0 && (
                     <div className="space-y-2">
-                      {msg.tasks.map((task, j) => (
-                        <TaskPreviewCard
-                          key={j}
-                          task={task}
-                          index={j}
-                          onToggle={(idx) => toggleTask(i, idx)}
-                        />
-                      ))}
+                      <EisenhowerTaskGroups
+                        tasks={msg.tasks}
+                        onToggle={(idx) => toggleTask(i, idx)}
+                        onToggleQuadrant={(quadrant, nextSelected) => {
+                          setMessages((prev) =>
+                            prev.map((m, mi) => {
+                              if (mi !== i || !m.tasks) return m;
+                              return {
+                                ...m,
+                                tasks: m.tasks.map((tk) =>
+                                  tk.quadrant === quadrant
+                                    ? { ...tk, selected: nextSelected }
+                                    : tk,
+                                ),
+                              };
+                            }),
+                          );
+                        }}
+                      />
                       {!msg.tasksCreated ? (
                         <Button
                           size="sm"
