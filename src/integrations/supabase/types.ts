@@ -419,6 +419,57 @@ export type Database = {
           },
         ]
       }
+      task_reclassification_suggestions: {
+        Row: {
+          applied_urgency: number
+          created_at: string
+          current_importance: number
+          current_quadrant: Database["public"]["Enums"]["task_quadrant"]
+          current_urgency: number
+          id: string
+          reason: string | null
+          resolved_at: string | null
+          signals: Json
+          status: Database["public"]["Enums"]["reclassification_status"]
+          suggested_importance: number
+          suggested_quadrant: Database["public"]["Enums"]["task_quadrant"]
+          task_id: string
+          user_id: string
+        }
+        Insert: {
+          applied_urgency: number
+          created_at?: string
+          current_importance: number
+          current_quadrant: Database["public"]["Enums"]["task_quadrant"]
+          current_urgency: number
+          id?: string
+          reason?: string | null
+          resolved_at?: string | null
+          signals?: Json
+          status?: Database["public"]["Enums"]["reclassification_status"]
+          suggested_importance: number
+          suggested_quadrant: Database["public"]["Enums"]["task_quadrant"]
+          task_id: string
+          user_id: string
+        }
+        Update: {
+          applied_urgency?: number
+          created_at?: string
+          current_importance?: number
+          current_quadrant?: Database["public"]["Enums"]["task_quadrant"]
+          current_urgency?: number
+          id?: string
+          reason?: string | null
+          resolved_at?: string | null
+          signals?: Json
+          status?: Database["public"]["Enums"]["reclassification_status"]
+          suggested_importance?: number
+          suggested_quadrant?: Database["public"]["Enums"]["task_quadrant"]
+          task_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       task_shares: {
         Row: {
           created_at: string
@@ -997,6 +1048,7 @@ export type Database = {
       app_role: "admin" | "member" | "super_admin"
       delegation_status: "pending" | "accepted" | "completed" | "rejected"
       invite_status: "pending" | "accepted" | "expired" | "cancelled"
+      reclassification_status: "pending" | "accepted" | "rejected" | "expired"
       share_permission: "view" | "edit"
       task_quadrant: "do" | "schedule" | "delegate" | "eliminate"
       task_status: "pending" | "in_progress" | "completed" | "eliminated"
@@ -1132,6 +1184,7 @@ export const Constants = {
       app_role: ["admin", "member", "super_admin"],
       delegation_status: ["pending", "accepted", "completed", "rejected"],
       invite_status: ["pending", "accepted", "expired", "cancelled"],
+      reclassification_status: ["pending", "accepted", "rejected", "expired"],
       share_permission: ["view", "edit"],
       task_quadrant: ["do", "schedule", "delegate", "eliminate"],
       task_status: ["pending", "in_progress", "completed", "eliminated"],
