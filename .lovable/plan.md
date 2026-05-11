@@ -1,36 +1,47 @@
 ## Objetivo
 
-Garantir que **todas** as tarefas apareçam no Google Agenda (não só as que têm `due_date`), e refletir o status de conclusão/eliminação no próprio evento.
-
-## Regras
-
-- **Tarefa com `due_date`** → evento com horário no `due_date` (comportamento atual).
-- **Tarefa sem `due_date`** → evento *all-day* na data de criação (`created_at`).
-- **Tarefa concluída/eliminada** → manter o evento, mas prefixar o título com `✅ ` (concluída) ou `❌ ` (eliminada). Ao reabrir, remover o prefixo.
-- Sync continua condicionado a `sync_enabled = true` no token do Google.
+Tirar tarefas concluídas dos quadrantes da Matriz e mover para uma nova área "Concluídas" com relatório e estatísticas (incluindo tempo de execução).
 
 ## Mudanças
 
-### 1. `src/hooks/useGoogleCalendar.ts` — `syncTask`
-- Aceitar `due_date` opcional e receber também `created_at` e `status`.
-- Calcular:
-  - `startDateTime = due_date ?? created_at`
-  - `allDay = !due_date`
-  - `displayTitle = (status==='completed' ? '✅ ' : status==='eliminated' ? '❌ ' : '') + title`
-- Enviar `allDay` no body para a edge function.
+### 1. `src/pages/Index.tsx` — esconder concluídas da Matriz
+- No `matrixTasks` e `inProgressTasks`, filtrar fora `status === 'completed'` (e também `eliminated`, que já tem o quadrante "Eliminar" como destino — manter `eliminated` apenas se estiver no quadrante eliminate? **Decisão:** apenas `completed` sai da matriz; `eliminated` continua aparecendo no quadrante Eliminar como hoje).
+- Resultado: as tarefas riscadas mostradas no print (Inauguração da quadra, etc.) deixam de aparecer na Matriz.
 
-### 2. `src/hooks/useTasks.ts`
-- Remover o gate `if (data?.due_date)` em `createTask` e `updateTask`. Sempre chamar `syncTaskToCalendar?.(data)`.
+### 2. Nova página `src/pages/CompletedTasks.tsx`
+Rota: `/completed`. Item no `AppSidebar` com ícone `CheckCircle2` ("Concluídas" / "Completed"), entre **Métricas** e **Conquistas**.
 
-### 3. `supabase/functions/google-calendar-sync/index.ts` — `create-event` / `update-event`
-- Aceitar `allDay: boolean` no body.
-- Quando `allDay`, montar o evento com `start.date` / `end.date` (formato `YYYY-MM-DD`, end = start+1 dia) em vez de `start.dateTime` / `end.dateTime`.
-- Caso contrário, manter `dateTime` atual.
+**Cabeçalho com cards de estatísticas** (cobre o período selecionado):
+- Total concluídas
+- Tempo médio de execução (`completed_at − started_at`, ignorando tarefas sem `started_at`)
+- Tempo total acumulado em foco/execução
+- Distribuição por quadrante (mini barra/pills com contagem)
+- Concluídas por dia (gráfico de barras simples dos últimos 14 dias usando `recharts`, já no projeto via `chart.tsx`)
 
-### 4. Backfill (opcional, recomendado)
-- Adicionar botão "Sincronizar todas" já existe (`syncAllTasks`). Ajustar `sync-tasks` na edge function para **não** filtrar `.not("due_date", "is", null)` — incluir todas as tarefas do usuário e usar o mesmo fallback (`created_at` + all-day).
+**Filtros**:
+- Período: Hoje · 7 dias · 30 dias · Tudo (default 30 dias)
+- Quadrante: todos · Fazer · Agendar · Delegar · Eliminar
+- Busca por título
+
+**Lista/tabela**:
+- Coluna: título, quadrante (chip colorido), data de conclusão, tempo de execução (formatado `2h 15min` ou `—` se sem `started_at`), botão "Reabrir" (volta status para `pending`).
+- Ordenação por `completed_at desc`.
+- Estado vazio amigável.
+
+### 3. Hook utilitário (inline na página)
+Reusar `useTasks()` e derivar `completedTasks = tasks.filter(t => t.status === 'completed')`. Sem novo hook.
+
+### 4. `src/components/AppSidebar.tsx` + `src/components/BottomNav.tsx`
+Adicionar entrada "Concluídas" → `/completed` (ícone `CheckCircle2`).
+
+### 5. `src/App.tsx`
+Adicionar `<Route path="/completed" ... />`.
+
+### 6. i18n `src/i18n/translations.ts`
+Strings novas: `completed.title`, `completed.empty`, `completed.reopen`, `completed.avgTime`, `completed.totalTime`, `completed.totalCount`, `completed.byDay`, `completed.byQuadrant`, `completed.filter.period.*`, `completed.executionTime`, `nav.completed`.
 
 ## Fora de escopo
-- Não alterar import de eventos do Google → tarefas.
-- Não alterar schema do banco.
-- Não mudar UI de configurações do Google Agenda.
+- Não alterar schema do banco (já temos `started_at` e `completed_at`).
+- Não mexer em sync Google Calendar.
+- Não tocar em "Eliminar" (continua como quadrante).
+- Métricas existentes em `/metrics` permanecem; a nova página foca no histórico de concluídas.
