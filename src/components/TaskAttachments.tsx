@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { useTaskAttachments, type TaskAttachment } from '@/hooks/useTaskAttachments';
 import { useSubtasks } from '@/hooks/useSubtasks';
 import { useToast } from '@/hooks/use-toast';
-import { Image as ImageIcon, Loader2, Sparkles, Trash2, Plus, X } from 'lucide-react';
+import { Image as ImageIcon, Loader2, Sparkles, Trash2, Plus, X, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 
 interface Props {
