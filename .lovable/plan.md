@@ -1,145 +1,130 @@
-# Reaproveitar imagens da última mensagem como rascunho
+# Validação e mensagens de erro robustas para anexos no Chat de IA
 
-Permitir, no `AIChatPage`, anexar com 1 clique as imagens enviadas na última mensagem do usuário, sem precisar re-selecionar arquivos do dispositivo.
+Hoje `addImages` em `src/pages/AIChatPage.tsx` faz validação básica, mas:
+- Trunca silenciosamente quando o usuário tenta anexar mais que `MAX_IMAGES_PER_MSG` (4).
+- Mostra um toast genérico por arquivo, sem nome do arquivo nem motivo detalhado.
+- Não checa extensão quando `file.type` vem vazio (acontece com HEIC em alguns browsers).
+- Não dá feedback visível das regras (limites/formatos) antes do usuário tentar.
 
 ## Escopo (somente frontend)
 
-Mudanças apenas em **`src/pages/AIChatPage.tsx`**. Nenhuma migration, edge function ou alteração de schema.
+Mudanças apenas em **`src/pages/AIChatPage.tsx`**. Sem migrations, sem edge functions.
 
 ## Comportamento
 
-1. **Detectar última mensagem com imagens**
-   - Procurar a última `ChatMessage` com `role === 'user'` e `imageUrls?.length > 0`.
-   - Se existir e o `pending` tiver espaço (`< MAX_IMAGES_PER_MSG`), exibir um botão secundário ao lado do botão "Anexar":
-     - PT: `Reusar últimas (N)` / EN: `Reuse last (N)`
-     - Ícone: `History` ou `RotateCcw`
-   - Botão fica oculto se não houver imagens anteriores.
+1. **Validação por arquivo, com motivo específico**
+   - Para cada arquivo, classificar em uma destas razões e coletar:
+     - `invalid_type`: MIME fora de `ALLOWED` **e** extensão fora de `['png','jpg','jpeg','webp','heic']`.
+     - `too_large`: `file.size > MAX_BYTES` (10 MB).
+     - `empty`: `file.size === 0` (arquivo corrompido/vazio).
+     - `over_count`: passou do limite `MAX_IMAGES_PER_MSG` considerando o que já está em `pending`.
+   - Aceitos: vão para `accepted[]`.
 
-2. **Adicionar como rascunho reutilizado**
-   - Ao clicar, criar entradas `PendingImage` para cada URL — **sem `File`**, marcadas como `reused: true` com `reusedPath: string` e `previewUrl` apontando para a signed URL existente.
-   - Respeitar `MAX_IMAGES_PER_MSG` e o espaço restante (`remaining = MAX - pending.length`); se exceder, anexar só o que cabe e mostrar toast informativo.
-   - Permitir reordenar/remover normalmente (drag-and-drop já existente funciona porque usa `id`).
-   - Preview no diálogo continua funcionando (usa `previewUrl`).
+2. **Toast agregado (1 por categoria)**
+   - Em vez de 1 toast por arquivo (spam), 1 toast por motivo, listando os nomes dos arquivos rejeitados.
+   - Exemplos PT/EN:
+     - `Formato não suportado` — descrição: `"foto.gif, doc.pdf — use PNG, JPG, WEBP ou HEIC"`.
+     - `Arquivo muito grande` — descrição: `"video.png (12 MB) — máx. 10 MB"`.
+     - `Limite de anexos atingido` — descrição: `"3 imagem(ns) ignorada(s). Máx. 4 por mensagem."`.
+     - `Arquivo vazio` — descrição: `"img.png está vazio"`.
+   - Toast de sucesso opcional só quando há mistura (alguns aceitos + alguns rejeitados): `"2 imagem(ns) anexada(s), 1 ignorada(s)"`.
 
-3. **Envio sem reupload**
-   - Em `uploadPendingImages`, para itens com `reused === true`:
-     - Pular upload no Storage.
-     - **Re-assinar** a URL via `supabase.storage.from('chat-attachments').createSignedUrl(reusedPath, 3600)` para garantir validade (signed URLs expiram em 1h).
-   - Para itens novos (com `File`), comportamento atual: upload + signed URL.
-   - Resultado final é um array de URLs misto, na ordem que o usuário deixou.
+3. **Feedback positivo não-bloqueante**
+   - Se todos passarem, sem toast (já há thumbnail visual).
+   - Se nenhum passar, toast destrutivo único explicando.
 
-4. **Persistência do path para reuso futuro**
-   - Hoje `ChatMessage` guarda só `imageUrls` (signed URLs). Adicionar `imagePaths?: string[]` armazenando o storage path retornado pelo upload (`${user.id}/${uuid}.${ext}`).
-   - Quando o usuário clica "Reusar", iteramos `lastMsg.imagePaths` para criar os `PendingImage` reusados.
-   - Se a mensagem foi reusada (paths já vieram de mensagens anteriores), os mesmos paths são copiados para a nova mensagem — habilitando reuso em cadeia.
+4. **Helper visível na UI**
+   - Pequeno texto abaixo da barra de input (ou tooltip no botão `Paperclip`):
+     - PT: `Máx. 4 imagens · 10 MB cada · PNG, JPG, WEBP, HEIC`
+     - EN: `Max 4 images · 10 MB each · PNG, JPG, WEBP, HEIC`
+   - Aparece só quando `pending.length === 0` para não poluir.
+   - Atributo `title` no botão `Paperclip` espelha a mesma info.
 
-5. **Limpeza de URLs**
-   - Hoje `removePendingById` chama `URL.revokeObjectURL(found.previewUrl)`. Para itens reusados a previewUrl é uma signed URL HTTP (não blob), então só revogar quando o item tem `file` (blob URL). Mesmo cuidado em `setPending([])` após enviar e no botão "Limpar tudo".
+5. **Botão `Paperclip` desabilitado com motivo**
+   - Já desabilita quando atinge o limite. Adicionar `title` dinâmico:
+     - Quando cheio: `"Limite de 4 imagens atingido"`.
+
+6. **Atualizar `accept` do `<input type="file">`**
+   - Acrescentar `image/jpg` (já em `ALLOWED`) e manter os demais. Sem alteração funcional, só consistência.
+
+7. **Cobrir os 3 caminhos de entrada**
+   - `addImages` é chamado por: input file picker, paste (`handlePaste`) e drop (`handleDrop`). A nova validação fica centralizada em `addImages`, então todos cobrem.
+   - Para `paste`/`drop`: se algum item descartado por não ser imagem (ex: arrastou um PDF), a categorização `invalid_type` cuida disso.
 
 ## Detalhes técnicos
 
-**Tipos**
 ```ts
-interface PendingImage {
-  id: string;
-  file?: File;            // ausente quando reusado
-  previewUrl: string;     // blob: URL ou signed URL
-  reused?: boolean;
-  reusedPath?: string;    // storage path para re-assinar
-}
+type RejectReason = 'invalid_type' | 'too_large' | 'empty' | 'over_count';
 
-interface ChatMessage {
-  // ... existentes
-  imageUrls?: string[];
-  imagePaths?: string[];  // novo: paths para reuso
-}
-```
-
-**Helpers**
-```ts
-const revokeIfBlob = (url: string) => {
-  if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+const EXT_OK = new Set(['png', 'jpg', 'jpeg', 'webp', 'heic']);
+const isImageFile = (f: File) => {
+  if (ALLOWED.includes(f.type)) return true;
+  const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+  return EXT_OK.has(ext);
 };
 
-const lastUserImages = useMemo(() => {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (m.role === 'user' && m.imagePaths?.length) {
-      return { paths: m.imagePaths, urls: m.imageUrls ?? [] };
-    }
-  }
-  return null;
-}, [messages]);
+const fmtMB = (n: number) => (n / (1024 * 1024)).toFixed(1) + ' MB';
 
-const reuseLastImages = async () => {
-  if (!lastUserImages) return;
-  const remaining = MAX_IMAGES_PER_MSG - pending.length;
-  if (remaining <= 0) {
-    toast({ title: pt ? 'Limite de anexos atingido' : 'Attachment limit reached' });
-    return;
-  }
-  const slice = lastUserImages.paths.slice(0, remaining);
-  // re-assinar para garantir URL válida no preview
-  const items: PendingImage[] = [];
-  for (let i = 0; i < slice.length; i++) {
-    const path = slice[i];
-    const { data } = await supabase.storage
-      .from('chat-attachments').createSignedUrl(path, 3600);
-    items.push({
+const addImages = (files: File[]) => {
+  const rejects: Record<RejectReason, string[]> = {
+    invalid_type: [], too_large: [], empty: [], over_count: [],
+  };
+  const accepted: PendingImage[] = [];
+  let slotsLeft = MAX_IMAGES_PER_MSG - pending.length;
+
+  for (const file of files) {
+    if (!isImageFile(file))      { rejects.invalid_type.push(file.name); continue; }
+    if (file.size === 0)         { rejects.empty.push(file.name); continue; }
+    if (file.size > MAX_BYTES)   { rejects.too_large.push(`${file.name} (${fmtMB(file.size)})`); continue; }
+    if (slotsLeft <= 0)          { rejects.over_count.push(file.name); continue; }
+    slotsLeft--;
+    accepted.push({
       id: crypto.randomUUID(),
-      previewUrl: data?.signedUrl ?? lastUserImages.urls[i] ?? '',
-      reused: true,
-      reusedPath: path,
+      file,
+      previewUrl: URL.createObjectURL(file),
     });
   }
-  setPending((prev) => [...prev, ...items]);
-  if (slice.length < lastUserImages.paths.length) {
-    toast({ title: pt
-      ? `Adicionadas ${slice.length} de ${lastUserImages.paths.length}`
-      : `Added ${slice.length} of ${lastUserImages.paths.length}` });
+
+  if (accepted.length) setPending((prev) => [...prev, ...accepted]);
+
+  const showToast = (title: string, list: string[]) => {
+    if (!list.length) return;
+    toast({
+      title,
+      description: list.slice(0, 3).join(', ') + (list.length > 3 ? ` +${list.length - 3}` : ''),
+      variant: 'destructive',
+    });
+  };
+
+  showToast(pt ? 'Formato não suportado — use PNG, JPG, WEBP ou HEIC'
+              : 'Unsupported format — use PNG, JPG, WEBP or HEIC', rejects.invalid_type);
+  showToast(pt ? `Arquivo muito grande — máx. 10 MB` : `File too large — max 10 MB`, rejects.too_large);
+  showToast(pt ? 'Arquivo vazio' : 'Empty file', rejects.empty);
+  if (rejects.over_count.length) {
+    toast({
+      title: pt ? 'Limite de anexos atingido' : 'Attachment limit reached',
+      description: pt
+        ? `${rejects.over_count.length} imagem(ns) ignorada(s). Máx. ${MAX_IMAGES_PER_MSG} por mensagem.`
+        : `${rejects.over_count.length} image(s) skipped. Max ${MAX_IMAGES_PER_MSG} per message.`,
+      variant: 'destructive',
+    });
   }
 };
 ```
 
-**`uploadPendingImages` atualizado**
-```ts
-const result: { url: string; path: string }[] = [];
-for (const p of pending) {
-  if (p.reused && p.reusedPath) {
-    const { data } = await supabase.storage
-      .from('chat-attachments').createSignedUrl(p.reusedPath, 3600);
-    if (data?.signedUrl) result.push({ url: data.signedUrl, path: p.reusedPath });
-    continue;
-  }
-  // ... upload existente, retorna { url: signed.signedUrl, path }
-}
-return result; // chamadora separa em imageUrls/imagePaths
-```
-
-**`sendMessage`** — usar resultado para preencher `imageUrls` e `imagePaths` da nova mensagem.
-
-**UI** — adicionar botão na barra de ações (perto do `fileInputRef` trigger):
+**Helper UI** — adicionar abaixo do `<div className="flex gap-2 items-end">` (ou como `<p>` antes), condicionado a `pending.length === 0`:
 ```tsx
-{lastUserImages && pending.length < MAX_IMAGES_PER_MSG && (
-  <Button size="sm" variant="ghost" onClick={reuseLastImages} type="button">
-    <History className="h-4 w-4 mr-1" />
-    {pt ? `Reusar últimas (${lastUserImages.paths.length})`
-        : `Reuse last (${lastUserImages.paths.length})`}
-  </Button>
-)}
-```
-
-**Indicador visual no thumbnail** — para itens `reused`, badge pequeno no canto:
-```tsx
-{item.reused && (
-  <span className="absolute top-1 right-1 text-[9px] bg-secondary text-secondary-foreground px-1 rounded">
-    ↻
-  </span>
+{pending.length === 0 && (
+  <p className="text-[10px] text-muted-foreground px-1">
+    {pt
+      ? `Máx. ${MAX_IMAGES_PER_MSG} imagens · 10 MB cada · PNG, JPG, WEBP, HEIC`
+      : `Max ${MAX_IMAGES_PER_MSG} images · 10 MB each · PNG, JPG, WEBP, HEIC`}
+  </p>
 )}
 ```
 
 ## Fora do escopo
-- Não persistir histórico de chat no banco (segue só em memória/sessão).
-- Não criar uma "galeria" de imagens já usadas — o reuso é apenas da última mensagem.
+- Não alterar `MAX_BYTES`, `MAX_IMAGES_PER_MSG` ou lista de formatos.
+- Não tocar em `TaskAttachments` (validação já existe lá com seu próprio fluxo).
 - Não alterar `chat-attachments` storage policies.
-- Não tocar em `TaskAttachments` (fluxo separado).
+- Não adicionar zod (overkill para validação de File).
