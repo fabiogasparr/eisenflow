@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
 import { useTaskAttachments, type TaskAttachment } from '@/hooks/useTaskAttachments';
 import { useSubtasks } from '@/hooks/useSubtasks';
 import { useToast } from '@/hooks/use-toast';
-import { Image as ImageIcon, Loader2, Sparkles, Trash2, Plus, X } from 'lucide-react';
+import { Image as ImageIcon, Loader2, Sparkles, Trash2, Plus, X, CheckCircle2 } from 'lucide-react';
 import { useLanguage } from '@/i18n/LanguageContext';
 
 interface Props {
@@ -21,6 +23,17 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeAtt, setActiveAtt] = useState<TaskAttachment | null>(null);
   const [analysis, setAnalysis] = useState<{ ocr_text: string; description: string; suggested_subtasks: string[] } | null>(null);
+  const [draftSubtasks, setDraftSubtasks] = useState<{ title: string; selected: boolean }[]>([]);
+  const [savingSubtasks, setSavingSubtasks] = useState(false);
+
+  // Reset/seed draft list whenever a new analysis arrives
+  useEffect(() => {
+    if (analysis?.suggested_subtasks?.length) {
+      setDraftSubtasks(analysis.suggested_subtasks.map((title) => ({ title, selected: true })));
+    } else {
+      setDraftSubtasks([]);
+    }
+  }, [analysis]);
 
   const { attachments, isLoading, upload, remove, analyze } = useTaskAttachments(taskId);
   const { addSubtask } = useSubtasks(taskId);
@@ -55,14 +68,37 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
     toast({ title: pt ? 'Adicionado à descrição' : 'Added to description' });
   };
 
-  const handleGenerateSubtasks = async () => {
-    if (!analysis?.suggested_subtasks?.length) return;
-    let pos = 0;
-    for (const title of analysis.suggested_subtasks) {
-      await addSubtask.mutateAsync({ title, position: pos++ });
+  const handleConfirmSubtasks = async () => {
+    const selected = draftSubtasks.filter((d) => d.selected && d.title.trim());
+    if (!selected.length) return;
+    setSavingSubtasks(true);
+    try {
+      let pos = 0;
+      for (const item of selected) {
+        await addSubtask.mutateAsync({ title: item.title.trim(), position: pos++ });
+      }
+      toast({
+        title: pt ? 'Subtarefas criadas' : 'Subtasks created',
+        description: pt
+          ? `${selected.length} subtarefa(s) adicionada(s)`
+          : `${selected.length} subtask(s) added`,
+      });
+      setDraftSubtasks([]);
+      setActiveAtt(null);
+      setAnalysis(null);
+    } catch (e: any) {
+      toast({
+        title: pt ? 'Erro ao criar subtarefas' : 'Error creating subtasks',
+        description: e.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingSubtasks(false);
     }
-    toast({ title: pt ? 'Subtarefas criadas' : 'Subtasks created' });
   };
+
+  const allSelected = draftSubtasks.length > 0 && draftSubtasks.every((d) => d.selected);
+  const selectedCount = draftSubtasks.filter((d) => d.selected).length;
 
   return (
     <div className="space-y-3 pt-3 border-t">
@@ -169,18 +205,90 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
                   </pre>
                 </div>
               )}
-              <div className="flex flex-wrap gap-2">
-                {analysis.ocr_text && (
-                  <Button size="sm" variant="outline" onClick={handleAddToDescription}>
-                    {pt ? 'Adicionar à descrição' : 'Add to description'}
-                  </Button>
-                )}
-                {analysis.suggested_subtasks?.length > 0 && (
-                  <Button size="sm" onClick={handleGenerateSubtasks}>
-                    {pt ? `Criar ${analysis.suggested_subtasks.length} subtarefa(s)` : `Create ${analysis.suggested_subtasks.length} subtask(s)`}
-                  </Button>
-                )}
-              </div>
+              {analysis.ocr_text && (
+                <Button size="sm" variant="outline" onClick={handleAddToDescription}>
+                  {pt ? 'Adicionar à descrição' : 'Add to description'}
+                </Button>
+              )}
+
+              {draftSubtasks.length > 0 && (
+                <div className="rounded-md border bg-background p-2 space-y-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <p className="text-[11px] uppercase text-muted-foreground">
+                      {pt ? 'Subtarefas sugeridas' : 'Suggested subtasks'}{' '}
+                      <span className="normal-case">({selectedCount}/{draftSubtasks.length})</span>
+                    </p>
+                    <button
+                      type="button"
+                      className="text-[11px] text-primary hover:underline"
+                      onClick={() =>
+                        setDraftSubtasks((prev) => prev.map((d) => ({ ...d, selected: !allSelected })))
+                      }
+                    >
+                      {allSelected ? (pt ? 'Desmarcar tudo' : 'Unselect all') : (pt ? 'Selecionar tudo' : 'Select all')}
+                    </button>
+                  </div>
+
+                  <ul className="space-y-1.5 max-h-56 overflow-auto pr-1">
+                    {draftSubtasks.map((d, idx) => (
+                      <li key={idx} className="flex items-center gap-2">
+                        <Checkbox
+                          checked={d.selected}
+                          onCheckedChange={(v) =>
+                            setDraftSubtasks((prev) =>
+                              prev.map((item, i) => (i === idx ? { ...item, selected: !!v } : item)),
+                            )
+                          }
+                        />
+                        <Input
+                          value={d.title}
+                          onChange={(e) =>
+                            setDraftSubtasks((prev) =>
+                              prev.map((item, i) => (i === idx ? { ...item, title: e.target.value } : item)),
+                            )
+                          }
+                          className="h-7 text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setDraftSubtasks((prev) => prev.filter((_, i) => i !== idx))
+                          }
+                          aria-label={pt ? 'Remover' : 'Remove'}
+                          className="text-muted-foreground hover:text-destructive"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </li>
+                    ))}
+                  </ul>
+
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => setDraftSubtasks([])}
+                      disabled={savingSubtasks}
+                    >
+                      {pt ? 'Cancelar' : 'Cancel'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={handleConfirmSubtasks}
+                      disabled={selectedCount === 0 || savingSubtasks}
+                    >
+                      {savingSubtasks ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1" />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 mr-1" />
+                      )}
+                      {pt
+                        ? `Confirmar e criar ${selectedCount}`
+                        : `Confirm & create ${selectedCount}`}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
