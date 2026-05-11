@@ -44,23 +44,6 @@ interface ChatMessage {
 }
 
 interface PendingImage {
-  file: File;
-  previewUrl: string;
-}
-
-const MAX_BYTES = 10 * 1024 * 1024;
-const ALLOWED = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic'];
-const MAX_IMAGES_PER_MSG = 4;
-
-export default function AIChatPage() {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
-  const [input, setInput] = useState('');
-  const [pending, setPending] = useState<PendingImage[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
-interface PendingImage {
   id: string;
   file: File;
   previewUrl: string;
