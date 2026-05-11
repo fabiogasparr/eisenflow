@@ -121,5 +121,6 @@ export function useTaskAttachments(taskId: string | null) {
     upload,
     remove,
     analyze,
+    updateOcr,
   };
 }
