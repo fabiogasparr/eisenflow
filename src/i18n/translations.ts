@@ -10,6 +10,7 @@ export const translations = {
     gamification: 'Conquistas',
     teams: 'Times',
     delegated: 'Delegadas',
+    completed: 'Concluídas',
     settings: 'Configurações',
     
     // Quadrants
