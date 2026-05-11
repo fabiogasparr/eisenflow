@@ -158,17 +158,25 @@ Deno.serve(async (req) => {
 
     // ── CREATE EVENT ──
     if (action === "create-event") {
-      const { summary, description, startDateTime, endDateTime } = body;
+      const { summary, description, startDateTime, endDateTime, allDay } = body;
 
-      const event = {
+      const event: Record<string, unknown> = {
         summary,
         description: description || "",
-        start: { dateTime: startDateTime, timeZone: "America/Sao_Paulo" },
-        end: {
+      };
+      if (allDay) {
+        const dateStr = new Date(startDateTime).toISOString().slice(0, 10);
+        const nextDay = new Date(new Date(dateStr).getTime() + 24 * 60 * 60 * 1000)
+          .toISOString().slice(0, 10);
+        event.start = { date: dateStr };
+        event.end = { date: nextDay };
+      } else {
+        event.start = { dateTime: startDateTime, timeZone: "America/Sao_Paulo" };
+        event.end = {
           dateTime: endDateTime || new Date(new Date(startDateTime).getTime() + 60 * 60 * 1000).toISOString(),
           timeZone: "America/Sao_Paulo",
-        },
-      };
+        };
+      }
 
       const res = await fetch(
         `${GOOGLE_CALENDAR_API}/calendars/${encodeURIComponent(calendarId)}/events`,
