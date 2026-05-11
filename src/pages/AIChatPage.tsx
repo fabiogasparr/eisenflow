@@ -95,14 +95,19 @@ function SortableThumb({
       >
         <img
           src={item.previewUrl}
-          alt={item.file.name}
+          alt={item.file?.name ?? 'image'}
           draggable={false}
           className="h-20 w-20 rounded-lg object-cover border border-border transition-transform group-hover:scale-[1.02] select-none"
         />
       </button>
       <div className="absolute inset-x-0 bottom-0 rounded-b-lg bg-gradient-to-t from-black/70 to-transparent px-1 py-0.5 text-[10px] text-white truncate pointer-events-none">
-        {(item.file.size / 1024).toFixed(0)} KB
+        {item.file ? `${(item.file.size / 1024).toFixed(0)} KB` : (pt ? 'reusada' : 'reused')}
       </div>
+      {item.reused && (
+        <span className="absolute top-1 right-4 text-[9px] bg-secondary text-secondary-foreground px-1 rounded pointer-events-none">
+          ↻
+        </span>
+      )}
       <button
         type="button"
         onClick={onRemove}
