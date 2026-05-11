@@ -577,7 +577,7 @@ export default function AIChatPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    pending.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+                    pending.forEach((p) => revokeIfBlob(p.previewUrl));
                     setPending([]);
                   }}
                   className="inline-flex items-center gap-1 text-destructive hover:underline"
