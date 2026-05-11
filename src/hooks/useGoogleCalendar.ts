@@ -152,16 +152,31 @@ export function useGoogleCalendar() {
   });
 
   const syncTask = useCallback(
-    async (task: { id: string; title: string; description?: string | null; due_date: string; google_event_id?: string | null }) => {
+    async (task: {
+      id: string;
+      title: string;
+      description?: string | null;
+      due_date?: string | null;
+      created_at?: string | null;
+      status?: string | null;
+      google_event_id?: string | null;
+    }) => {
       if (!tokenQuery.data?.sync_enabled) return;
 
       try {
+        const startDateTime = task.due_date || task.created_at || new Date().toISOString();
+        const allDay = !task.due_date;
+        const prefix =
+          task.status === 'completed' ? '✅ ' : task.status === 'eliminated' ? '❌ ' : '';
+        const summary = prefix + task.title;
+
         const action = task.google_event_id ? 'update-event' : 'create-event';
         const body: Record<string, unknown> = {
           action,
-          summary: task.title,
+          summary,
           description: task.description || '',
-          startDateTime: task.due_date,
+          startDateTime,
+          allDay,
         };
         if (task.google_event_id) {
           body.eventId = task.google_event_id;
