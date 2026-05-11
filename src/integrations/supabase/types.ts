@@ -339,6 +339,45 @@ export type Database = {
           },
         ]
       }
+      task_attachments: {
+        Row: {
+          ai_analyzed_at: string | null
+          ai_description: string | null
+          created_at: string
+          id: string
+          mime_type: string
+          ocr_text: string | null
+          size_bytes: number
+          storage_path: string
+          task_id: string
+          uploaded_by: string
+        }
+        Insert: {
+          ai_analyzed_at?: string | null
+          ai_description?: string | null
+          created_at?: string
+          id?: string
+          mime_type: string
+          ocr_text?: string | null
+          size_bytes?: number
+          storage_path: string
+          task_id: string
+          uploaded_by: string
+        }
+        Update: {
+          ai_analyzed_at?: string | null
+          ai_description?: string | null
+          created_at?: string
+          id?: string
+          mime_type?: string
+          ocr_text?: string | null
+          size_bytes?: number
+          storage_path?: string
+          task_id?: string
+          uploaded_by?: string
+        }
+        Relationships: []
+      }
       task_focus_sessions: {
         Row: {
           created_at: string
