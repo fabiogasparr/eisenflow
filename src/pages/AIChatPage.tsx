@@ -5,6 +5,7 @@ import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { TaskPreviewCard, type TaskSuggestion } from '@/components/TaskPreviewCard';
+import { EisenhowerTaskGroups } from '@/components/EisenhowerTaskGroups';
 import { AppLayout } from '@/components/AppLayout';
 import { useTasks } from '@/hooks/useTasks';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
