@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { QUADRANT_CONFIG } from '@/types/task';
 import type { Quadrant } from '@/types/task';
+import { translations } from '@/i18n/translations';
 
 type Suggestion = {
   id: string;
