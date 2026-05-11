@@ -23,6 +23,17 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [activeAtt, setActiveAtt] = useState<TaskAttachment | null>(null);
   const [analysis, setAnalysis] = useState<{ ocr_text: string; description: string; suggested_subtasks: string[] } | null>(null);
+  const [draftSubtasks, setDraftSubtasks] = useState<{ title: string; selected: boolean }[]>([]);
+  const [savingSubtasks, setSavingSubtasks] = useState(false);
+
+  // Reset/seed draft list whenever a new analysis arrives
+  useEffect(() => {
+    if (analysis?.suggested_subtasks?.length) {
+      setDraftSubtasks(analysis.suggested_subtasks.map((title) => ({ title, selected: true })));
+    } else {
+      setDraftSubtasks([]);
+    }
+  }, [analysis]);
 
   const { attachments, isLoading, upload, remove, analyze } = useTaskAttachments(taskId);
   const { addSubtask } = useSubtasks(taskId);
