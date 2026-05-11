@@ -181,12 +181,57 @@ export default function AIChatPage() {
     if (accepted.length) setPending((prev) => [...prev, ...accepted]);
   };
 
+  const revokeIfBlob = (url: string) => {
+    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+  };
+
   const removePendingById = (id: string) => {
     setPending((prev) => {
       const found = prev.find((p) => p.id === id);
-      if (found) URL.revokeObjectURL(found.previewUrl);
+      if (found) revokeIfBlob(found.previewUrl);
       return prev.filter((p) => p.id !== id);
     });
+  };
+
+  const lastUserImages = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === 'user' && m.imagePaths?.length) {
+        return { paths: m.imagePaths, urls: m.imageUrls ?? [] };
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const reuseLastImages = async () => {
+    if (!lastUserImages) return;
+    const remaining = MAX_IMAGES_PER_MSG - pending.length;
+    if (remaining <= 0) {
+      toast({ title: pt ? 'Limite de anexos atingido' : 'Attachment limit reached' });
+      return;
+    }
+    const slice = lastUserImages.paths.slice(0, remaining);
+    const items: PendingImage[] = [];
+    for (let i = 0; i < slice.length; i++) {
+      const path = slice[i];
+      const { data } = await supabase.storage
+        .from('chat-attachments')
+        .createSignedUrl(path, 3600);
+      items.push({
+        id: crypto.randomUUID(),
+        previewUrl: data?.signedUrl ?? lastUserImages.urls[i] ?? '',
+        reused: true,
+        reusedPath: path,
+      });
+    }
+    setPending((prev) => [...prev, ...items]);
+    if (slice.length < lastUserImages.paths.length) {
+      toast({
+        title: pt
+          ? `Adicionadas ${slice.length} de ${lastUserImages.paths.length}`
+          : `Added ${slice.length} of ${lastUserImages.paths.length}`,
+      });
+    }
   };
 
   const handleDragEnd = (e: DragEndEvent) => {
