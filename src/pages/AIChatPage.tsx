@@ -161,24 +161,62 @@ export default function AIChatPage() {
   }, [messages]);
 
   const addImages = (files: File[]) => {
-    const remaining = MAX_IMAGES_PER_MSG - pending.length;
+    type RejectReason = 'invalid_type' | 'too_large' | 'empty' | 'over_count';
+    const EXT_OK = new Set(['png', 'jpg', 'jpeg', 'webp', 'heic']);
+    const isImageFile = (f: File) => {
+      if (ALLOWED.includes(f.type)) return true;
+      const ext = f.name.split('.').pop()?.toLowerCase() ?? '';
+      return EXT_OK.has(ext);
+    };
+    const fmtMB = (n: number) => (n / (1024 * 1024)).toFixed(1) + ' MB';
+
+    const rejects: Record<RejectReason, string[]> = {
+      invalid_type: [], too_large: [], empty: [], over_count: [],
+    };
     const accepted: PendingImage[] = [];
-    for (const file of files.slice(0, remaining)) {
-      if (!ALLOWED.includes(file.type)) {
-        toast({ title: pt ? 'Formato inválido' : 'Invalid format', variant: 'destructive' });
-        continue;
-      }
-      if (file.size > MAX_BYTES) {
-        toast({ title: pt ? 'Imagem maior que 10 MB' : 'Image larger than 10 MB', variant: 'destructive' });
-        continue;
-      }
+    let slotsLeft = MAX_IMAGES_PER_MSG - pending.length;
+
+    for (const file of files) {
+      if (!isImageFile(file))    { rejects.invalid_type.push(file.name || (pt ? 'arquivo' : 'file')); continue; }
+      if (file.size === 0)       { rejects.empty.push(file.name); continue; }
+      if (file.size > MAX_BYTES) { rejects.too_large.push(`${file.name} (${fmtMB(file.size)})`); continue; }
+      if (slotsLeft <= 0)        { rejects.over_count.push(file.name); continue; }
+      slotsLeft--;
       accepted.push({
         id: (crypto as any).randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
         file,
         previewUrl: URL.createObjectURL(file),
       });
     }
+
     if (accepted.length) setPending((prev) => [...prev, ...accepted]);
+
+    const showToast = (title: string, list: string[]) => {
+      if (!list.length) return;
+      const head = list.slice(0, 3).join(', ');
+      const desc = list.length > 3 ? `${head} +${list.length - 3}` : head;
+      toast({ title, description: desc, variant: 'destructive' });
+    };
+
+    showToast(
+      pt ? 'Formato não suportado — use PNG, JPG, WEBP ou HEIC'
+         : 'Unsupported format — use PNG, JPG, WEBP or HEIC',
+      rejects.invalid_type,
+    );
+    showToast(
+      pt ? 'Arquivo muito grande — máx. 10 MB' : 'File too large — max 10 MB',
+      rejects.too_large,
+    );
+    showToast(pt ? 'Arquivo vazio' : 'Empty file', rejects.empty);
+    if (rejects.over_count.length) {
+      toast({
+        title: pt ? 'Limite de anexos atingido' : 'Attachment limit reached',
+        description: pt
+          ? `${rejects.over_count.length} imagem(ns) ignorada(s). Máx. ${MAX_IMAGES_PER_MSG} por mensagem.`
+          : `${rejects.over_count.length} image(s) skipped. Max ${MAX_IMAGES_PER_MSG} per message.`,
+        variant: 'destructive',
+      });
+    }
   };
 
   const revokeIfBlob = (url: string) => {
