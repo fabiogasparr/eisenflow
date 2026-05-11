@@ -6,6 +6,7 @@ import { TaskCard } from '@/components/TaskCard';
 import { CreateTaskDialog } from '@/components/CreateTaskDialog';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { FocusMode } from '@/components/FocusMode';
+import { AISuggestionsSheet } from '@/components/AISuggestionsSheet';
 import { useTasks } from '@/hooks/useTasks';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { useGamification } from '@/hooks/useGamification';
