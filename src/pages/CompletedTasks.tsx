@@ -11,7 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { CheckCircle2, Clock, Timer, RotateCcw, Trophy } from 'lucide-react';
 import { QUADRANT_CONFIG, type Quadrant, type Task } from '@/types/task';
-import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
+import { ResponsiveContainer, BarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
 
 type Period = 'today' | '7d' | '30d' | 'all';
 
@@ -110,8 +110,65 @@ export default function CompletedTasks() {
       });
     }
 
-    return { total, totalMs, avgMs, byQuadrant, days, withDurationCount: withDuration.length };
-  }, [completed]);
+    // execution time distribution (histogram) + quartile/outlier stats
+    const sorted = [...durations].sort((a, b) => a - b);
+    const quantile = (p: number) => {
+      if (!sorted.length) return 0;
+      const idx = (sorted.length - 1) * p;
+      const lo = Math.floor(idx);
+      const hi = Math.ceil(idx);
+      if (lo === hi) return sorted[lo];
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+    };
+    const minMs = sorted[0] ?? 0;
+    const maxMs = sorted[sorted.length - 1] ?? 0;
+    const q1 = quantile(0.25);
+    const median = quantile(0.5);
+    const q3 = quantile(0.75);
+    const iqr = q3 - q1;
+    const outlierThreshold = q3 + 1.5 * iqr;
+    const outlierCount = sorted.filter((d) => d > outlierThreshold).length;
+
+    // adaptive buckets in minutes, ~10 bins
+    const histogram: { label: string; count: number; isOutlier: boolean }[] = [];
+    if (sorted.length > 0) {
+      const minMin = Math.floor(minMs / 60000);
+      const maxMin = Math.ceil(maxMs / 60000);
+      const span = Math.max(1, maxMin - minMin);
+      const binCount = Math.min(10, Math.max(4, sorted.length));
+      const binSize = Math.max(1, Math.ceil(span / binCount));
+      for (let i = 0; i < binCount; i++) {
+        const lo = minMin + i * binSize;
+        const hi = lo + binSize;
+        const count = sorted.filter((d) => {
+          const m = d / 60000;
+          return m >= lo && (i === binCount - 1 ? m <= hi : m < hi);
+        }).length;
+        const loMs = lo * 60000;
+        histogram.push({
+          label: formatDuration(loMs, language),
+          count,
+          isOutlier: loMs > outlierThreshold,
+        });
+      }
+    }
+
+    return {
+      total,
+      totalMs,
+      avgMs,
+      byQuadrant,
+      days,
+      withDurationCount: withDuration.length,
+      histogram,
+      minMs,
+      maxMs,
+      median,
+      q1,
+      q3,
+      outlierCount,
+    };
+  }, [completed, language]);
 
   const handleReopen = async (task: Task) => {
     await updateTask.mutateAsync({
@@ -239,7 +296,84 @@ export default function CompletedTasks() {
           </CardContent>
         </Card>
 
-        {/* Filters */}
+        {/* Execution time distribution */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex flex-wrap items-center justify-between gap-2">
+              <span>
+                {isPt
+                  ? 'Distribuição do tempo de execução'
+                  : 'Execution time distribution'}
+              </span>
+              {stats.withDurationCount > 0 && (
+                <span className="text-[11px] font-normal text-muted-foreground">
+                  {isPt ? 'Mín' : 'Min'} {formatDuration(stats.minMs, language)} · {isPt ? 'Mediana' : 'Median'}{' '}
+                  {formatDuration(stats.median, language)} · {isPt ? 'Máx' : 'Max'}{' '}
+                  {formatDuration(stats.maxMs, language)} ·{' '}
+                  <span className={stats.outlierCount > 0 ? 'text-destructive' : ''}>
+                    {stats.outlierCount} {isPt ? 'outliers' : 'outliers'}
+                  </span>
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {stats.histogram.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">
+                {isPt
+                  ? 'Sem tarefas com tempo medido no período.'
+                  : 'No tasks with measured time in this period.'}
+              </div>
+            ) : (
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.histogram} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-25}
+                      textAnchor="end"
+                      height={50}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      formatter={(value: number, _name, item: any) => [
+                        `${value} ${isPt ? 'tarefas' : 'tasks'}${item?.payload?.isOutlier ? ` · ${isPt ? 'outlier' : 'outlier'}` : ''}`,
+                        isPt ? 'Quantidade' : 'Count',
+                      ]}
+                      labelFormatter={(l) => `${isPt ? 'A partir de' : 'From'} ${l}`}
+                    />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                      {stats.histogram.map((entry, idx) => (
+                        <Cell
+                          key={idx}
+                          fill={entry.isOutlier ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+
         <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
           <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>
             <TabsList>
