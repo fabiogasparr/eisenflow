@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User, Loader2, CheckCircle2, Sparkles, Paperclip, X, Image as ImageIcon } from 'lucide-react';
+import { Send, Bot, User, Loader2, CheckCircle2, Sparkles, Paperclip, X, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 import { TaskPreviewCard, type TaskSuggestion } from '@/components/TaskPreviewCard';
@@ -37,6 +38,7 @@ export default function AIChatPage() {
   const [input, setInput] = useState('');
   const [pending, setPending] = useState<PendingImage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -380,25 +382,87 @@ export default function AIChatPage() {
         {/* Input */}
         <div className="border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3 shrink-0 space-y-2">
           {pending.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {pending.map((p, i) => (
-                <div key={i} className="relative">
-                  <img
-                    src={p.previewUrl}
-                    alt=""
-                    className="h-16 w-16 rounded-lg object-cover border"
-                  />
-                  <button
-                    onClick={() => removePending(i)}
-                    className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5"
-                    aria-label="remove"
-                  >
-                    <X className="h-3 w-3" />
-                  </button>
-                </div>
-              ))}
+            <div className="rounded-lg border border-border bg-muted/40 p-2 space-y-2">
+              <div className="flex items-center justify-between text-xs text-muted-foreground px-1">
+                <span className="font-medium">
+                  {pt
+                    ? `${pending.length} de ${MAX_IMAGES_PER_MSG} imagem(ns) anexada(s)`
+                    : `${pending.length} of ${MAX_IMAGES_PER_MSG} image(s) attached`}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    pending.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+                    setPending([]);
+                  }}
+                  className="inline-flex items-center gap-1 text-destructive hover:underline"
+                >
+                  <Trash2 className="h-3 w-3" />
+                  {pt ? 'Limpar tudo' : 'Clear all'}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {pending.map((p, i) => (
+                  <div key={i} className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewIndex(i)}
+                      className="block focus:outline-none focus:ring-2 focus:ring-primary rounded-lg"
+                      aria-label={pt ? 'Ampliar imagem' : 'Enlarge image'}
+                    >
+                      <img
+                        src={p.previewUrl}
+                        alt={p.file.name}
+                        className="h-20 w-20 rounded-lg object-cover border border-border transition-transform group-hover:scale-[1.02]"
+                      />
+                    </button>
+                    <div className="absolute inset-x-0 bottom-0 rounded-b-lg bg-gradient-to-t from-black/70 to-transparent px-1 py-0.5 text-[10px] text-white truncate">
+                      {(p.file.size / 1024).toFixed(0)} KB
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => removePending(i)}
+                      className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-1 shadow-md hover:scale-110 transition-transform"
+                      aria-label={pt ? 'Remover imagem' : 'Remove image'}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
+
+          <Dialog open={previewIndex !== null} onOpenChange={(o) => !o && setPreviewIndex(null)}>
+            <DialogContent className="max-w-3xl p-2">
+              <DialogTitle className="sr-only">{pt ? 'Pré-visualização' : 'Preview'}</DialogTitle>
+              {previewIndex !== null && pending[previewIndex] && (
+                <div className="space-y-2">
+                  <img
+                    src={pending[previewIndex].previewUrl}
+                    alt=""
+                    className="w-full max-h-[75vh] object-contain rounded-md"
+                  />
+                  <div className="flex items-center justify-between gap-2 px-1 text-sm text-muted-foreground">
+                    <span className="truncate">{pending[previewIndex].file.name}</span>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => {
+                        const idx = previewIndex;
+                        setPreviewIndex(null);
+                        removePending(idx);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      {pt ? 'Remover' : 'Remove'}
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </DialogContent>
+          </Dialog>
+
           <div className="flex gap-2 items-end">
             <Button
               type="button"
