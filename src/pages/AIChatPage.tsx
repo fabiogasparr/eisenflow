@@ -264,10 +264,18 @@ export default function AIChatPage() {
     addImages(Array.from(e.dataTransfer.files));
   };
 
-  const uploadPendingImages = async (): Promise<string[]> => {
+  const uploadPendingImages = async (): Promise<{ url: string; path: string }[]> => {
     if (!user || !pending.length) return [];
-    const urls: string[] = [];
+    const result: { url: string; path: string }[] = [];
     for (const p of pending) {
+      if (p.reused && p.reusedPath) {
+        const { data } = await supabase.storage
+          .from('chat-attachments')
+          .createSignedUrl(p.reusedPath, 60 * 60);
+        if (data?.signedUrl) result.push({ url: data.signedUrl, path: p.reusedPath });
+        continue;
+      }
+      if (!p.file) continue;
       const ext = p.file.name.split('.').pop() || 'png';
       const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage
@@ -277,9 +285,9 @@ export default function AIChatPage() {
       const { data: signed } = await supabase.storage
         .from('chat-attachments')
         .createSignedUrl(path, 60 * 60);
-      if (signed?.signedUrl) urls.push(signed.signedUrl);
+      if (signed?.signedUrl) result.push({ url: signed.signedUrl, path });
     }
-    return urls;
+    return result;
   };
 
   const sendMessage = async () => {
@@ -287,24 +295,27 @@ export default function AIChatPage() {
     if ((!text && pending.length === 0) || isLoading) return;
 
     setIsLoading(true);
-    let imageUrls: string[] = [];
+    let uploaded: { url: string; path: string }[] = [];
     try {
-      imageUrls = await uploadPendingImages();
+      uploaded = await uploadPendingImages();
     } catch (e: any) {
       toast({ title: pt ? 'Falha ao enviar imagem' : 'Image upload failed', description: e.message, variant: 'destructive' });
       setIsLoading(false);
       return;
     }
+    const imageUrls = uploaded.map((u) => u.url);
+    const imagePaths = uploaded.map((u) => u.path);
 
     const userMsg: ChatMessage = {
       role: 'user',
       content: text || (pt ? '(imagem enviada)' : '(image sent)'),
       imageUrls: imageUrls.length ? imageUrls : undefined,
+      imagePaths: imagePaths.length ? imagePaths : undefined,
     };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
-    pending.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    pending.forEach((p) => revokeIfBlob(p.previewUrl));
     setPending([]);
 
     try {
