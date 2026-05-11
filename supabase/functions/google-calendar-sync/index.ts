@@ -204,17 +204,25 @@ Deno.serve(async (req) => {
 
     // ── UPDATE EVENT ──
     if (action === "update-event") {
-      const { eventId, summary, description, startDateTime, endDateTime } = body;
+      const { eventId, summary, description, startDateTime, endDateTime, allDay } = body;
 
       const event: Record<string, unknown> = {};
       if (summary) event.summary = summary;
       if (description !== undefined) event.description = description;
       if (startDateTime) {
-        event.start = { dateTime: startDateTime, timeZone: "America/Sao_Paulo" };
-        event.end = {
-          dateTime: endDateTime || new Date(new Date(startDateTime).getTime() + 60 * 60 * 1000).toISOString(),
-          timeZone: "America/Sao_Paulo",
-        };
+        if (allDay) {
+          const dateStr = new Date(startDateTime).toISOString().slice(0, 10);
+          const nextDay = new Date(new Date(dateStr).getTime() + 24 * 60 * 60 * 1000)
+            .toISOString().slice(0, 10);
+          event.start = { date: dateStr };
+          event.end = { date: nextDay };
+        } else {
+          event.start = { dateTime: startDateTime, timeZone: "America/Sao_Paulo" };
+          event.end = {
+            dateTime: endDateTime || new Date(new Date(startDateTime).getTime() + 60 * 60 * 1000).toISOString(),
+            timeZone: "America/Sao_Paulo",
+          };
+        }
       }
 
       const res = await fetch(
