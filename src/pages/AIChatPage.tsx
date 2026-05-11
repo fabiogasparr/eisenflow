@@ -620,7 +620,7 @@ export default function AIChatPage() {
                       className="w-full max-h-[75vh] object-contain rounded-md"
                     />
                     <div className="flex items-center justify-between gap-2 px-1 text-sm text-muted-foreground">
-                      <span className="truncate">{current.file.name}</span>
+                      <span className="truncate">{current.file?.name ?? (pt ? 'imagem reusada' : 'reused image')}</span>
                       <Button
                         variant="destructive"
                         size="sm"
