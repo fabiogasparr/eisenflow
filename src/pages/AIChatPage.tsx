@@ -1,9 +1,8 @@
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User, Loader2, CheckCircle2, Sparkles } from 'lucide-react';
+import { Send, Bot, User, Loader2, CheckCircle2, Sparkles, Paperclip, X, Image as ImageIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { TaskPreviewCard, type TaskSuggestion } from '@/components/TaskPreviewCard';
 import { AppLayout } from '@/components/AppLayout';
 import { useTasks } from '@/hooks/useTasks';
@@ -19,23 +18,35 @@ type MessageRole = 'user' | 'assistant';
 interface ChatMessage {
   role: MessageRole;
   content: string;
+  imageUrls?: string[];
   tasks?: TaskSuggestion[];
   tasksCreated?: boolean;
 }
 
+interface PendingImage {
+  file: File;
+  previewUrl: string;
+}
+
+const MAX_BYTES = 10 * 1024 * 1024;
+const ALLOWED = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic'];
+const MAX_IMAGES_PER_MSG = 4;
+
 export default function AIChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
+  const [pending, setPending] = useState<PendingImage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const { createTask } = useTasks();
   const { teams } = useTeams();
   const { user } = useAuth();
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
+  const pt = language === 'pt-BR';
   const { toast } = useToast();
 
-  // Get members from first team as context
   const firstTeamId = teams[0]?.id ?? null;
   const { members } = useTeamMembers(firstTeamId);
 
@@ -45,50 +56,124 @@ export default function AIChatPage() {
     }
   }, [messages]);
 
+  const addImages = (files: File[]) => {
+    const remaining = MAX_IMAGES_PER_MSG - pending.length;
+    const accepted: PendingImage[] = [];
+    for (const file of files.slice(0, remaining)) {
+      if (!ALLOWED.includes(file.type)) {
+        toast({ title: pt ? 'Formato inválido' : 'Invalid format', variant: 'destructive' });
+        continue;
+      }
+      if (file.size > MAX_BYTES) {
+        toast({ title: pt ? 'Imagem maior que 10 MB' : 'Image larger than 10 MB', variant: 'destructive' });
+        continue;
+      }
+      accepted.push({ file, previewUrl: URL.createObjectURL(file) });
+    }
+    if (accepted.length) setPending((prev) => [...prev, ...accepted]);
+  };
+
+  const removePending = (idx: number) => {
+    setPending((prev) => {
+      URL.revokeObjectURL(prev[idx].previewUrl);
+      return prev.filter((_, i) => i !== idx);
+    });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const files: File[] = [];
+    for (const item of Array.from(e.clipboardData.items)) {
+      if (item.kind === 'file') {
+        const f = item.getAsFile();
+        if (f) files.push(f);
+      }
+    }
+    if (files.length) {
+      e.preventDefault();
+      addImages(files);
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    addImages(Array.from(e.dataTransfer.files));
+  };
+
+  const uploadPendingImages = async (): Promise<string[]> => {
+    if (!user || !pending.length) return [];
+    const urls: string[] = [];
+    for (const p of pending) {
+      const ext = p.file.name.split('.').pop() || 'png';
+      const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('chat-attachments')
+        .upload(path, p.file, { contentType: p.file.type, upsert: false });
+      if (upErr) throw upErr;
+      const { data: signed } = await supabase.storage
+        .from('chat-attachments')
+        .createSignedUrl(path, 60 * 60);
+      if (signed?.signedUrl) urls.push(signed.signedUrl);
+    }
+    return urls;
+  };
+
   const sendMessage = async () => {
     const text = input.trim();
-    if (!text || isLoading) return;
+    if ((!text && pending.length === 0) || isLoading) return;
 
-    const userMsg: ChatMessage = { role: 'user', content: text };
-    setMessages(prev => [...prev, userMsg]);
-    setInput('');
     setIsLoading(true);
+    let imageUrls: string[] = [];
+    try {
+      imageUrls = await uploadPendingImages();
+    } catch (e: any) {
+      toast({ title: pt ? 'Falha ao enviar imagem' : 'Image upload failed', description: e.message, variant: 'destructive' });
+      setIsLoading(false);
+      return;
+    }
+
+    const userMsg: ChatMessage = {
+      role: 'user',
+      content: text || (pt ? '(imagem enviada)' : '(image sent)'),
+      imageUrls: imageUrls.length ? imageUrls : undefined,
+    };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput('');
+    pending.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    setPending([]);
 
     try {
-      const apiMessages = [...messages, userMsg].map(m => ({
+      const apiMessages = newMessages.map((m) => ({
         role: m.role,
         content: m.content,
       }));
 
       const context = {
-        teamMembers: members.map(m => ({
+        teamMembers: members.map((m) => ({
           id: m.user_id,
           name: m.profile?.display_name || 'Membro',
         })),
-        projects: [], // Could fetch projects here
+        projects: [],
       };
 
       const { data, error } = await supabase.functions.invoke('ai-task-chat', {
-        body: { messages: apiMessages, context },
+        body: { messages: apiMessages, context, images: imageUrls },
       });
 
       if (error) throw error;
-
-      if (data.error) {
-        throw new Error(data.error);
-      }
+      if (data.error) throw new Error(data.error);
 
       if (data.type === 'tasks') {
         const tasks: TaskSuggestion[] = data.tasks.map((t: any) => ({
           ...t,
           selected: true,
         }));
-        setMessages(prev => [
+        setMessages((prev) => [
           ...prev,
           { role: 'assistant', content: data.summary, tasks },
         ]);
       } else {
-        setMessages(prev => [
+        setMessages((prev) => [
           ...prev,
           { role: 'assistant', content: data.message },
         ]);
@@ -100,9 +185,9 @@ export default function AIChatPage() {
         description: err.message || 'Erro ao processar mensagem',
         variant: 'destructive',
       });
-      setMessages(prev => [
+      setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Desculpe, ocorreu um erro. Tente novamente.' },
+        { role: 'assistant', content: pt ? 'Desculpe, ocorreu um erro. Tente novamente.' : 'Sorry, something went wrong.' },
       ]);
     } finally {
       setIsLoading(false);
@@ -110,7 +195,7 @@ export default function AIChatPage() {
   };
 
   const toggleTask = (msgIndex: number, taskIndex: number) => {
-    setMessages(prev =>
+    setMessages((prev) =>
       prev.map((msg, i) => {
         if (i !== msgIndex || !msg.tasks) return msg;
         const tasks = msg.tasks.map((t, j) =>
@@ -125,7 +210,7 @@ export default function AIChatPage() {
     const msg = messages[msgIndex];
     if (!msg?.tasks || !user) return;
 
-    const selected = msg.tasks.filter(t => t.selected);
+    const selected = msg.tasks.filter((t) => t.selected);
     if (!selected.length) return;
 
     try {
@@ -143,7 +228,7 @@ export default function AIChatPage() {
         });
       }
 
-      setMessages(prev =>
+      setMessages((prev) =>
         prev.map((m, i) =>
           i === msgIndex ? { ...m, tasksCreated: true } : m
         )
@@ -154,11 +239,7 @@ export default function AIChatPage() {
         description: `${selected.length} tarefa(s) criada(s) com sucesso!`,
       });
     } catch (err: any) {
-      toast({
-        title: 'Erro',
-        description: err.message,
-        variant: 'destructive',
-      });
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
     }
   };
 
@@ -171,7 +252,11 @@ export default function AIChatPage() {
 
   return (
     <AppLayout mainClassName="overflow-hidden !pb-0">
-      <div className="flex flex-col h-[calc(100dvh-7rem)] md:h-full min-h-0 max-w-3xl mx-auto">
+      <div
+        className="flex flex-col h-[calc(100dvh-7rem)] md:h-full min-h-0 max-w-3xl mx-auto"
+        onDragOver={(e) => e.preventDefault()}
+        onDrop={handleDrop}
+      >
         {/* Header */}
         <div className="flex items-center gap-3 py-3 px-2 border-b border-border shrink-0">
           <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10">
@@ -200,6 +285,10 @@ export default function AIChatPage() {
                 <p className="text-sm text-muted-foreground max-w-md">
                   {t('aiChatWelcomeDesc')}
                 </p>
+                <p className="text-xs text-muted-foreground max-w-md flex items-center gap-1">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  {pt ? 'Anexe ou cole imagens para extrair tarefas automaticamente' : 'Attach or paste images to extract tasks automatically'}
+                </p>
               </div>
             )}
 
@@ -217,6 +306,18 @@ export default function AIChatPage() {
                       : ''
                   }`}
                 >
+                  {msg.imageUrls && msg.imageUrls.length > 0 && (
+                    <div className="grid grid-cols-2 gap-1.5 mb-1">
+                      {msg.imageUrls.map((url, k) => (
+                        <img
+                          key={k}
+                          src={url}
+                          alt=""
+                          className="rounded-lg max-h-40 object-cover w-full"
+                        />
+                      ))}
+                    </div>
+                  )}
                   <div className={`text-sm ${msg.role === 'assistant' ? 'prose prose-sm dark:prose-invert max-w-none' : ''}`}>
                     {msg.role === 'assistant' ? (
                       <ReactMarkdown>{msg.content}</ReactMarkdown>
@@ -239,11 +340,11 @@ export default function AIChatPage() {
                         <Button
                           size="sm"
                           onClick={() => confirmTasks(i)}
-                          disabled={!msg.tasks.some(t => t.selected)}
+                          disabled={!msg.tasks.some((t) => t.selected)}
                           className="w-full mt-2"
                         >
                           <CheckCircle2 className="h-4 w-4 mr-1.5" />
-                          {t('confirmTasks')} ({msg.tasks.filter(t => t.selected).length})
+                          {t('confirmTasks')} ({msg.tasks.filter((t) => t.selected).length})
                         </Button>
                       ) : (
                         <div className="flex items-center gap-1.5 text-xs text-primary mt-1">
@@ -277,13 +378,56 @@ export default function AIChatPage() {
         </div>
 
         {/* Input */}
-        <div className="border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3 shrink-0">
+        <div className="border-t border-border p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] md:pb-3 shrink-0 space-y-2">
+          {pending.length > 0 && (
+            <div className="flex flex-wrap gap-2">
+              {pending.map((p, i) => (
+                <div key={i} className="relative">
+                  <img
+                    src={p.previewUrl}
+                    alt=""
+                    className="h-16 w-16 rounded-lg object-cover border"
+                  />
+                  <button
+                    onClick={() => removePending(i)}
+                    className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-0.5"
+                    aria-label="remove"
+                  >
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="flex gap-2 items-end">
+            <Button
+              type="button"
+              size="icon"
+              variant="ghost"
+              onClick={() => fileInputRef.current?.click()}
+              disabled={pending.length >= MAX_IMAGES_PER_MSG || isLoading}
+              className="shrink-0 h-[44px] w-[44px]"
+              aria-label={pt ? 'Anexar imagem' : 'Attach image'}
+            >
+              <Paperclip className="h-4 w-4" />
+            </Button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp,image/heic"
+              multiple
+              className="hidden"
+              onChange={(e) => {
+                addImages(Array.from(e.target.files || []));
+                e.target.value = '';
+              }}
+            />
             <Textarea
               ref={inputRef}
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={t('aiChatPlaceholder')}
               className="min-h-[44px] max-h-[120px] resize-none"
               rows={1}
@@ -291,7 +435,7 @@ export default function AIChatPage() {
             <Button
               size="icon"
               onClick={sendMessage}
-              disabled={!input.trim() || isLoading}
+              disabled={(!input.trim() && pending.length === 0) || isLoading}
               className="shrink-0 h-[44px] w-[44px]"
             >
               <Send className="h-4 w-4" />
