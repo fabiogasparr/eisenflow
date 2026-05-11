@@ -646,12 +646,15 @@ Deno.serve(async (req) => {
       const msgData = body.data
       if (!msgData) return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
 
+      const imageMessage = msgData.message?.imageMessage
       const messageText = msgData.message?.conversation ||
-        msgData.message?.extendedTextMessage?.text || ''
+        msgData.message?.extendedTextMessage?.text ||
+        imageMessage?.caption || ''
       const fromMe = msgData.key?.fromMe === true
       const messageId = msgData.key?.id
+      const hasImage = !!imageMessage
 
-      if (!messageText.trim()) {
+      if (!messageText.trim() && !hasImage) {
         return new Response(JSON.stringify({ ok: true }), { headers: corsHeaders })
       }
 
