@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User, Loader2, CheckCircle2, Sparkles, Paperclip, X, Image as ImageIcon, Trash2, GripVertical } from 'lucide-react';
+import { Send, Bot, User, Loader2, CheckCircle2, Sparkles, Paperclip, X, Image as ImageIcon, Trash2, GripVertical, History } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -39,14 +39,17 @@ interface ChatMessage {
   role: MessageRole;
   content: string;
   imageUrls?: string[];
+  imagePaths?: string[];
   tasks?: TaskSuggestion[];
   tasksCreated?: boolean;
 }
 
 interface PendingImage {
   id: string;
-  file: File;
+  file?: File;
   previewUrl: string;
+  reused?: boolean;
+  reusedPath?: string;
 }
 
 const MAX_BYTES = 10 * 1024 * 1024;
@@ -92,14 +95,19 @@ function SortableThumb({
       >
         <img
           src={item.previewUrl}
-          alt={item.file.name}
+          alt={item.file?.name ?? 'image'}
           draggable={false}
           className="h-20 w-20 rounded-lg object-cover border border-border transition-transform group-hover:scale-[1.02] select-none"
         />
       </button>
       <div className="absolute inset-x-0 bottom-0 rounded-b-lg bg-gradient-to-t from-black/70 to-transparent px-1 py-0.5 text-[10px] text-white truncate pointer-events-none">
-        {(item.file.size / 1024).toFixed(0)} KB
+        {item.file ? `${(item.file.size / 1024).toFixed(0)} KB` : (pt ? 'reusada' : 'reused')}
       </div>
+      {item.reused && (
+        <span className="absolute top-1 right-4 text-[9px] bg-secondary text-secondary-foreground px-1 rounded pointer-events-none">
+          ↻
+        </span>
+      )}
       <button
         type="button"
         onClick={onRemove}
@@ -173,12 +181,57 @@ export default function AIChatPage() {
     if (accepted.length) setPending((prev) => [...prev, ...accepted]);
   };
 
+  const revokeIfBlob = (url: string) => {
+    if (url.startsWith('blob:')) URL.revokeObjectURL(url);
+  };
+
   const removePendingById = (id: string) => {
     setPending((prev) => {
       const found = prev.find((p) => p.id === id);
-      if (found) URL.revokeObjectURL(found.previewUrl);
+      if (found) revokeIfBlob(found.previewUrl);
       return prev.filter((p) => p.id !== id);
     });
+  };
+
+  const lastUserImages = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const m = messages[i];
+      if (m.role === 'user' && m.imagePaths?.length) {
+        return { paths: m.imagePaths, urls: m.imageUrls ?? [] };
+      }
+    }
+    return null;
+  }, [messages]);
+
+  const reuseLastImages = async () => {
+    if (!lastUserImages) return;
+    const remaining = MAX_IMAGES_PER_MSG - pending.length;
+    if (remaining <= 0) {
+      toast({ title: pt ? 'Limite de anexos atingido' : 'Attachment limit reached' });
+      return;
+    }
+    const slice = lastUserImages.paths.slice(0, remaining);
+    const items: PendingImage[] = [];
+    for (let i = 0; i < slice.length; i++) {
+      const path = slice[i];
+      const { data } = await supabase.storage
+        .from('chat-attachments')
+        .createSignedUrl(path, 3600);
+      items.push({
+        id: crypto.randomUUID(),
+        previewUrl: data?.signedUrl ?? lastUserImages.urls[i] ?? '',
+        reused: true,
+        reusedPath: path,
+      });
+    }
+    setPending((prev) => [...prev, ...items]);
+    if (slice.length < lastUserImages.paths.length) {
+      toast({
+        title: pt
+          ? `Adicionadas ${slice.length} de ${lastUserImages.paths.length}`
+          : `Added ${slice.length} of ${lastUserImages.paths.length}`,
+      });
+    }
   };
 
   const handleDragEnd = (e: DragEndEvent) => {
@@ -211,10 +264,18 @@ export default function AIChatPage() {
     addImages(Array.from(e.dataTransfer.files));
   };
 
-  const uploadPendingImages = async (): Promise<string[]> => {
+  const uploadPendingImages = async (): Promise<{ url: string; path: string }[]> => {
     if (!user || !pending.length) return [];
-    const urls: string[] = [];
+    const result: { url: string; path: string }[] = [];
     for (const p of pending) {
+      if (p.reused && p.reusedPath) {
+        const { data } = await supabase.storage
+          .from('chat-attachments')
+          .createSignedUrl(p.reusedPath, 60 * 60);
+        if (data?.signedUrl) result.push({ url: data.signedUrl, path: p.reusedPath });
+        continue;
+      }
+      if (!p.file) continue;
       const ext = p.file.name.split('.').pop() || 'png';
       const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
       const { error: upErr } = await supabase.storage
@@ -224,9 +285,9 @@ export default function AIChatPage() {
       const { data: signed } = await supabase.storage
         .from('chat-attachments')
         .createSignedUrl(path, 60 * 60);
-      if (signed?.signedUrl) urls.push(signed.signedUrl);
+      if (signed?.signedUrl) result.push({ url: signed.signedUrl, path });
     }
-    return urls;
+    return result;
   };
 
   const sendMessage = async () => {
@@ -234,24 +295,27 @@ export default function AIChatPage() {
     if ((!text && pending.length === 0) || isLoading) return;
 
     setIsLoading(true);
-    let imageUrls: string[] = [];
+    let uploaded: { url: string; path: string }[] = [];
     try {
-      imageUrls = await uploadPendingImages();
+      uploaded = await uploadPendingImages();
     } catch (e: any) {
       toast({ title: pt ? 'Falha ao enviar imagem' : 'Image upload failed', description: e.message, variant: 'destructive' });
       setIsLoading(false);
       return;
     }
+    const imageUrls = uploaded.map((u) => u.url);
+    const imagePaths = uploaded.map((u) => u.path);
 
     const userMsg: ChatMessage = {
       role: 'user',
       content: text || (pt ? '(imagem enviada)' : '(image sent)'),
       imageUrls: imageUrls.length ? imageUrls : undefined,
+      imagePaths: imagePaths.length ? imagePaths : undefined,
     };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput('');
-    pending.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+    pending.forEach((p) => revokeIfBlob(p.previewUrl));
     setPending([]);
 
     try {
@@ -513,7 +577,7 @@ export default function AIChatPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    pending.forEach((p) => URL.revokeObjectURL(p.previewUrl));
+                    pending.forEach((p) => revokeIfBlob(p.previewUrl));
                     setPending([]);
                   }}
                   className="inline-flex items-center gap-1 text-destructive hover:underline"
@@ -556,7 +620,7 @@ export default function AIChatPage() {
                       className="w-full max-h-[75vh] object-contain rounded-md"
                     />
                     <div className="flex items-center justify-between gap-2 px-1 text-sm text-muted-foreground">
-                      <span className="truncate">{current.file.name}</span>
+                      <span className="truncate">{current.file?.name ?? (pt ? 'imagem reusada' : 'reused image')}</span>
                       <Button
                         variant="destructive"
                         size="sm"
@@ -588,6 +652,23 @@ export default function AIChatPage() {
             >
               <Paperclip className="h-4 w-4" />
             </Button>
+            {lastUserImages && pending.length < MAX_IMAGES_PER_MSG && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={reuseLastImages}
+                disabled={isLoading}
+                className="shrink-0 h-[44px] gap-1 text-xs"
+                aria-label={pt ? 'Reusar últimas imagens' : 'Reuse last images'}
+              >
+                <History className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {pt ? `Reusar (${lastUserImages.paths.length})` : `Reuse (${lastUserImages.paths.length})`}
+                </span>
+                <span className="sm:hidden">{lastUserImages.paths.length}</span>
+              </Button>
+            )}
             <input
               ref={fileInputRef}
               type="file"
