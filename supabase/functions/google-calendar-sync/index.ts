@@ -353,17 +353,32 @@ Deno.serve(async (req) => {
     if (action === "sync-tasks") {
       const { data: tasks, error: tasksError } = await supabaseAdmin
         .from("tasks")
-        .select("id, title, description, due_date, google_event_id, status")
-        .eq("created_by", userId)
-        .not("due_date", "is", null)
-        .in("status", ["pending", "in_progress"]);
+        .select("id, title, description, due_date, created_at, google_event_id, status")
+        .eq("created_by", userId);
 
       if (tasksError) throw new Error(tasksError.message);
 
       let synced = 0;
       for (const task of tasks || []) {
-        const startDateTime = task.due_date;
+        const allDay = !task.due_date;
+        const startDateTime = task.due_date || task.created_at;
         const endDateTime = new Date(new Date(startDateTime).getTime() + 60 * 60 * 1000).toISOString();
+
+        const prefix = task.status === "completed" ? "✅ " : task.status === "eliminated" ? "❌ " : "";
+        const summary = prefix + task.title;
+
+        const buildStartEnd = () => {
+          if (allDay) {
+            const dateStr = new Date(startDateTime).toISOString().slice(0, 10);
+            const nextDay = new Date(new Date(dateStr).getTime() + 24 * 60 * 60 * 1000)
+              .toISOString().slice(0, 10);
+            return { start: { date: dateStr }, end: { date: nextDay } };
+          }
+          return {
+            start: { dateTime: startDateTime, timeZone: "America/Sao_Paulo" },
+            end: { dateTime: endDateTime, timeZone: "America/Sao_Paulo" },
+          };
+        };
 
         if (task.google_event_id) {
           try {
@@ -376,10 +391,9 @@ Deno.serve(async (req) => {
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  summary: task.title,
+                  summary,
                   description: task.description || "",
-                  start: { dateTime: startDateTime, timeZone: "America/Sao_Paulo" },
-                  end: { dateTime: endDateTime, timeZone: "America/Sao_Paulo" },
+                  ...buildStartEnd(),
                 }),
               }
             );
@@ -399,10 +413,9 @@ Deno.serve(async (req) => {
                   "Content-Type": "application/json",
                 },
                 body: JSON.stringify({
-                  summary: task.title,
+                  summary,
                   description: task.description || "",
-                  start: { dateTime: startDateTime, timeZone: "America/Sao_Paulo" },
-                  end: { dateTime: endDateTime, timeZone: "America/Sao_Paulo" },
+                  ...buildStartEnd(),
                 }),
               }
             );
