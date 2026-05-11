@@ -491,15 +491,33 @@ REGRAS:
 - Para criar tarefas, escolha o quadrante adequado com base no contexto.
 - Seja conciso e amigável nas respostas. Use emojis de forma moderada.
 - Responda sempre em português brasileiro.
-- Se a mensagem for ambígua, peça esclarecimento via chat_response.`
+- Se a mensagem for ambígua, peça esclarecimento via chat_response.
+- Quando o usuário enviar imagens (prints, fotos, recibos, anotações), faça OCR + análise visual e crie automaticamente as tarefas relevantes via create_task. Se houver várias tarefas na imagem, chame create_task várias vezes. Resuma ao final usando chat_response.`
 
   try {
+    // Build user content (multimodal if images present)
+    const userContent: any =
+      imageUrls.length > 0
+        ? [
+            {
+              type: 'text',
+              text:
+                messageText?.trim() ||
+                'Analise a(s) imagem(ns) e crie tarefas relevantes para mim.',
+            },
+            ...imageUrls.map((url) => ({ type: 'image_url', image_url: { url } })),
+          ]
+        : messageText
+
     // Build messages array with history
     const aiMessages: any[] = [
       { role: 'system', content: systemPrompt },
       ...chatHistory.map((m: any) => ({ role: m.role, content: m.content })),
-      { role: 'user', content: messageText },
+      { role: 'user', content: userContent },
     ]
+
+    // Use vision-capable model when images are present
+    const model = imageUrls.length > 0 ? 'google/gemini-2.5-pro' : 'google/gemini-2.5-flash'
 
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
@@ -508,7 +526,7 @@ REGRAS:
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
+        model,
         messages: aiMessages,
         tools: AI_TOOLS,
         tool_choice: 'auto',
