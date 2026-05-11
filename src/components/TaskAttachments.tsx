@@ -27,6 +27,9 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
   const [analysis, setAnalysis] = useState<{ ocr_text: string; description: string; suggested_subtasks: string[] } | null>(null);
   const [draftSubtasks, setDraftSubtasks] = useState<{ title: string; selected: boolean }[]>([]);
   const [savingSubtasks, setSavingSubtasks] = useState(false);
+  const [editedOcr, setEditedOcr] = useState('');
+  const [originalOcr, setOriginalOcr] = useState('');
+  const [analyzeError, setAnalyzeError] = useState<string | null>(null);
 
   // Reset/seed draft list whenever a new analysis arrives
   useEffect(() => {
@@ -35,31 +38,54 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
     } else {
       setDraftSubtasks([]);
     }
+    const txt = analysis?.ocr_text ?? '';
+    setEditedOcr(txt);
+    setOriginalOcr(txt);
   }, [analysis]);
 
-  const { attachments, isLoading, upload, remove, analyze } = useTaskAttachments(taskId);
+  const { attachments, isLoading, upload, remove, analyze, updateOcr } = useTaskAttachments(taskId);
   const { addSubtask } = useSubtasks(taskId);
+
+  const runAnalyze = async (att: TaskAttachment) => {
+    setActiveAtt(att);
+    setAnalysis(null);
+    setAnalyzeError(null);
+    try {
+      const result = await analyze.mutateAsync(att.id);
+      setAnalysis(result);
+    } catch (e: any) {
+      setAnalyzeError(e?.message || (pt ? 'Falha na análise' : 'Analysis failed'));
+    }
+  };
 
   const handleFiles = async (files: FileList | null) => {
     if (!files?.length) return;
     for (const file of Array.from(files)) {
       try {
-        await upload.mutateAsync(file);
+        const att = await upload.mutateAsync(file);
+        // auto-trigger OCR preview right after upload
+        await runAnalyze(att);
       } catch (e: any) {
         toast({ title: pt ? 'Falha no upload' : 'Upload failed', description: e.message, variant: 'destructive' });
       }
     }
   };
 
-  const handleAnalyze = async (att: TaskAttachment) => {
-    setActiveAtt(att);
-    setAnalysis(null);
+  const handleAnalyze = (att: TaskAttachment) => {
+    void runAnalyze(att);
+  };
+
+  const ocrDirty = editedOcr !== originalOcr;
+
+  const handleSaveOcr = async () => {
+    if (!activeAtt || !ocrDirty) return;
     try {
-      const result = await analyze.mutateAsync(att.id);
-      setAnalysis(result);
+      await updateOcr.mutateAsync({ id: activeAtt.id, ocr_text: editedOcr });
+      setOriginalOcr(editedOcr);
+      setAnalysis((prev) => (prev ? { ...prev, ocr_text: editedOcr } : prev));
+      toast({ title: pt ? 'Texto salvo' : 'Text saved' });
     } catch (e: any) {
-      toast({ title: pt ? 'Erro na análise' : 'Analysis error', description: e.message, variant: 'destructive' });
-      setActiveAtt(null);
+      toast({ title: pt ? 'Erro ao salvar' : 'Save failed', description: e.message, variant: 'destructive' });
     }
   };
 
