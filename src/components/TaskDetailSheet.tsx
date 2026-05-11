@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 import { useSubtasks } from '@/hooks/useSubtasks';
 import { ShareTaskDialog } from '@/components/ShareTaskDialog';
+import { TaskAttachments } from '@/components/TaskAttachments';
 
 interface TaskDetailSheetProps {
   task: Task | null;
@@ -377,6 +378,13 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
               </div>
             </div>
           )}
+
+          <TaskAttachments
+            taskId={task.id}
+            taskTitle={task.title}
+            taskDescription={task.description}
+            onAppendDescription={(text) => onUpdate({ description: text })}
+          />
 
           <div className="flex flex-col gap-2 pt-4 border-t">
             <Button

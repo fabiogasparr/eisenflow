@@ -13,6 +13,13 @@ Quando o usuário descrever uma tarefa ou projeto, você deve:
 3. Para projetos complexos, quebrar em subtarefas menores e acionáveis
 4. Se houver membros de time disponíveis, sugerir atribuições inteligentes
 
+QUANDO O USUÁRIO ENVIAR IMAGENS (prints, fotos, recibos, post-its, agendas, e-mails, atas, fluxogramas):
+- Faça OCR cuidadoso e extraia TODO o texto visível
+- Descreva o conteúdo visual quando relevante (gráficos, diagramas, layouts)
+- Identifique itens acionáveis (listas, tópicos, deadlines, decisões) e use a tool create_tasks
+- Se a imagem for apenas informativa (sem ação), responda com chat_response resumindo o que viu
+- Inclua na descrição da tarefa o trecho do texto extraído da imagem que originou a tarefa
+
 Quadrantes da Matriz de Eisenhower:
 - "do": Fazer Agora — Urgente E Importante (crises, deadlines imediatos)
 - "schedule": Agendar — Importante mas NÃO Urgente (planejamento, crescimento)
@@ -21,7 +28,7 @@ Quadrantes da Matriz de Eisenhower:
 
 Urgência e Importância são valores de 1 a 5.
 
-Sempre use a tool create_tasks quando o usuário descrever tarefas ou projetos.
+Sempre use a tool create_tasks quando o usuário descrever (em texto ou imagem) tarefas ou projetos.
 Use chat_response para respostas conversacionais que não envolvam criação de tarefas.
 
 Responda sempre no idioma que o usuário usar.`;
@@ -32,7 +39,7 @@ serve(async (req) => {
   }
 
   try {
-    const { messages, context } = await req.json();
+    const { messages, context, images } = await req.json();
     const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
     if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
 
@@ -49,7 +56,7 @@ serve(async (req) => {
         type: "function",
         function: {
           name: "create_tasks",
-          description: "Create one or more tasks from the user's description. Use this whenever the user describes work to be done.",
+          description: "Create one or more tasks from the user's description or images. Use this whenever the user describes (or shows in an image) work to be done.",
           parameters: {
             type: "object",
             properties: {
@@ -59,20 +66,20 @@ serve(async (req) => {
                   type: "object",
                   properties: {
                     title: { type: "string", description: "Task title, concise and actionable" },
-                    description: { type: "string", description: "Detailed description of what needs to be done" },
-                    quadrant: { type: "string", enum: ["do", "schedule", "delegate", "eliminate"], description: "Eisenhower matrix quadrant" },
-                    urgency: { type: "number", minimum: 1, maximum: 5, description: "Urgency level 1-5" },
-                    importance: { type: "number", minimum: 1, maximum: 5, description: "Importance level 1-5" },
+                    description: { type: "string", description: "Detailed description; include relevant text extracted from images" },
+                    quadrant: { type: "string", enum: ["do", "schedule", "delegate", "eliminate"] },
+                    urgency: { type: "number", minimum: 1, maximum: 5 },
+                    importance: { type: "number", minimum: 1, maximum: 5 },
                     estimated_time: { type: "number", description: "Estimated time in minutes" },
-                    assigned_to_id: { type: "string", description: "User ID to assign to, if applicable" },
-                    assigned_to_name: { type: "string", description: "Name of assigned person for display" },
-                    project_id: { type: "string", description: "Project ID if applicable" },
+                    assigned_to_id: { type: "string" },
+                    assigned_to_name: { type: "string" },
+                    project_id: { type: "string" },
                   },
                   required: ["title", "quadrant", "urgency", "importance"],
                   additionalProperties: false,
                 },
               },
-              summary: { type: "string", description: "Brief summary of what was created and why" },
+              summary: { type: "string", description: "Brief summary of what was created and why; mention image content when applicable" },
             },
             required: ["tasks", "summary"],
             additionalProperties: false,
@@ -83,11 +90,11 @@ serve(async (req) => {
         type: "function",
         function: {
           name: "chat_response",
-          description: "Send a conversational response when no task creation is needed.",
+          description: "Send a conversational response when no task creation is needed. Use this to summarize/describe an image when it isn't actionable.",
           parameters: {
             type: "object",
             properties: {
-              message: { type: "string", description: "The response message" },
+              message: { type: "string" },
             },
             required: ["message"],
             additionalProperties: false,
@@ -96,6 +103,30 @@ serve(async (req) => {
       },
     ];
 
+    // If images were sent with the latest user message, transform that message into multimodal content.
+    const hasImages = Array.isArray(images) && images.length > 0;
+    const apiMessages = [...messages];
+    if (hasImages && apiMessages.length > 0) {
+      const lastIdx = apiMessages.length - 1;
+      const last = apiMessages[lastIdx];
+      if (last?.role === "user") {
+        const textPart = typeof last.content === "string" ? last.content : "";
+        apiMessages[lastIdx] = {
+          role: "user",
+          content: [
+            { type: "text", text: textPart || "Analise a(s) imagem(ns) anexada(s)." },
+            ...images.map((url: string) => ({
+              type: "image_url",
+              image_url: { url },
+            })),
+          ],
+        };
+      }
+    }
+
+    // Use a vision-capable model when images are present.
+    const model = hasImages ? "google/gemini-2.5-pro" : "google/gemini-3-flash-preview";
+
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -103,10 +134,10 @@ serve(async (req) => {
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "google/gemini-3-flash-preview",
+        model,
         messages: [
           { role: "system", content: SYSTEM_PROMPT + contextInfo },
-          ...messages,
+          ...apiMessages,
         ],
         tools,
         tool_choice: "auto",
@@ -117,7 +148,7 @@ serve(async (req) => {
       const status = response.status;
       const text = await response.text();
       console.error("AI gateway error:", status, text);
-      
+
       if (status === 429) {
         return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns segundos." }), {
           status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -142,7 +173,6 @@ serve(async (req) => {
       });
     }
 
-    // Handle tool calls
     if (choice.message?.tool_calls?.length) {
       const toolCall = choice.message.tool_calls[0];
       const args = JSON.parse(toolCall.function.arguments);
@@ -167,7 +197,6 @@ serve(async (req) => {
       }
     }
 
-    // Fallback to content
     return new Response(JSON.stringify({
       type: "chat",
       message: choice.message?.content || "Não entendi. Pode reformular?",
