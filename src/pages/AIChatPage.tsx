@@ -723,7 +723,7 @@ export default function AIChatPage() {
             <input
               ref={fileInputRef}
               type="file"
-              accept="image/png,image/jpeg,image/webp,image/heic"
+              accept="image/png,image/jpeg,image/jpg,image/webp,image/heic,.png,.jpg,.jpeg,.webp,.heic"
               multiple
               className="hidden"
               onChange={(e) => {
