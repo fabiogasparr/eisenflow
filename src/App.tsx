@@ -21,6 +21,7 @@ import DelegatedPage from "./pages/DelegatedPage";
 import JoinTeamPage from "./pages/JoinTeamPage";
 import AdminPage from "./pages/AdminPage";
 import OrganizationPage from "./pages/OrganizationPage";
+import CompletedTasks from "./pages/CompletedTasks";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
