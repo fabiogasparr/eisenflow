@@ -64,8 +64,8 @@ export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      // Auto-sync to Google Calendar if task has due_date
-      if (data?.due_date) {
+      // Auto-sync to Google Calendar (all tasks, with or without due_date)
+      if (data) {
         syncTaskToCalendar?.(data as Task);
       }
     },
@@ -111,8 +111,8 @@ export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
-      // Auto-sync to Google Calendar if task has due_date
-      if (data?.due_date) {
+      // Auto-sync to Google Calendar (all tasks, with or without due_date)
+      if (data) {
         syncTaskToCalendar?.(data as Task);
       }
     },
