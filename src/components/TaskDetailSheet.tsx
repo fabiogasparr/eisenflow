@@ -18,6 +18,7 @@ import { cn } from '@/lib/utils';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 import { useSubtasks } from '@/hooks/useSubtasks';
 import { ShareTaskDialog } from '@/components/ShareTaskDialog';
+import { TaskAttachments } from '@/components/TaskAttachments';
 
 interface TaskDetailSheetProps {
   task: Task | null;
