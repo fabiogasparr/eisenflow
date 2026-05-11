@@ -296,7 +296,84 @@ export default function CompletedTasks() {
           </CardContent>
         </Card>
 
-        {/* Filters */}
+        {/* Execution time distribution */}
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex flex-wrap items-center justify-between gap-2">
+              <span>
+                {isPt
+                  ? 'Distribuição do tempo de execução'
+                  : 'Execution time distribution'}
+              </span>
+              {stats.withDurationCount > 0 && (
+                <span className="text-[11px] font-normal text-muted-foreground">
+                  {isPt ? 'Mín' : 'Min'} {formatDuration(stats.minMs, language)} · {isPt ? 'Mediana' : 'Median'}{' '}
+                  {formatDuration(stats.median, language)} · {isPt ? 'Máx' : 'Max'}{' '}
+                  {formatDuration(stats.maxMs, language)} ·{' '}
+                  <span className={stats.outlierCount > 0 ? 'text-destructive' : ''}>
+                    {stats.outlierCount} {isPt ? 'outliers' : 'outliers'}
+                  </span>
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {stats.histogram.length === 0 ? (
+              <div className="py-8 text-center text-xs text-muted-foreground">
+                {isPt
+                  ? 'Sem tarefas com tempo medido no período.'
+                  : 'No tasks with measured time in this period.'}
+              </div>
+            ) : (
+              <div className="h-56 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={stats.histogram} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" vertical={false} />
+                    <XAxis
+                      dataKey="label"
+                      tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                      tickLine={false}
+                      axisLine={false}
+                      interval={0}
+                      angle={-25}
+                      textAnchor="end"
+                      height={50}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fontSize: 11, fill: 'hsl(var(--muted-foreground))' }}
+                      tickLine={false}
+                      axisLine={false}
+                    />
+                    <Tooltip
+                      contentStyle={{
+                        background: 'hsl(var(--popover))',
+                        border: '1px solid hsl(var(--border))',
+                        borderRadius: 8,
+                        fontSize: 12,
+                      }}
+                      formatter={(value: number, _name, item: any) => [
+                        `${value} ${isPt ? 'tarefas' : 'tasks'}${item?.payload?.isOutlier ? ` · ${isPt ? 'outlier' : 'outlier'}` : ''}`,
+                        isPt ? 'Quantidade' : 'Count',
+                      ]}
+                      labelFormatter={(l) => `${isPt ? 'A partir de' : 'From'} ${l}`}
+                    />
+                    <Bar dataKey="count" radius={[4, 4, 0, 0]}>
+                      {stats.histogram.map((entry, idx) => (
+                        <Cell
+                          key={idx}
+                          fill={entry.isOutlier ? 'hsl(var(--destructive))' : 'hsl(var(--primary))'}
+                        />
+                      ))}
+                    </Bar>
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+
         <div className="flex flex-col sm:flex-row gap-2 items-stretch sm:items-center">
           <Tabs value={period} onValueChange={(v) => setPeriod(v as Period)}>
             <TabsList>
