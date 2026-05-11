@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Send, Bot, User, Loader2, CheckCircle2, Sparkles, Paperclip, X, Image as ImageIcon, Trash2 } from 'lucide-react';
+import { Send, Bot, User, Loader2, CheckCircle2, Sparkles, Paperclip, X, Image as ImageIcon, Trash2, GripVertical } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -14,6 +14,24 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
+import {
+  DndContext,
+  type DragEndEvent,
+  KeyboardSensor,
+  PointerSensor,
+  TouchSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
+} from '@dnd-kit/core';
+import {
+  SortableContext,
+  arrayMove,
+  rectSortingStrategy,
+  sortableKeyboardCoordinates,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 type MessageRole = 'user' | 'assistant';
 
@@ -26,6 +44,7 @@ interface ChatMessage {
 }
 
 interface PendingImage {
+  id: string;
   file: File;
   previewUrl: string;
 }
@@ -34,12 +53,80 @@ const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED = ['image/png', 'image/jpeg', 'image/jpg', 'image/webp', 'image/heic'];
 const MAX_IMAGES_PER_MSG = 4;
 
+function SortableThumb({
+  item,
+  index,
+  total,
+  pt,
+  onPreview,
+  onRemove,
+}: {
+  item: PendingImage;
+  index: number;
+  total: number;
+  pt: boolean;
+  onPreview: () => void;
+  onRemove: () => void;
+}) {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 10 : undefined,
+  };
+  return (
+    <div
+      ref={setNodeRef}
+      style={style}
+      className={cn(
+        'relative group rounded-lg',
+        isDragging && 'shadow-lg ring-2 ring-primary opacity-90'
+      )}
+      aria-label={pt ? `Imagem ${index + 1} de ${total}` : `Image ${index + 1} of ${total}`}
+    >
+      <button
+        type="button"
+        onClick={onPreview}
+        className="block focus:outline-none focus:ring-2 focus:ring-primary rounded-lg"
+        aria-label={pt ? 'Ampliar imagem' : 'Enlarge image'}
+      >
+        <img
+          src={item.previewUrl}
+          alt={item.file.name}
+          draggable={false}
+          className="h-20 w-20 rounded-lg object-cover border border-border transition-transform group-hover:scale-[1.02] select-none"
+        />
+      </button>
+      <div className="absolute inset-x-0 bottom-0 rounded-b-lg bg-gradient-to-t from-black/70 to-transparent px-1 py-0.5 text-[10px] text-white truncate pointer-events-none">
+        {(item.file.size / 1024).toFixed(0)} KB
+      </div>
+      <button
+        type="button"
+        onClick={onRemove}
+        className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-1 shadow-md hover:scale-110 transition-transform"
+        aria-label={pt ? 'Remover imagem' : 'Remove image'}
+      >
+        <X className="h-3 w-3" />
+      </button>
+      <button
+        type="button"
+        {...attributes}
+        {...listeners}
+        className="absolute -top-1.5 -left-1.5 bg-background border border-border text-muted-foreground rounded-full p-1 shadow-md hover:bg-muted cursor-grab active:cursor-grabbing touch-none"
+        aria-label={pt ? 'Arrastar para reordenar' : 'Drag to reorder'}
+      >
+        <GripVertical className="h-3 w-3" />
+      </button>
+    </div>
+  );
+}
+
 export default function AIChatPage() {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [pending, setPending] = useState<PendingImage[]>([]);
   const [isLoading, setIsLoading] = useState(false);
-  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [previewId, setPreviewId] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -49,6 +136,12 @@ export default function AIChatPage() {
   const { t, language } = useLanguage();
   const pt = language === 'pt-BR';
   const { toast } = useToast();
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
+    useSensor(TouchSensor, { activationConstraint: { delay: 200, tolerance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
 
   const firstTeamId = teams[0]?.id ?? null;
   const { members } = useTeamMembers(firstTeamId);
@@ -71,15 +164,31 @@ export default function AIChatPage() {
         toast({ title: pt ? 'Imagem maior que 10 MB' : 'Image larger than 10 MB', variant: 'destructive' });
         continue;
       }
-      accepted.push({ file, previewUrl: URL.createObjectURL(file) });
+      accepted.push({
+        id: (crypto as any).randomUUID?.() ?? `${Date.now()}-${Math.random()}`,
+        file,
+        previewUrl: URL.createObjectURL(file),
+      });
     }
     if (accepted.length) setPending((prev) => [...prev, ...accepted]);
   };
 
-  const removePending = (idx: number) => {
+  const removePendingById = (id: string) => {
     setPending((prev) => {
-      URL.revokeObjectURL(prev[idx].previewUrl);
-      return prev.filter((_, i) => i !== idx);
+      const found = prev.find((p) => p.id === id);
+      if (found) URL.revokeObjectURL(found.previewUrl);
+      return prev.filter((p) => p.id !== id);
+    });
+  };
+
+  const handleDragEnd = (e: DragEndEvent) => {
+    const { active, over } = e;
+    if (!over || active.id === over.id) return;
+    setPending((prev) => {
+      const oldIdx = prev.findIndex((p) => p.id === active.id);
+      const newIdx = prev.findIndex((p) => p.id === over.id);
+      if (oldIdx < 0 || newIdx < 0) return prev;
+      return arrayMove(prev, oldIdx, newIdx);
     });
   };
 
@@ -413,65 +522,57 @@ export default function AIChatPage() {
                   {pt ? 'Limpar tudo' : 'Clear all'}
                 </button>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {pending.map((p, i) => (
-                  <div key={i} className="relative group">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewIndex(i)}
-                      className="block focus:outline-none focus:ring-2 focus:ring-primary rounded-lg"
-                      aria-label={pt ? 'Ampliar imagem' : 'Enlarge image'}
-                    >
-                      <img
-                        src={p.previewUrl}
-                        alt={p.file.name}
-                        className="h-20 w-20 rounded-lg object-cover border border-border transition-transform group-hover:scale-[1.02]"
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={pending.map((p) => p.id)} strategy={rectSortingStrategy}>
+                  <div className="flex flex-wrap gap-2">
+                    {pending.map((p, i) => (
+                      <SortableThumb
+                        key={p.id}
+                        item={p}
+                        index={i}
+                        total={pending.length}
+                        pt={pt}
+                        onPreview={() => setPreviewId(p.id)}
+                        onRemove={() => removePendingById(p.id)}
                       />
-                    </button>
-                    <div className="absolute inset-x-0 bottom-0 rounded-b-lg bg-gradient-to-t from-black/70 to-transparent px-1 py-0.5 text-[10px] text-white truncate">
-                      {(p.file.size / 1024).toFixed(0)} KB
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removePending(i)}
-                      className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-1 shadow-md hover:scale-110 transition-transform"
-                      aria-label={pt ? 'Remover imagem' : 'Remove image'}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </SortableContext>
+              </DndContext>
             </div>
           )}
 
-          <Dialog open={previewIndex !== null} onOpenChange={(o) => !o && setPreviewIndex(null)}>
+          <Dialog open={previewId !== null} onOpenChange={(o) => !o && setPreviewId(null)}>
             <DialogContent className="max-w-3xl p-2">
               <DialogTitle className="sr-only">{pt ? 'Pré-visualização' : 'Preview'}</DialogTitle>
-              {previewIndex !== null && pending[previewIndex] && (
-                <div className="space-y-2">
-                  <img
-                    src={pending[previewIndex].previewUrl}
-                    alt=""
-                    className="w-full max-h-[75vh] object-contain rounded-md"
-                  />
-                  <div className="flex items-center justify-between gap-2 px-1 text-sm text-muted-foreground">
-                    <span className="truncate">{pending[previewIndex].file.name}</span>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        const idx = previewIndex;
-                        setPreviewIndex(null);
-                        removePending(idx);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      {pt ? 'Remover' : 'Remove'}
-                    </Button>
+              {(() => {
+                const current = previewId ? pending.find((p) => p.id === previewId) : null;
+                if (!current) return null;
+                return (
+                  <div className="space-y-2">
+                    <img
+                      src={current.previewUrl}
+                      alt=""
+                      className="w-full max-h-[75vh] object-contain rounded-md"
+                    />
+                    <div className="flex items-center justify-between gap-2 px-1 text-sm text-muted-foreground">
+                      <span className="truncate">{current.file.name}</span>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          const id = current.id;
+                          setPreviewId(null);
+                          removePendingById(id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        {pt ? 'Remover' : 'Remove'}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </DialogContent>
           </Dialog>
 

@@ -1,100 +1,35 @@
-# Reavaliação automática por proximidade de prazo
+# Reordenar imagens anexadas por arrastar-e-soltar
 
 ## Objetivo
-Tarefas com `due_date` próximo são reavaliadas 1x/dia (e sob demanda). A **urgência** sobe automaticamente por regra de tempo; a **importância** e o **quadrante sugerido** são julgados pela IA com base em múltiplos sinais. O usuário aprova/rejeita as mudanças de importância na UI.
+No Chat de IA, permitir reorganizar as miniaturas das imagens pendentes (antes de enviar) com drag-and-drop, mantendo todas as ações já existentes (ampliar, remover, "Limpar tudo").
 
-## Modelo de classificação
+## Implementação
 
-### Parte 1 — Urgência (determinística, automática)
-Calculada a partir de `due_date - now()`:
+### Biblioteca
+Usar `@dnd-kit/core` + `@dnd-kit/sortable` (já instalados no projeto, mesmo padrão da Matriz).
 
-```text
-≤ 24h → urgency = 5  (crítica)
-≤ 72h → urgency = 4  (alta)
-≤ 7d  → urgency = 3  (média)
-> 7d  → mantém valor atual
-vencida → urgency = 5 + flag "overdue"
-```
+### Arquivo único: `src/pages/AIChatPage.tsx`
+- Adicionar `id` estável a cada `PendingImage` (gerar `crypto.randomUUID()` ao aceitar o arquivo) para servir de chave do `SortableContext`.
+- Envolver a grade de miniaturas (linhas ~417) em `<DndContext>` + `<SortableContext strategy={rectSortingStrategy}>`.
+- Extrair cada miniatura para um pequeno componente `SortableThumb` que usa `useSortable({ id })` e aplica `transform`/`transition` via `CSS.Transform`.
+- Sensores: `PointerSensor` (distance: 8) + `TouchSensor` (delay: 200, tolerance: 5) — ativação por delay no toque para não conflitar com o tap que abre o preview.
+- `onDragEnd`: usa `arrayMove` para reordenar `pending` mantendo o estado.
+- `removePending` passa a buscar por `id` em vez de índice.
+- Cursor `grab`/`grabbing` e leve `ring`/elevação enquanto arrasta para feedback visual.
 
-Sem IA: regra pura, barata, previsível. Aplicada direto no banco.
+### Comportamento preservado
+- Clique simples na miniatura → abre o `Dialog` de preview.
+- Botão "X" por imagem → remove (agora por id).
+- Botão "Limpar tudo" → inalterado.
+- Ordem reordenada é a ordem usada no upload e no envio para a IA.
 
-### Parte 2 — Importância (sugerida pela IA)
-A IA recebe um **dossiê** da tarefa e devolve `importance (1-5)` + justificativa curta.
+### Acessibilidade
+- `KeyboardSensor` com `sortableKeyboardCoordinates` para reordenar via teclado (Tab + Setas).
+- `aria-label` nas miniaturas com posição atual ("Imagem 2 de 4").
 
-Sinais enviados ao modelo:
-- **Conteúdo**: título, descrição, tags
-- **Contexto organizacional**: nome do projeto, se faz parte de equipe/tenant compartilhado
-- **Estrutura**: nº de subtarefas, nº de anexos, presença de OCR/descrição visual
-- **Histórico do usuário (agregado, anonimizado)**:
-  - Taxa de conclusão por tag/projeto (tags que o usuário tipicamente conclui = mais importantes)
-  - Taxa de eliminação por tag (tags que ele costuma eliminar = menos importantes)
-  - Importância média histórica das tarefas do mesmo projeto
-- **Sinais derivados**: tarefa delegada para outros, tarefa recorrente, tarefa com Google Calendar event
+## O que NÃO muda
+- Lógica de upload, envio, preview, validação de limite, OCR/análise.
+- Componente de mensagens anteriores ou histórico.
 
-### Parte 3 — Quadrante final
-Recalculado pela mesma regra já existente no app (urgência≥3 + importância≥3):
-
-```text
-urgency ≥3 AND importance ≥3 → do
-urgency <3 AND importance ≥3 → schedule
-urgency ≥3 AND importance <3 → delegate
-urgency <3 AND importance <3 → eliminate
-```
-
-## Fluxo de aplicação
-
-```text
-cron diário (08:00 user TZ)
-        │
-        ▼
-1. Buscar tasks com due_date em ≤7d, status pending/in_progress
-2. Para cada uma:
-   ├─ aplicar nova urgency por regra (UPDATE direto)
-   ├─ se quadrante mudou só por urgência → aplicar e notificar
-   └─ chamar IA para reavaliar importância
-        │
-        ▼
-3. Se IA sugerir importance diferente (Δ ≥1):
-   └─ criar registro em task_reclassification_suggestions (pendente)
-        │
-        ▼
-4. Notificação no app: "N tarefas têm sugestões de reclassificação"
-        │
-        ▼
-5. UI: usuário vê card com diff (antes → depois + motivo) e aprova/rejeita em lote
-```
-
-Botão **"Reavaliar agora"** na Matriz dispara o mesmo fluxo manualmente para o usuário corrente.
-
-## Mudanças técnicas
-
-### Banco
-- Nova tabela `task_reclassification_suggestions`:
-  - `task_id`, `user_id`, `current_quadrant`, `suggested_quadrant`
-  - `current_importance`, `suggested_importance`
-  - `current_urgency`, `applied_urgency` (urgência já aplicada por regra)
-  - `reason` (texto curto da IA), `signals` (jsonb)
-  - `status` ('pending' | 'accepted' | 'rejected' | 'expired')
-  - `created_at`, `resolved_at`
-- RLS: usuário só vê/edita as próprias sugestões.
-- Índice em `(user_id, status)`.
-
-### Edge functions
-- **`reevaluate-deadlines`** (nova):
-  - Roda a regra de urgência em SQL bulk.
-  - Para cada task elegível, monta dossiê (faz queries agregadas de histórico) e chama Lovable AI (`google/gemini-3-flash-preview`) com tool calling para retornar `{ importance, reason }`.
-  - Cria sugestões pendentes; aplica direto só as mudanças puramente de urgência.
-  - Aceita parâmetro `user_id` opcional para o modo manual.
-- **Cron pg_cron**: dispara `reevaluate-deadlines` 1x/dia para todos usuários ativos.
-
-### Frontend
-- Botão **"Reavaliar agora"** no header da Matriz (dispara função p/ user atual).
-- Banner/sheet **"Sugestões da IA"** listando cada sugestão com: tarefa, badge antigo→novo quadrante, motivo, botões Aceitar/Rejeitar/Aceitar todas.
-- Notificação in-app quando há sugestões novas.
-- i18n PT-BR/EN para todas as strings.
-
-## Por que esse design
-- **Custo controlado**: IA só roda 1x/dia em tarefas a ≤7d do prazo (não toda a base).
-- **Sem surpresa**: usuário aprova mudanças de importância; só urgência muda automaticamente (que é objetiva).
-- **Aprende com o usuário** sem ML pesado: histórico agregado vai como contexto no prompt.
-- **Reaproveita** a função `classify-task` existente (estendendo o prompt com os sinais novos).
+## Arquivos tocados
+- `src/pages/AIChatPage.tsx` (único)
