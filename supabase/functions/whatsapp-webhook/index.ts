@@ -730,10 +730,24 @@ Deno.serve(async (req) => {
       let replyText = ''
 
       // ── Route: structured commands (/) or AI processing ──
-      if (messageText.startsWith('/')) {
+      if (messageText.startsWith('/') && !hasImage) {
         replyText = await processCommand(messageText, supabaseAdmin, userId, EVOLUTION_API_URL, EVOLUTION_API_KEY)
       } else {
-        replyText = await processWithAI(messageText, supabaseAdmin, userId, EVOLUTION_API_URL, EVOLUTION_API_KEY)
+        const imageUrls: string[] = []
+        if (hasImage) {
+          const stored = await downloadAndStoreWhatsappImage(
+            supabaseAdmin, instanceName, msgData, userId,
+            EVOLUTION_API_URL, EVOLUTION_API_KEY,
+          )
+          if (stored) imageUrls.push(stored.signedUrl)
+          else replyText = '⚠️ Não consegui baixar a imagem do WhatsApp. Tente reenviar.'
+        }
+        if (!replyText) {
+          replyText = await processWithAI(
+            messageText, supabaseAdmin, userId,
+            EVOLUTION_API_URL, EVOLUTION_API_KEY, imageUrls,
+          )
+        }
       }
 
       // Send reply
