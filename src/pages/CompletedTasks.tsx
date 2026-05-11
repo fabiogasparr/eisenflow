@@ -110,8 +110,65 @@ export default function CompletedTasks() {
       });
     }
 
-    return { total, totalMs, avgMs, byQuadrant, days, withDurationCount: withDuration.length };
-  }, [completed]);
+    // execution time distribution (histogram) + quartile/outlier stats
+    const sorted = [...durations].sort((a, b) => a - b);
+    const quantile = (p: number) => {
+      if (!sorted.length) return 0;
+      const idx = (sorted.length - 1) * p;
+      const lo = Math.floor(idx);
+      const hi = Math.ceil(idx);
+      if (lo === hi) return sorted[lo];
+      return sorted[lo] + (sorted[hi] - sorted[lo]) * (idx - lo);
+    };
+    const minMs = sorted[0] ?? 0;
+    const maxMs = sorted[sorted.length - 1] ?? 0;
+    const q1 = quantile(0.25);
+    const median = quantile(0.5);
+    const q3 = quantile(0.75);
+    const iqr = q3 - q1;
+    const outlierThreshold = q3 + 1.5 * iqr;
+    const outlierCount = sorted.filter((d) => d > outlierThreshold).length;
+
+    // adaptive buckets in minutes, ~10 bins
+    const histogram: { label: string; count: number; isOutlier: boolean }[] = [];
+    if (sorted.length > 0) {
+      const minMin = Math.floor(minMs / 60000);
+      const maxMin = Math.ceil(maxMs / 60000);
+      const span = Math.max(1, maxMin - minMin);
+      const binCount = Math.min(10, Math.max(4, sorted.length));
+      const binSize = Math.max(1, Math.ceil(span / binCount));
+      for (let i = 0; i < binCount; i++) {
+        const lo = minMin + i * binSize;
+        const hi = lo + binSize;
+        const count = sorted.filter((d) => {
+          const m = d / 60000;
+          return m >= lo && (i === binCount - 1 ? m <= hi : m < hi);
+        }).length;
+        const loMs = lo * 60000;
+        histogram.push({
+          label: formatDuration(loMs, language),
+          count,
+          isOutlier: loMs > outlierThreshold,
+        });
+      }
+    }
+
+    return {
+      total,
+      totalMs,
+      avgMs,
+      byQuadrant,
+      days,
+      withDurationCount: withDuration.length,
+      histogram,
+      minMs,
+      maxMs,
+      median,
+      q1,
+      q3,
+      outlierCount,
+    };
+  }, [completed, language]);
 
   const handleReopen = async (task: Task) => {
     await updateTask.mutateAsync({
