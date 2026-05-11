@@ -89,9 +89,21 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
     }
   };
 
-  const handleAddToDescription = () => {
-    if (!analysis) return;
-    const block = `\n\n📷 ${pt ? 'Texto extraído da imagem' : 'Text extracted from image'}:\n${analysis.ocr_text}`;
+  const handleAddToDescription = async () => {
+    if (!analysis || !activeAtt) return;
+    const text = editedOcr;
+    // auto-save edits before appending so DB stays in sync
+    if (ocrDirty) {
+      try {
+        await updateOcr.mutateAsync({ id: activeAtt.id, ocr_text: text });
+        setOriginalOcr(text);
+        setAnalysis((prev) => (prev ? { ...prev, ocr_text: text } : prev));
+      } catch (e: any) {
+        toast({ title: pt ? 'Erro ao salvar' : 'Save failed', description: e.message, variant: 'destructive' });
+        return;
+      }
+    }
+    const block = `\n\n📷 ${pt ? 'Texto extraído da imagem' : 'Text extracted from image'}:\n${text}`;
     onAppendDescription((taskDescription || '') + block);
     toast({ title: pt ? 'Adicionado à descrição' : 'Added to description' });
   };
