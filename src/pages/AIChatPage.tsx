@@ -678,6 +678,14 @@ export default function AIChatPage() {
             </DialogContent>
           </Dialog>
 
+          {pending.length === 0 && (
+            <p className="text-[10px] text-muted-foreground px-1">
+              {pt
+                ? `Máx. ${MAX_IMAGES_PER_MSG} imagens · 10 MB cada · PNG, JPG, WEBP, HEIC`
+                : `Max ${MAX_IMAGES_PER_MSG} images · 10 MB each · PNG, JPG, WEBP, HEIC`}
+            </p>
+          )}
+
           <div className="flex gap-2 items-end">
             <Button
               type="button"
@@ -687,6 +695,11 @@ export default function AIChatPage() {
               disabled={pending.length >= MAX_IMAGES_PER_MSG || isLoading}
               className="shrink-0 h-[44px] w-[44px]"
               aria-label={pt ? 'Anexar imagem' : 'Attach image'}
+              title={
+                pending.length >= MAX_IMAGES_PER_MSG
+                  ? (pt ? `Limite de ${MAX_IMAGES_PER_MSG} imagens atingido` : `Limit of ${MAX_IMAGES_PER_MSG} images reached`)
+                  : (pt ? 'Anexar imagem (PNG, JPG, WEBP, HEIC · máx. 10 MB)' : 'Attach image (PNG, JPG, WEBP, HEIC · max 10 MB)')
+              }
             >
               <Paperclip className="h-4 w-4" />
             </Button>
