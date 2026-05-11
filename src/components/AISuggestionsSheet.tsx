@@ -146,18 +146,19 @@ export function AISuggestionsSheet() {
           {suggestions.map((s) => {
             const fromCfg = QUADRANT_CONFIG[s.current_quadrant];
             const toCfg = QUADRANT_CONFIG[s.suggested_quadrant];
+            const tr = translations[language] as Record<string, string>;
             return (
               <div key={s.id} className="rounded-lg border bg-card p-3 space-y-2">
                 <p className="font-medium text-sm leading-tight">{s.tasks?.title ?? '—'}</p>
                 <div className="flex items-center gap-2 text-xs">
                   <Badge variant="outline" className="gap-1">
                     <span>{fromCfg.emoji}</span>
-                    {isPt ? fromCfg.labelPt : fromCfg.label}
+                    {tr[fromCfg.labelKey]}
                   </Badge>
                   <ArrowRight className="h-3 w-3 text-muted-foreground" />
                   <Badge className="gap-1">
                     <span>{toCfg.emoji}</span>
-                    {isPt ? toCfg.labelPt : toCfg.label}
+                    {tr[toCfg.labelKey]}
                   </Badge>
                 </div>
                 <div className="text-xs text-muted-foreground">
