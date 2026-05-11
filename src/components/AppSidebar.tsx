@@ -47,6 +47,7 @@ export function AppSidebar() {
     { title: t('delegated'), url: '/delegated', icon: Share2 },
     { title: t('aiChat'), url: '/chat', icon: MessageSquare },
     { title: t('metrics'), url: '/metrics', icon: BarChart3 },
+    { title: t('completed'), url: '/completed', icon: CheckCircle2 },
     { title: t('gamification'), url: '/gamification', icon: Trophy },
     { title: language === 'pt-BR' ? 'Organização' : 'Organization', url: '/organization', icon: Building2 },
     { title: t('settings'), url: '/settings', icon: Settings },
