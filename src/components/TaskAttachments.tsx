@@ -216,40 +216,85 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
         <div className="rounded-lg border p-3 space-y-3 bg-muted/50">
           <div className="flex items-start justify-between">
             <p className="text-xs font-semibold">{pt ? 'Resultado da análise' : 'Analysis result'}</p>
-            <button onClick={() => { setActiveAtt(null); setAnalysis(null); }}>
+            <button onClick={() => { setActiveAtt(null); setAnalysis(null); setAnalyzeError(null); }}>
               <X className="h-3.5 w-3.5 text-muted-foreground" />
             </button>
           </div>
-          {!analysis ? (
+          {!analysis && !analyzeError ? (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
               <Loader2 className="h-3.5 w-3.5 animate-spin" />
-              {pt ? 'Analisando imagem...' : 'Analyzing image...'}
+              {pt ? 'Analisando automaticamente...' : 'Auto-analyzing...'}
+            </div>
+          ) : analyzeError ? (
+            <div className="space-y-2">
+              <div className="flex items-start gap-2 text-xs text-destructive">
+                <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                <span>{analyzeError}</span>
+              </div>
+              <Button size="sm" variant="outline" onClick={() => activeAtt && runAnalyze(activeAtt)}>
+                <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                {pt ? 'Tentar novamente' : 'Retry'}
+              </Button>
             </div>
           ) : (
             <>
-              {analysis.description && (
+              {analysis!.description && (
                 <div>
                   <p className="text-[11px] uppercase text-muted-foreground mb-1">
                     {pt ? 'Descrição' : 'Description'}
                   </p>
-                  <p className="text-xs">{analysis.description}</p>
+                  <p className="text-xs">{analysis!.description}</p>
                 </div>
               )}
-              {analysis.ocr_text && (
-                <div>
-                  <p className="text-[11px] uppercase text-muted-foreground mb-1">
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <p className="text-[11px] uppercase text-muted-foreground flex items-center gap-2">
                     {pt ? 'Texto extraído (OCR)' : 'Extracted text (OCR)'}
+                    {ocrDirty && (
+                      <Badge variant="secondary" className="text-[9px] py-0 h-4">
+                        {pt ? 'Editado' : 'Edited'}
+                      </Badge>
+                    )}
                   </p>
-                  <pre className="text-xs whitespace-pre-wrap bg-background rounded p-2 max-h-40 overflow-auto">
-                    {analysis.ocr_text}
-                  </pre>
+                  <span className="text-[10px] text-muted-foreground">{editedOcr.length}</span>
                 </div>
-              )}
-              {analysis.ocr_text && (
-                <Button size="sm" variant="outline" onClick={handleAddToDescription}>
-                  {pt ? 'Adicionar à descrição' : 'Add to description'}
-                </Button>
-              )}
+                <Textarea
+                  value={editedOcr}
+                  onChange={(e) => setEditedOcr(e.target.value)}
+                  rows={6}
+                  placeholder={pt ? 'Nenhum texto detectado. Você pode escrever aqui.' : 'No text detected. You can type here.'}
+                  className="text-xs font-mono bg-background"
+                />
+                <div className="flex flex-wrap items-center gap-2 mt-2">
+                  <Button
+                    size="sm"
+                    variant="default"
+                    onClick={handleSaveOcr}
+                    disabled={!ocrDirty || updateOcr.isPending}
+                  >
+                    {updateOcr.isPending ? (
+                      <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                    ) : (
+                      <Save className="h-3.5 w-3.5 mr-1" />
+                    )}
+                    {pt ? 'Salvar alterações' : 'Save changes'}
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setEditedOcr(originalOcr)}
+                    disabled={!ocrDirty}
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 mr-1" />
+                    {pt ? 'Desfazer' : 'Reset'}
+                  </Button>
+                  <Button size="sm" variant="outline" onClick={handleAddToDescription} disabled={!editedOcr.trim()}>
+                    {pt ? 'Adicionar à descrição' : 'Add to description'}
+                  </Button>
+                </div>
+              </div>
+            </>
+          )}
 
               {draftSubtasks.length > 0 && (
                 <div className="rounded-md border bg-background p-2 space-y-2">
