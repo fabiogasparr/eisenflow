@@ -522,65 +522,57 @@ export default function AIChatPage() {
                   {pt ? 'Limpar tudo' : 'Clear all'}
                 </button>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {pending.map((p, i) => (
-                  <div key={i} className="relative group">
-                    <button
-                      type="button"
-                      onClick={() => setPreviewIndex(i)}
-                      className="block focus:outline-none focus:ring-2 focus:ring-primary rounded-lg"
-                      aria-label={pt ? 'Ampliar imagem' : 'Enlarge image'}
-                    >
-                      <img
-                        src={p.previewUrl}
-                        alt={p.file.name}
-                        className="h-20 w-20 rounded-lg object-cover border border-border transition-transform group-hover:scale-[1.02]"
+              <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+                <SortableContext items={pending.map((p) => p.id)} strategy={rectSortingStrategy}>
+                  <div className="flex flex-wrap gap-2">
+                    {pending.map((p, i) => (
+                      <SortableThumb
+                        key={p.id}
+                        item={p}
+                        index={i}
+                        total={pending.length}
+                        pt={pt}
+                        onPreview={() => setPreviewId(p.id)}
+                        onRemove={() => removePendingById(p.id)}
                       />
-                    </button>
-                    <div className="absolute inset-x-0 bottom-0 rounded-b-lg bg-gradient-to-t from-black/70 to-transparent px-1 py-0.5 text-[10px] text-white truncate">
-                      {(p.file.size / 1024).toFixed(0)} KB
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => removePending(i)}
-                      className="absolute -top-1.5 -right-1.5 bg-destructive text-destructive-foreground rounded-full p-1 shadow-md hover:scale-110 transition-transform"
-                      aria-label={pt ? 'Remover imagem' : 'Remove image'}
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
+                    ))}
                   </div>
-                ))}
-              </div>
+                </SortableContext>
+              </DndContext>
             </div>
           )}
 
-          <Dialog open={previewIndex !== null} onOpenChange={(o) => !o && setPreviewIndex(null)}>
+          <Dialog open={previewId !== null} onOpenChange={(o) => !o && setPreviewId(null)}>
             <DialogContent className="max-w-3xl p-2">
               <DialogTitle className="sr-only">{pt ? 'Pré-visualização' : 'Preview'}</DialogTitle>
-              {previewIndex !== null && pending[previewIndex] && (
-                <div className="space-y-2">
-                  <img
-                    src={pending[previewIndex].previewUrl}
-                    alt=""
-                    className="w-full max-h-[75vh] object-contain rounded-md"
-                  />
-                  <div className="flex items-center justify-between gap-2 px-1 text-sm text-muted-foreground">
-                    <span className="truncate">{pending[previewIndex].file.name}</span>
-                    <Button
-                      variant="destructive"
-                      size="sm"
-                      onClick={() => {
-                        const idx = previewIndex;
-                        setPreviewIndex(null);
-                        removePending(idx);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      {pt ? 'Remover' : 'Remove'}
-                    </Button>
+              {(() => {
+                const current = previewId ? pending.find((p) => p.id === previewId) : null;
+                if (!current) return null;
+                return (
+                  <div className="space-y-2">
+                    <img
+                      src={current.previewUrl}
+                      alt=""
+                      className="w-full max-h-[75vh] object-contain rounded-md"
+                    />
+                    <div className="flex items-center justify-between gap-2 px-1 text-sm text-muted-foreground">
+                      <span className="truncate">{current.file.name}</span>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        onClick={() => {
+                          const id = current.id;
+                          setPreviewId(null);
+                          removePendingById(id);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4 mr-1" />
+                        {pt ? 'Remover' : 'Remove'}
+                      </Button>
+                    </div>
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </DialogContent>
           </Dialog>
 
