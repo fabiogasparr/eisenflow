@@ -68,14 +68,37 @@ export function TaskAttachments({ taskId, taskTitle, taskDescription, onAppendDe
     toast({ title: pt ? 'Adicionado à descrição' : 'Added to description' });
   };
 
-  const handleGenerateSubtasks = async () => {
-    if (!analysis?.suggested_subtasks?.length) return;
-    let pos = 0;
-    for (const title of analysis.suggested_subtasks) {
-      await addSubtask.mutateAsync({ title, position: pos++ });
+  const handleConfirmSubtasks = async () => {
+    const selected = draftSubtasks.filter((d) => d.selected && d.title.trim());
+    if (!selected.length) return;
+    setSavingSubtasks(true);
+    try {
+      let pos = 0;
+      for (const item of selected) {
+        await addSubtask.mutateAsync({ title: item.title.trim(), position: pos++ });
+      }
+      toast({
+        title: pt ? 'Subtarefas criadas' : 'Subtasks created',
+        description: pt
+          ? `${selected.length} subtarefa(s) adicionada(s)`
+          : `${selected.length} subtask(s) added`,
+      });
+      setDraftSubtasks([]);
+      setActiveAtt(null);
+      setAnalysis(null);
+    } catch (e: any) {
+      toast({
+        title: pt ? 'Erro ao criar subtarefas' : 'Error creating subtasks',
+        description: e.message,
+        variant: 'destructive',
+      });
+    } finally {
+      setSavingSubtasks(false);
     }
-    toast({ title: pt ? 'Subtarefas criadas' : 'Subtasks created' });
   };
+
+  const allSelected = draftSubtasks.length > 0 && draftSubtasks.every((d) => d.selected);
+  const selectedCount = draftSubtasks.filter((d) => d.selected).length;
 
   return (
     <div className="space-y-3 pt-3 border-t">
