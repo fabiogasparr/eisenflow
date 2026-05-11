@@ -652,6 +652,23 @@ export default function AIChatPage() {
             >
               <Paperclip className="h-4 w-4" />
             </Button>
+            {lastUserImages && pending.length < MAX_IMAGES_PER_MSG && (
+              <Button
+                type="button"
+                size="sm"
+                variant="ghost"
+                onClick={reuseLastImages}
+                disabled={isLoading}
+                className="shrink-0 h-[44px] gap-1 text-xs"
+                aria-label={pt ? 'Reusar últimas imagens' : 'Reuse last images'}
+              >
+                <History className="h-4 w-4" />
+                <span className="hidden sm:inline">
+                  {pt ? `Reusar (${lastUserImages.paths.length})` : `Reuse (${lastUserImages.paths.length})`}
+                </span>
+                <span className="sm:hidden">{lastUserImages.paths.length}</span>
+              </Button>
+            )}
             <input
               ref={fileInputRef}
               type="file"
