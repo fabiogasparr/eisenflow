@@ -31,6 +31,8 @@ Urgência e Importância são valores de 1 a 5.
 Sempre use a tool create_tasks quando o usuário descrever (em texto ou imagem) tarefas ou projetos.
 Use chat_response para respostas conversacionais que não envolvam criação de tarefas.
 
+IMPORTANTE: Os campos project_id e assigned_to_id DEVEM ser UUIDs válidos copiados exatamente das listas de "Projetos disponíveis" e "Membros do time" do contexto. NUNCA invente IDs, nunca use nomes, categorias ou caminhos como "Pessoal/Networking". Se não houver correspondência exata na lista, OMITA o campo.
+
 Responda sempre no idioma que o usuário usar.`;
 
 serve(async (req) => {
