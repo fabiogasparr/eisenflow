@@ -427,6 +427,9 @@ export default function AIChatPage() {
     const selected = msg.tasks.filter((t) => t.selected);
     if (!selected.length) return;
 
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    const isUuid = (v: unknown): v is string => typeof v === 'string' && UUID_RE.test(v);
+
     try {
       for (const task of selected) {
         await createTask.mutateAsync({
@@ -436,8 +439,8 @@ export default function AIChatPage() {
           urgency: task.urgency,
           importance: task.importance,
           estimated_time: task.estimated_time || null,
-          assigned_to: task.assigned_to_id || null,
-          project_id: task.project_id || null,
+          assigned_to: isUuid(task.assigned_to_id) ? task.assigned_to_id : null,
+          project_id: isUuid(task.project_id) ? task.project_id : null,
           tags: [],
         });
       }
