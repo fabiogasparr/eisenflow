@@ -597,9 +597,12 @@ async function processWithAI(
   }
 
   const taskListContext = tasks.length > 0
-    ? tasks.map((t: any, i: number) =>
-        `${i + 1}. "${t.title}" [${statusLabels[t.status] || t.status}] [${quadrantLabels[t.quadrant] || t.quadrant}]${t.due_date ? ` Prazo: ${new Date(t.due_date).toLocaleDateString('pt-BR')}` : ''}`
-      ).join('\n')
+    ? tasks.map((t: any, i: number) => {
+        const parts = [`${i + 1}. "${t.title}" [${statusLabels[t.status] || t.status}] [${quadrantLabels[t.quadrant] || t.quadrant}]`]
+        if (t.due_date) parts.push(`Prazo: ${new Date(t.due_date).toLocaleString('pt-BR')}`)
+        if (t.started_at) parts.push(`Início: ${new Date(t.started_at).toLocaleString('pt-BR')}`)
+        return parts.join(' ')
+      }).join('\n')
     : 'Nenhuma tarefa pendente.'
 
   const membersContext = teamMembers.length > 0
@@ -626,7 +629,14 @@ REGRAS:
 - Seja conciso e amigável nas respostas. Use emojis de forma moderada.
 - Responda sempre em português brasileiro.
 - Se a mensagem for ambígua, peça esclarecimento via chat_response.
-- Quando o usuário enviar imagens (prints, fotos, recibos, anotações), faça OCR + análise visual e crie automaticamente as tarefas relevantes via create_task. Se houver várias tarefas na imagem, chame create_task várias vezes. Resuma ao final usando chat_response.`
+- Quando o usuário enviar imagens (prints, fotos, recibos, anotações), faça OCR + análise visual e crie automaticamente as tarefas relevantes via create_task. Se houver várias tarefas na imagem, chame create_task várias vezes. Resuma ao final usando chat_response.
+
+LEMBRETES (você TEM essa capacidade):
+- Você pode criar, listar e cancelar lembretes para tarefas com as tools add_task_reminder, list_task_reminders e remove_task_reminder.
+- Quando o usuário disser "me lembre", "me avise", "manda um alerta", "lembrete", use add_task_reminder. NUNCA diga que não tem essa funcionalidade.
+- Mapeie a intenção para "when": "1 hora antes" → 1h_before; "amanhã"/"1 dia antes" → 1d_before; "no horário"/"na hora" → at_due; "quando começar"/"no início" → at_start; data/hora específica → custom (forneça custom_datetime em ISO 8601 com fuso, ex: 2026-06-05T14:00:00-03:00).
+- Por padrão envie pelo canal whatsapp_personal e in_app (não precisa perguntar).
+- Se a tarefa não tem prazo e o pedido é relativo (ex: "1h antes"), peça o prazo via chat_response ou use schedule_task primeiro.`
 
   try {
     // Build user content (multimodal if images present)
