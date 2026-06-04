@@ -8,10 +8,12 @@ import { Calendar } from '@/components/ui/calendar';
 import { Bell, Plus, X, Smartphone, MessageCircle, Mail, Monitor, Building2, CalendarClock, BellOff } from 'lucide-react';
 import {
   useTaskReminders,
+  useTaskScheduledReminders,
   type ReminderChannel,
   type ReminderRecipient,
   type ReminderKind,
   type TaskReminder,
+  type ScheduledReminderRow,
 } from '@/hooks/useTaskReminders';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
