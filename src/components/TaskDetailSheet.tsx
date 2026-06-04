@@ -19,6 +19,7 @@ import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 import { useSubtasks } from '@/hooks/useSubtasks';
 import { ShareTaskDialog } from '@/components/ShareTaskDialog';
 import { TaskAttachments } from '@/components/TaskAttachments';
+import { TaskRemindersEditor } from '@/components/TaskRemindersEditor';
 
 interface TaskDetailSheetProps {
   task: Task | null;
@@ -385,6 +386,8 @@ export function TaskDetailSheet({ task, onClose, onUpdate, onDelete }: TaskDetai
             taskDescription={task.description}
             onAppendDescription={(text) => onUpdate({ description: text })}
           />
+
+          <TaskRemindersEditor taskId={task.id} />
 
           <div className="flex flex-col gap-2 pt-4 border-t">
             <Button
