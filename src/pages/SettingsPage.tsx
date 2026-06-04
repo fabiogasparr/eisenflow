@@ -6,6 +6,7 @@ import { useWhatsApp } from '@/hooks/useWhatsApp';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 import { WhatsAppQRCode } from '@/components/WhatsAppQRCode';
 import { ReminderTimesEditor } from '@/components/ReminderTimesEditor';
+import { RemindersSettingsPanel } from '@/components/RemindersSettingsPanel';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
@@ -429,6 +430,8 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        <RemindersSettingsPanel />
       </div>
     </AppLayout>
   );

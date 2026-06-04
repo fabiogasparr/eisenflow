@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { TenantWhatsAppPanel } from '@/components/TenantWhatsAppPanel';
 
 export default function OrganizationPage() {
   const { language } = useLanguage();
@@ -115,7 +116,10 @@ export default function OrganizationPage() {
             </CardContent>
           </Card>
         ) : activeTenant ? (
-          <TenantManagement tenant={activeTenant} onDelete={() => deleteTenant.mutate(activeTenant.id)} />
+          <>
+            <TenantManagement tenant={activeTenant} onDelete={() => deleteTenant.mutate(activeTenant.id)} />
+            <TenantWhatsAppPanel tenantId={activeTenant.id} />
+          </>
         ) : null}
 
         <Dialog open={createOpen} onOpenChange={setCreateOpen}>
