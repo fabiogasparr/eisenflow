@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { useToast } from '@/hooks/use-toast';
+import { TenantWhatsAppPanel } from '@/components/TenantWhatsAppPanel';
 
 export default function OrganizationPage() {
   const { language } = useLanguage();
