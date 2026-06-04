@@ -214,7 +214,7 @@ const AI_TOOLS = [
 async function getUserTasks(supabaseAdmin: any, userId: string) {
   const { data: tasks } = await supabaseAdmin
     .from('tasks')
-    .select('id, title, status, quadrant, due_date, assigned_to, urgency, importance')
+    .select('id, title, status, quadrant, due_date, started_at, assigned_to, urgency, importance')
     .eq('created_by', userId)
     .in('status', ['pending', 'in_progress'])
     .order('created_at', { ascending: false })
