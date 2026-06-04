@@ -696,6 +696,16 @@ async function processWithAI(
   EVOLUTION_API_KEY: string,
   imageUrls: string[] = [],
 ): Promise<string> {
+  // Quick-reply pre-processor for pending reminder confirmations
+  if (!imageUrls.length) {
+    const quick = await handleReminderQuickReply(supabaseAdmin, userId, messageText)
+    if (quick) {
+      await saveChatMessage(supabaseAdmin, userId, 'user', messageText)
+      await saveChatMessage(supabaseAdmin, userId, 'assistant', quick)
+      return quick
+    }
+  }
+
   const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
   if (!LOVABLE_API_KEY) {
     return '⚠️ IA não configurada. Use comandos com / (ex: /ajuda)'
