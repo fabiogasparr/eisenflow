@@ -1,66 +1,41 @@
-# Lembretes no WhatsApp com confirmação rápida
+## Diagnóstico
 
-## Objetivo
+As mensagens do WhatsApp mostram dois problemas diferentes no fluxo de lembretes:
 
-Quando você pedir um lembrete pelo WhatsApp, o bot vai:
-1. Criar o lembrete normalmente.
-2. Responder com uma **mensagem de confirmação rica** mostrando: título da tarefa, texto do lembrete, data e hora.
-3. Oferecer **3 ações rápidas numeradas** para você responder sem digitar nada complexo.
-4. Garantir que, no horário marcado, o lembrete chega via WhatsApp automaticamente (não só quando solicitado).
+1. `DELETE requires a WHERE clause`
+   - Vem da função de banco `expand_task_reminder`.
+   - Ela usa uma tabela temporária `_recipients` e faz `DELETE FROM _recipients` sem `WHERE`, algo bloqueado pelo backend por segurança.
 
-## Como vai aparecer no WhatsApp
+2. `ON CONFLICT does not support deferrable unique constraints/exclusion constraints as arbiters`
+   - Vem do `ON CONFLICT (task_id, kind)` em `sync_task_auto_reminders`.
+   - A constraint `UNIQUE (task_id, kind)` foi criada como `DEFERRABLE`, e Postgres não aceita esse tipo de constraint como alvo de `ON CONFLICT`.
 
-Exemplo de confirmação após você dizer *"me lembra da reunião amanhã às 14h"*:
+Além disso, a criação de lembrete manual pelo WhatsApp sempre usa `kind: 'custom'`, mas a tabela tem unicidade em `(task_id, kind)`, o que impede mais de um lembrete personalizado por tarefa. Isso conflita com a expectativa de criar vários lembretes/agendamentos.
 
-```text
-⏰ Lembrete criado
+## Plano de correção
 
-📌 Tarefa: Reunião com cliente
-🗓️ Quando: amanhã (05/06) às 14:00
-📢 Canais: WhatsApp + App
+1. Criar uma migration no backend para ajustar a modelagem de lembretes:
+   - Remover a constraint deferrable atual de `task_reminders`.
+   - Criar um índice único parcial apenas para lembretes automáticos por tarefa/tipo:
+     - único quando `auto_generated = true`
+     - permite múltiplos lembretes `custom` na mesma tarefa.
 
-Responda:
-1️⃣ Confirmar
-2️⃣ Reagendar +1h
-3️⃣ Cancelar
-```
+2. Reescrever `public.expand_task_reminder` para não usar tabela temporária nem `DELETE` sem `WHERE`:
+   - calcular destinatários com CTE/loops seguros;
+   - manter a expansão idempotente para `scheduled_reminders`;
+   - continuar cancelando filas pendentes quando horário/canal/destinatário muda.
 
-Se você responder `1`, `2` ou `3` (ou `sim`, `reagendar`, `cancelar`), o bot age na hora sobre o último lembrete criado, sem precisar repetir o nome da tarefa.
+3. Ajustar `public.sync_task_auto_reminders`:
+   - trocar o `ON CONFLICT (task_id, kind)` problemático por lógica explícita de `SELECT/UPDATE/INSERT`;
+   - manter o comportamento automático de lembretes baseados em prazo/início;
+   - evitar falhas causadas por constraints deferrable.
 
-Se você ignorar e mandar outra coisa, a opção rápida simplesmente expira em 15 minutos e a conversa segue normal.
+4. Revisar o webhook `whatsapp-webhook` para melhorar a resposta ao usuário:
+   - quando a criação falhar, retornar uma mensagem amigável em português sem expor erro técnico bruto;
+   - manter a confirmação com data, horário, tarefa e opções rápidas;
+   - garantir que pedidos como “me lembre 1h antes” continuem criando agendamento para envio automático no horário pedido.
 
-## Comportamento dos lembretes no horário
-
-Confirmação importante: os lembretes **já são disparados automaticamente no horário agendado** pelo cron `dispatch-reminders`, usando o canal `whatsapp_personal` quando configurado. O fluxo continua exatamente assim — esta mudança só melhora a *confirmação* no momento da criação, não substitui o disparo automático.
-
-Vamos validar com um teste rápido depois de implementar:
-- Criar um lembrete para daqui 2 minutos
-- Confirmar que o WhatsApp recebe a mensagem no horário
-
-## Detalhes técnicos
-
-**Único arquivo alterado:** `supabase/functions/whatsapp-webhook/index.ts`
-
-1. **Mensagem de confirmação enriquecida** no handler `add_task_reminder`:
-   - Formatar data/hora em pt-BR com dia da semana relativo ("hoje", "amanhã", ou data).
-   - Incluir título da tarefa em negrito, canais escolhidos e bloco de ações.
-   - Devolver `reminder_id` junto, para guardar como ação pendente.
-
-2. **Estado de "ação pendente"** — armazenado em `whatsapp_chat_history` como uma mensagem de role `system` com payload JSON (`{pending_reminder_id, expires_at}`). Sem nova tabela.
-
-3. **Pré-processador de quick-reply** no início do webhook (antes de chamar o LLM):
-   - Se a mensagem do usuário for `1`/`2`/`3`/`sim`/`s`/`confirmar`/`reagendar`/`cancelar` (case-insensitive, trim), procurar a última ação pendente não expirada.
-   - `1`/`sim`/`confirmar` → responder `✅ Lembrete confirmado`.
-   - `2`/`reagendar` → atualizar `task_reminders.scheduled_at` para +1h e responder com nova data/hora.
-   - `3`/`cancelar` → `enabled=false` e responder `🚫 Lembrete cancelado`.
-   - Marcar a ação como consumida (nova linha system no histórico).
-   - Se não houver pendência válida, deixar o LLM processar normalmente.
-
-4. **TTL de 15 min** para a ação pendente, para não confundir com mensagens futuras.
-
-## Fora do escopo
-
-- Botões interativos nativos do WhatsApp (Evolution API tem suporte irregular entre versões; respostas numeradas funcionam em 100% dos casos).
-- Mudanças no `dispatch-reminders` (já entrega no horário).
-- Mudanças de UI no app web.
-- Mudanças no banco ou RLS.
+5. Validar depois da implementação:
+   - rodar o linter do backend se disponível;
+   - conferir que a migration contém os ajustes sem alterar permissões/RLS indevidamente;
+   - orientar um teste real: criar uma tarefa/lembrete pelo WhatsApp e confirmar que ele agenda sem os erros mostrados no print.
