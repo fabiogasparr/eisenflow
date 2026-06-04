@@ -237,6 +237,113 @@ async function getTeamMembers(supabaseAdmin: any, userId: string) {
   return (profiles || []).filter((p: any) => p.display_name)
 }
 
+// ── Helper: format reminder date/time for confirmation ──
+function formatReminderWhen(d: Date, tz = 'America/Sao_Paulo'): string {
+  const time = d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: tz })
+  const dateFmt = d.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: tz })
+  const now = new Date()
+  const dayKey = (x: Date) => x.toLocaleDateString('en-CA', { timeZone: tz })
+  const todayKey = dayKey(now)
+  const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000)
+  const tomorrowKey = dayKey(tomorrow)
+  const target = dayKey(d)
+  let rel = ''
+  if (target === todayKey) rel = 'hoje'
+  else if (target === tomorrowKey) rel = 'amanhã'
+  else {
+    rel = d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: tz })
+  }
+  return `${rel} (${dateFmt}) às ${time}`
+}
+
+// ── Quick-reply pending action helpers ──
+async function getPendingReminderAction(supabaseAdmin: any, userId: string): Promise<{ reminder_id: string; task_title: string } | null> {
+  const { data } = await supabaseAdmin
+    .from('whatsapp_chat_history')
+    .select('id, content, created_at')
+    .eq('user_id', userId)
+    .eq('role', 'system')
+    .order('created_at', { ascending: false })
+    .limit(20)
+  if (!data?.length) return null
+  for (const row of data) {
+    const c: string = row.content || ''
+    if (c.startsWith('__pending_reminder_consumed__:')) {
+      // Older or newer consumed marker; keep scanning—if a consumed marker for the latest pending is present, latest must come before it
+      continue
+    }
+    if (c.startsWith('__pending_reminder__:')) {
+      try {
+        const payload = JSON.parse(c.slice('__pending_reminder__:'.length))
+        if (!payload?.reminder_id) return null
+        if (payload.expires_at && Date.now() > Number(payload.expires_at)) return null
+        // Check if consumed
+        const { data: consumed } = await supabaseAdmin
+          .from('whatsapp_chat_history')
+          .select('id')
+          .eq('user_id', userId)
+          .eq('role', 'system')
+          .eq('content', `__pending_reminder_consumed__:${payload.reminder_id}`)
+          .limit(1)
+        if (consumed?.length) return null
+        return { reminder_id: payload.reminder_id, task_title: payload.task_title || 'tarefa' }
+      } catch { return null }
+    }
+  }
+  return null
+}
+
+async function handleReminderQuickReply(
+  supabaseAdmin: any,
+  userId: string,
+  messageText: string,
+): Promise<string | null> {
+  const txt = messageText.trim().toLowerCase()
+  if (!txt) return null
+  const isConfirm = ['1', 'sim', 's', 'confirmar', 'ok', 'confirma'].includes(txt)
+  const isReschedule = ['2', 'reagendar', 'adiar', '+1h'].includes(txt)
+  const isCancel = ['3', 'cancelar', 'cancela', 'nao', 'não', 'n'].includes(txt)
+  if (!isConfirm && !isReschedule && !isCancel) return null
+  const pending = await getPendingReminderAction(supabaseAdmin, userId)
+  if (!pending) return null
+
+  const markConsumed = () => saveChatMessage(supabaseAdmin, userId, 'system', `__pending_reminder_consumed__:${pending.reminder_id}`)
+
+  if (isConfirm) {
+    await markConsumed()
+    return `✅ Lembrete confirmado para *${pending.task_title}*.`
+  }
+  if (isCancel) {
+    await supabaseAdmin.from('task_reminders').update({ enabled: false }).eq('id', pending.reminder_id)
+    await markConsumed()
+    return `🚫 Lembrete cancelado para *${pending.task_title}*.`
+  }
+  if (isReschedule) {
+    const { data: rem } = await supabaseAdmin
+      .from('task_reminders').select('scheduled_at').eq('id', pending.reminder_id).single()
+    if (!rem?.scheduled_at) {
+      await markConsumed()
+      return '⚠️ Não consegui localizar o lembrete para reagendar.'
+    }
+    const next = new Date(new Date(rem.scheduled_at).getTime() + 60 * 60 * 1000)
+    await supabaseAdmin.from('task_reminders').update({ scheduled_at: next.toISOString(), enabled: true }).eq('id', pending.reminder_id)
+    await markConsumed()
+    // Save a fresh pending action for the new time
+    const expiresAt = Date.now() + 15 * 60 * 1000
+    await saveChatMessage(supabaseAdmin, userId, 'system', `__pending_reminder__:${JSON.stringify({ reminder_id: pending.reminder_id, task_title: pending.task_title, expires_at: expiresAt })}`)
+    return [
+      `📆 Lembrete reagendado para *${pending.task_title}*`,
+      `🗓️ Novo horário: ${formatReminderWhen(next)}`,
+      '',
+      'Responda:',
+      '1️⃣ Confirmar',
+      '2️⃣ Reagendar +1h',
+      '3️⃣ Cancelar',
+    ].join('\n')
+  }
+  return null
+}
+
 // ── Helper: execute a tool call returned by the AI ──
 async function executeToolCall(
   toolName: string,
