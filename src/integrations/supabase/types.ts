@@ -304,6 +304,111 @@ export type Database = {
           },
         ]
       }
+      recurring_schedules: {
+        Row: {
+          channels: Database["public"]["Enums"]["reminder_channel"][]
+          created_at: string
+          cron_local: string
+          enabled: boolean
+          id: string
+          kind: Database["public"]["Enums"]["reminder_kind"]
+          last_run_at: string | null
+          payload: Json
+          tenant_id: string | null
+          timezone: string
+          updated_at: string
+          user_id: string
+          weekday: number | null
+        }
+        Insert: {
+          channels?: Database["public"]["Enums"]["reminder_channel"][]
+          created_at?: string
+          cron_local?: string
+          enabled?: boolean
+          id?: string
+          kind: Database["public"]["Enums"]["reminder_kind"]
+          last_run_at?: string | null
+          payload?: Json
+          tenant_id?: string | null
+          timezone?: string
+          updated_at?: string
+          user_id: string
+          weekday?: number | null
+        }
+        Update: {
+          channels?: Database["public"]["Enums"]["reminder_channel"][]
+          created_at?: string
+          cron_local?: string
+          enabled?: boolean
+          id?: string
+          kind?: Database["public"]["Enums"]["reminder_kind"]
+          last_run_at?: string | null
+          payload?: Json
+          tenant_id?: string | null
+          timezone?: string
+          updated_at?: string
+          user_id?: string
+          weekday?: number | null
+        }
+        Relationships: []
+      }
+      scheduled_reminders: {
+        Row: {
+          attempts: number
+          channel: Database["public"]["Enums"]["reminder_channel"]
+          created_at: string
+          id: string
+          kind: Database["public"]["Enums"]["reminder_kind"]
+          last_error: string | null
+          payload: Json
+          recurring_schedule_id: string | null
+          scheduled_at: string
+          sent_at: string | null
+          status: Database["public"]["Enums"]["scheduled_reminder_status"]
+          task_id: string | null
+          task_reminder_id: string | null
+          tenant_id: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempts?: number
+          channel: Database["public"]["Enums"]["reminder_channel"]
+          created_at?: string
+          id?: string
+          kind: Database["public"]["Enums"]["reminder_kind"]
+          last_error?: string | null
+          payload?: Json
+          recurring_schedule_id?: string | null
+          scheduled_at: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["scheduled_reminder_status"]
+          task_id?: string | null
+          task_reminder_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempts?: number
+          channel?: Database["public"]["Enums"]["reminder_channel"]
+          created_at?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["reminder_kind"]
+          last_error?: string | null
+          payload?: Json
+          recurring_schedule_id?: string | null
+          scheduled_at?: string
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["scheduled_reminder_status"]
+          task_id?: string | null
+          task_reminder_id?: string | null
+          tenant_id?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       subtasks: {
         Row: {
           completed: boolean
@@ -467,6 +572,48 @@ export type Database = {
           suggested_quadrant?: Database["public"]["Enums"]["task_quadrant"]
           task_id?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      task_reminders: {
+        Row: {
+          auto_generated: boolean
+          channels: Database["public"]["Enums"]["reminder_channel"][]
+          created_at: string
+          created_by: string
+          enabled: boolean
+          id: string
+          kind: Database["public"]["Enums"]["reminder_kind"]
+          recipients: Database["public"]["Enums"]["reminder_recipient"][]
+          scheduled_at: string | null
+          task_id: string
+          updated_at: string
+        }
+        Insert: {
+          auto_generated?: boolean
+          channels?: Database["public"]["Enums"]["reminder_channel"][]
+          created_at?: string
+          created_by: string
+          enabled?: boolean
+          id?: string
+          kind: Database["public"]["Enums"]["reminder_kind"]
+          recipients?: Database["public"]["Enums"]["reminder_recipient"][]
+          scheduled_at?: string | null
+          task_id: string
+          updated_at?: string
+        }
+        Update: {
+          auto_generated?: boolean
+          channels?: Database["public"]["Enums"]["reminder_channel"][]
+          created_at?: string
+          created_by?: string
+          enabled?: boolean
+          id?: string
+          kind?: Database["public"]["Enums"]["reminder_kind"]
+          recipients?: Database["public"]["Enums"]["reminder_recipient"][]
+          scheduled_at?: string | null
+          task_id?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -769,6 +916,45 @@ export type Database = {
           },
         ]
       }
+      tenant_member_phones: {
+        Row: {
+          created_at: string
+          id: string
+          phone_number: string
+          receive_reminders: boolean
+          tenant_id: string
+          updated_at: string
+          user_id: string
+          verification_code: string | null
+          verification_expires_at: string | null
+          verified: boolean
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          phone_number: string
+          receive_reminders?: boolean
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+          verification_code?: string | null
+          verification_expires_at?: string | null
+          verified?: boolean
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          phone_number?: string
+          receive_reminders?: boolean
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+          verification_code?: string | null
+          verification_expires_at?: string | null
+          verified?: boolean
+        }
+        Relationships: []
+      }
       tenant_members: {
         Row: {
           id: string
@@ -800,6 +986,57 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      tenant_whatsapp_connections: {
+        Row: {
+          created_at: string
+          created_by: string
+          daily_report_enabled: boolean
+          default_sender: boolean
+          id: string
+          instance_name: string
+          phone_number: string | null
+          qr_code: string | null
+          reminders_enabled: boolean
+          status: string
+          tenant_id: string
+          timezone: string
+          updated_at: string
+          weekly_report_enabled: boolean
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          daily_report_enabled?: boolean
+          default_sender?: boolean
+          id?: string
+          instance_name: string
+          phone_number?: string | null
+          qr_code?: string | null
+          reminders_enabled?: boolean
+          status?: string
+          tenant_id: string
+          timezone?: string
+          updated_at?: string
+          weekly_report_enabled?: boolean
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          daily_report_enabled?: boolean
+          default_sender?: boolean
+          id?: string
+          instance_name?: string
+          phone_number?: string | null
+          qr_code?: string | null
+          reminders_enabled?: boolean
+          status?: string
+          tenant_id?: string
+          timezone?: string
+          updated_at?: string
+          weekly_report_enabled?: boolean
+        }
+        Relationships: []
       }
       tenants: {
         Row: {
@@ -848,6 +1085,48 @@ export type Database = {
           badge_id?: string
           earned_at?: string
           id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_reminder_preferences: {
+        Row: {
+          auto_due_1h: boolean
+          auto_due_d1: boolean
+          auto_due_now: boolean
+          auto_start: boolean
+          created_at: string
+          default_channels: Database["public"]["Enums"]["reminder_channel"][]
+          default_recipients: Database["public"]["Enums"]["reminder_recipient"][]
+          id: string
+          timezone: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_due_1h?: boolean
+          auto_due_d1?: boolean
+          auto_due_now?: boolean
+          auto_start?: boolean
+          created_at?: string
+          default_channels?: Database["public"]["Enums"]["reminder_channel"][]
+          default_recipients?: Database["public"]["Enums"]["reminder_recipient"][]
+          id?: string
+          timezone?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_due_1h?: boolean
+          auto_due_d1?: boolean
+          auto_due_now?: boolean
+          auto_start?: boolean
+          created_at?: string
+          default_channels?: Database["public"]["Enums"]["reminder_channel"][]
+          default_recipients?: Database["public"]["Enums"]["reminder_recipient"][]
+          id?: string
+          timezone?: string
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
@@ -1013,6 +1292,18 @@ export type Database = {
         Args: { _badge_id: string; _user_id: string }
         Returns: boolean
       }
+      compute_reminder_scheduled_at: {
+        Args: {
+          _due: string
+          _kind: Database["public"]["Enums"]["reminder_kind"]
+          _start: string
+        }
+        Returns: string
+      }
+      expand_task_reminder: {
+        Args: { _reminder_id: string }
+        Returns: undefined
+      }
       get_team_role: {
         Args: { _team_id: string; _user_id: string }
         Returns: Database["public"]["Enums"]["team_role"]
@@ -1043,12 +1334,38 @@ export type Database = {
         Args: { _tenant_id: string; _user_id: string }
         Returns: boolean
       }
+      sync_task_auto_reminders: {
+        Args: { _task_id: string }
+        Returns: undefined
+      }
     }
     Enums: {
       app_role: "admin" | "member" | "super_admin"
       delegation_status: "pending" | "accepted" | "completed" | "rejected"
       invite_status: "pending" | "accepted" | "expired" | "cancelled"
       reclassification_status: "pending" | "accepted" | "rejected" | "expired"
+      reminder_channel:
+        | "in_app"
+        | "browser"
+        | "whatsapp_personal"
+        | "whatsapp_tenant"
+        | "email"
+      reminder_kind:
+        | "due_d1"
+        | "due_1h"
+        | "due_now"
+        | "start_now"
+        | "start_5min"
+        | "custom"
+        | "daily_summary"
+        | "weekly_plan"
+      reminder_recipient: "creator" | "assignee" | "shared"
+      scheduled_reminder_status:
+        | "pending"
+        | "sent"
+        | "failed"
+        | "skipped"
+        | "cancelled"
       share_permission: "view" | "edit"
       task_quadrant: "do" | "schedule" | "delegate" | "eliminate"
       task_status: "pending" | "in_progress" | "completed" | "eliminated"
@@ -1185,6 +1502,31 @@ export const Constants = {
       delegation_status: ["pending", "accepted", "completed", "rejected"],
       invite_status: ["pending", "accepted", "expired", "cancelled"],
       reclassification_status: ["pending", "accepted", "rejected", "expired"],
+      reminder_channel: [
+        "in_app",
+        "browser",
+        "whatsapp_personal",
+        "whatsapp_tenant",
+        "email",
+      ],
+      reminder_kind: [
+        "due_d1",
+        "due_1h",
+        "due_now",
+        "start_now",
+        "start_5min",
+        "custom",
+        "daily_summary",
+        "weekly_plan",
+      ],
+      reminder_recipient: ["creator", "assignee", "shared"],
+      scheduled_reminder_status: [
+        "pending",
+        "sent",
+        "failed",
+        "skipped",
+        "cancelled",
+      ],
       share_permission: ["view", "edit"],
       task_quadrant: ["do", "schedule", "delegate", "eliminate"],
       task_status: ["pending", "in_progress", "completed", "eliminated"],
