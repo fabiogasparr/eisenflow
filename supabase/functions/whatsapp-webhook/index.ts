@@ -791,7 +791,9 @@ LEMBRETES (você TEM essa capacidade):
     // Build messages array with history
     const aiMessages: any[] = [
       { role: 'system', content: systemPrompt },
-      ...chatHistory.map((m: any) => ({ role: m.role, content: m.content })),
+      ...chatHistory
+        .filter((m: any) => !(m.role === 'system' && typeof m.content === 'string' && m.content.startsWith('__pending_reminder')))
+        .map((m: any) => ({ role: m.role, content: m.content })),
       { role: 'user', content: userContent },
     ]
 
