@@ -181,23 +181,26 @@ export function TaskRemindersEditor({ taskId }: Props) {
         {autoKinds.map(k => {
           const r = reminders.find(x => x.kind === k);
           return (
-            <div key={k} className="flex items-center justify-between">
-              <span className="text-sm">{KIND_LABELS[k]}</span>
-              <div className="flex items-center gap-1">
-                {r?.scheduled_at && (
-                  <span className="text-xs text-muted-foreground">
-                    {format(new Date(r.scheduled_at), 'dd/MM HH:mm')}
-                  </span>
-                )}
-                {r && r.enabled && (
-                  <ReschedulePopover reminder={r} onSave={(iso) => reschedule(r, iso)} />
-                )}
-                <Switch
-                  checked={r?.enabled ?? false}
-                  disabled={!r}
-                  onCheckedChange={(v) => r && toggle.mutate({ id: r.id, enabled: v })}
-                />
+            <div key={k} className="flex flex-col gap-1 border-b border-border/40 pb-2 last:border-0 last:pb-0">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">{KIND_LABELS[k]}</span>
+                <div className="flex items-center gap-1">
+                  {r?.scheduled_at && (
+                    <span className="text-xs text-muted-foreground">
+                      {format(new Date(r.scheduled_at), 'dd/MM HH:mm')}
+                    </span>
+                  )}
+                  {r && r.enabled && (
+                    <ReschedulePopover reminder={r} onSave={(iso) => reschedule(r, iso)} />
+                  )}
+                  <Switch
+                    checked={r?.enabled ?? false}
+                    disabled={!r}
+                    onCheckedChange={(v) => r && toggle.mutate({ id: r.id, enabled: v })}
+                  />
+                </div>
               </div>
+              {r && <StatusBadges rows={scheduledByReminder[r.id] ?? []} />}
             </div>
           );
         })}
