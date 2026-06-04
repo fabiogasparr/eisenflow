@@ -143,6 +143,61 @@ const AI_TOOLS = [
   {
     type: "function",
     function: {
+      name: "add_task_reminder",
+      description: "Programar um lembrete para uma tarefa. Use quando o usuário pedir 'me lembre', 'me avise', 'manda um alerta'.",
+      parameters: {
+        type: "object",
+        properties: {
+          task_index: { type: "number", description: "Índice da tarefa (1-based)" },
+          when: {
+            type: "string",
+            enum: ["1d_before", "1h_before", "at_due", "at_start", "custom"],
+            description: "Quando disparar. 1d_before=1 dia antes do prazo; 1h_before=1h antes do prazo; at_due=no prazo; at_start=no início agendado; custom=data/hora específica em custom_datetime.",
+          },
+          custom_datetime: { type: "string", description: "Obrigatório se when=custom. Data/hora ISO 8601 (ex: 2026-06-05T14:00:00-03:00)." },
+          channels: {
+            type: "array",
+            items: { type: "string", enum: ["in_app", "browser", "whatsapp_personal", "whatsapp_tenant", "email"] },
+            description: "Canais de envio. Padrão: WhatsApp pessoal + no app.",
+          },
+        },
+        required: ["task_index", "when"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_task_reminders",
+      description: "Listar os lembretes ativos de uma tarefa",
+      parameters: {
+        type: "object",
+        properties: { task_index: { type: "number", description: "Índice da tarefa (1-based)" } },
+        required: ["task_index"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_task_reminder",
+      description: "Cancelar um lembrete específico de uma tarefa",
+      parameters: {
+        type: "object",
+        properties: {
+          task_index: { type: "number", description: "Índice da tarefa (1-based)" },
+          reminder_index: { type: "number", description: "Índice do lembrete na lista (1-based) retornada por list_task_reminders" },
+        },
+        required: ["task_index", "reminder_index"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "chat_response",
       description: "Responder ao usuário com uma mensagem conversacional quando nenhuma ação de tarefa é necessária",
       parameters: {
@@ -159,7 +214,7 @@ const AI_TOOLS = [
 async function getUserTasks(supabaseAdmin: any, userId: string) {
   const { data: tasks } = await supabaseAdmin
     .from('tasks')
-    .select('id, title, status, quadrant, due_date, assigned_to, urgency, importance')
+    .select('id, title, status, quadrant, due_date, started_at, assigned_to, urgency, importance')
     .eq('created_by', userId)
     .in('status', ['pending', 'in_progress'])
     .order('created_at', { ascending: false })
@@ -333,9 +388,88 @@ async function executeToolCall(
       return `📅 Tarefa agendada para ${dateStr}: *${task.title}*`
     }
 
+    case 'add_task_reminder': {
+      const idx = (args.task_index || 0) - 1
+      if (idx < 0 || idx >= tasks.length) return '❌ Tarefa não encontrada'
+      const task = tasks[idx]
+      const channels: string[] = Array.isArray(args.channels) && args.channels.length
+        ? args.channels
+        : ['whatsapp_personal', 'in_app']
+      let scheduledAt: Date | null = null
+      let label = ''
+      const when = String(args.when || '')
+      if (when === 'custom') {
+        if (!args.custom_datetime) return '⚠️ Informe a data/hora do lembrete (custom_datetime).'
+        scheduledAt = new Date(args.custom_datetime)
+        label = 'na data escolhida'
+      } else if (when === 'at_start') {
+        if (!task.started_at) return '⚠️ A tarefa não tem início agendado. Defina o início antes de usar at_start.'
+        scheduledAt = new Date(task.started_at)
+        label = 'no início'
+      } else {
+        if (!task.due_date) return '⚠️ A tarefa não tem prazo. Defina o prazo primeiro (use schedule_task).'
+        const due = new Date(task.due_date).getTime()
+        if (when === '1d_before') { scheduledAt = new Date(due - 24 * 60 * 60 * 1000); label = '1 dia antes do prazo' }
+        else if (when === '1h_before') { scheduledAt = new Date(due - 60 * 60 * 1000); label = '1 hora antes do prazo' }
+        else if (when === 'at_due') { scheduledAt = new Date(due); label = 'no prazo' }
+        else return '⚠️ Valor de "when" inválido.'
+      }
+      if (!scheduledAt || isNaN(scheduledAt.getTime())) return '⚠️ Data/hora inválida.'
+      if (scheduledAt.getTime() < Date.now() - 60_000) return '⚠️ Esse horário já passou.'
+      const { error } = await supabaseAdmin.from('task_reminders').insert({
+        task_id: task.id,
+        created_by: userId,
+        kind: 'custom',
+        scheduled_at: scheduledAt.toISOString(),
+        recipients: ['creator'],
+        channels,
+        enabled: true,
+        auto_generated: false,
+      })
+      if (error) return `❌ Erro ao criar lembrete: ${error.message}`
+      const when_fmt = scheduledAt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      return `⏰ Lembrete criado (${label}) para *${task.title}* — ${when_fmt}`
+    }
+
+    case 'list_task_reminders': {
+      const idx = (args.task_index || 0) - 1
+      if (idx < 0 || idx >= tasks.length) return '❌ Tarefa não encontrada'
+      const task = tasks[idx]
+      const { data: rems } = await supabaseAdmin
+        .from('task_reminders')
+        .select('id, kind, scheduled_at, channels, enabled')
+        .eq('task_id', task.id)
+        .eq('enabled', true)
+        .order('scheduled_at', { ascending: true })
+      if (!rems?.length) return `📭 Nenhum lembrete ativo para *${task.title}*.`
+      const lines = rems.map((r: any, i: number) => {
+        const dt = r.scheduled_at ? new Date(r.scheduled_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+        const chans = (r.channels || []).join(', ')
+        return `${i + 1}. ${dt} (${chans})`
+      })
+      return `⏰ *Lembretes de "${task.title}":*\n${lines.join('\n')}`
+    }
+
+    case 'remove_task_reminder': {
+      const idx = (args.task_index || 0) - 1
+      if (idx < 0 || idx >= tasks.length) return '❌ Tarefa não encontrada'
+      const task = tasks[idx]
+      const rIdx = (args.reminder_index || 0) - 1
+      const { data: rems } = await supabaseAdmin
+        .from('task_reminders')
+        .select('id, scheduled_at')
+        .eq('task_id', task.id)
+        .eq('enabled', true)
+        .order('scheduled_at', { ascending: true })
+      if (!rems?.length || rIdx < 0 || rIdx >= rems.length) return '❌ Lembrete não encontrado.'
+      await supabaseAdmin.from('task_reminders').update({ enabled: false }).eq('id', rems[rIdx].id)
+      return `🚫 Lembrete cancelado para *${task.title}*.`
+    }
+
     case 'chat_response': {
       return args.message || '🤔 Não entendi. Pode reformular?'
     }
+
 
     default:
       return '❓ Ação não reconhecida.'
@@ -463,9 +597,12 @@ async function processWithAI(
   }
 
   const taskListContext = tasks.length > 0
-    ? tasks.map((t: any, i: number) =>
-        `${i + 1}. "${t.title}" [${statusLabels[t.status] || t.status}] [${quadrantLabels[t.quadrant] || t.quadrant}]${t.due_date ? ` Prazo: ${new Date(t.due_date).toLocaleDateString('pt-BR')}` : ''}`
-      ).join('\n')
+    ? tasks.map((t: any, i: number) => {
+        const parts = [`${i + 1}. "${t.title}" [${statusLabels[t.status] || t.status}] [${quadrantLabels[t.quadrant] || t.quadrant}]`]
+        if (t.due_date) parts.push(`Prazo: ${new Date(t.due_date).toLocaleString('pt-BR')}`)
+        if (t.started_at) parts.push(`Início: ${new Date(t.started_at).toLocaleString('pt-BR')}`)
+        return parts.join(' ')
+      }).join('\n')
     : 'Nenhuma tarefa pendente.'
 
   const membersContext = teamMembers.length > 0
@@ -492,7 +629,14 @@ REGRAS:
 - Seja conciso e amigável nas respostas. Use emojis de forma moderada.
 - Responda sempre em português brasileiro.
 - Se a mensagem for ambígua, peça esclarecimento via chat_response.
-- Quando o usuário enviar imagens (prints, fotos, recibos, anotações), faça OCR + análise visual e crie automaticamente as tarefas relevantes via create_task. Se houver várias tarefas na imagem, chame create_task várias vezes. Resuma ao final usando chat_response.`
+- Quando o usuário enviar imagens (prints, fotos, recibos, anotações), faça OCR + análise visual e crie automaticamente as tarefas relevantes via create_task. Se houver várias tarefas na imagem, chame create_task várias vezes. Resuma ao final usando chat_response.
+
+LEMBRETES (você TEM essa capacidade):
+- Você pode criar, listar e cancelar lembretes para tarefas com as tools add_task_reminder, list_task_reminders e remove_task_reminder.
+- Quando o usuário disser "me lembre", "me avise", "manda um alerta", "lembrete", use add_task_reminder. NUNCA diga que não tem essa funcionalidade.
+- Mapeie a intenção para "when": "1 hora antes" → 1h_before; "amanhã"/"1 dia antes" → 1d_before; "no horário"/"na hora" → at_due; "quando começar"/"no início" → at_start; data/hora específica → custom (forneça custom_datetime em ISO 8601 com fuso, ex: 2026-06-05T14:00:00-03:00).
+- Por padrão envie pelo canal whatsapp_personal e in_app (não precisa perguntar).
+- Se a tarefa não tem prazo e o pedido é relativo (ex: "1h antes"), peça o prazo via chat_response ou use schedule_task primeiro.`
 
   try {
     // Build user content (multimodal if images present)
