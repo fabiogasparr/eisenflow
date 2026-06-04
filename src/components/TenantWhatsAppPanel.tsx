@@ -10,9 +10,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { Building2, QrCode, Smartphone, ShieldCheck, ShieldAlert, Trash2, RefreshCw } from 'lucide-react';
 
-interface Props { tenantId: string; isAdmin: boolean; }
+interface Props { tenantId: string; }
 
-export function TenantWhatsAppPanel({ tenantId, isAdmin }: Props) {
+export function TenantWhatsAppPanel({ tenantId }: Props) {
+  const roleQ = useQuery({
+    queryKey: ['tenant-role', tenantId],
+    queryFn: async () => {
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return null;
+      const { data } = await (supabase as any).from('tenant_members')
+        .select('role').eq('tenant_id', tenantId).eq('user_id', u.user.id).maybeSingle();
+      return data?.role ?? null;
+    },
+  });
+  const isAdmin = roleQ.data === 'owner' || roleQ.data === 'admin';
   const qc = useQueryClient();
   const { toast } = useToast();
 
