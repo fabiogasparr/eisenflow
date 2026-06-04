@@ -143,6 +143,61 @@ const AI_TOOLS = [
   {
     type: "function",
     function: {
+      name: "add_task_reminder",
+      description: "Programar um lembrete para uma tarefa. Use quando o usuário pedir 'me lembre', 'me avise', 'manda um alerta'.",
+      parameters: {
+        type: "object",
+        properties: {
+          task_index: { type: "number", description: "Índice da tarefa (1-based)" },
+          when: {
+            type: "string",
+            enum: ["1d_before", "1h_before", "at_due", "at_start", "custom"],
+            description: "Quando disparar. 1d_before=1 dia antes do prazo; 1h_before=1h antes do prazo; at_due=no prazo; at_start=no início agendado; custom=data/hora específica em custom_datetime.",
+          },
+          custom_datetime: { type: "string", description: "Obrigatório se when=custom. Data/hora ISO 8601 (ex: 2026-06-05T14:00:00-03:00)." },
+          channels: {
+            type: "array",
+            items: { type: "string", enum: ["in_app", "browser", "whatsapp_personal", "whatsapp_tenant", "email"] },
+            description: "Canais de envio. Padrão: WhatsApp pessoal + no app.",
+          },
+        },
+        required: ["task_index", "when"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "list_task_reminders",
+      description: "Listar os lembretes ativos de uma tarefa",
+      parameters: {
+        type: "object",
+        properties: { task_index: { type: "number", description: "Índice da tarefa (1-based)" } },
+        required: ["task_index"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "remove_task_reminder",
+      description: "Cancelar um lembrete específico de uma tarefa",
+      parameters: {
+        type: "object",
+        properties: {
+          task_index: { type: "number", description: "Índice da tarefa (1-based)" },
+          reminder_index: { type: "number", description: "Índice do lembrete na lista (1-based) retornada por list_task_reminders" },
+        },
+        required: ["task_index", "reminder_index"],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "chat_response",
       description: "Responder ao usuário com uma mensagem conversacional quando nenhuma ação de tarefa é necessária",
       parameters: {
