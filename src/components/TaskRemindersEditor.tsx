@@ -5,14 +5,16 @@ import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { Calendar } from '@/components/ui/calendar';
-import { Bell, Plus, X, Smartphone, MessageCircle, Mail, Monitor, Building2 } from 'lucide-react';
+import { Bell, Plus, X, Smartphone, MessageCircle, Mail, Monitor, Building2, CalendarClock, BellOff } from 'lucide-react';
 import {
   useTaskReminders,
   type ReminderChannel,
   type ReminderRecipient,
   type ReminderKind,
+  type TaskReminder,
 } from '@/hooks/useTaskReminders';
 import { format } from 'date-fns';
+import { toast } from 'sonner';
 
 interface Props { taskId: string; }
 
@@ -39,6 +41,47 @@ const RECIPIENT_LABELS: Record<ReminderRecipient, string> = {
   shared: 'Compartilhados',
 };
 
+function ReschedulePopover({ reminder, onSave }: { reminder: TaskReminder; onSave: (iso: string) => void }) {
+  const initial = reminder.scheduled_at ? new Date(reminder.scheduled_at) : new Date();
+  const [date, setDate] = useState<Date | undefined>(initial);
+  const [time, setTime] = useState(format(initial, 'HH:mm'));
+  const [open, setOpen] = useState(false);
+
+  const save = () => {
+    if (!date) return;
+    const [hh, mm] = time.split(':').map(Number);
+    const dt = new Date(date);
+    dt.setHours(hh, mm || 0, 0, 0);
+    onSave(dt.toISOString());
+    setOpen(false);
+  };
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button variant="ghost" size="icon" className="h-7 w-7" title="Reprogramar">
+          <CalendarClock className="h-3 w-3" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-auto p-3 space-y-2">
+        <Calendar mode="single" selected={date} onSelect={setDate} initialFocus />
+        <div className="flex items-center gap-2">
+          <Label className="text-xs">Hora</Label>
+          <input
+            type="time"
+            value={time}
+            onChange={(e) => setTime(e.target.value)}
+            className="flex h-8 w-28 rounded-md border border-input bg-background px-2 text-sm"
+          />
+        </div>
+        <Button size="sm" className="w-full" disabled={!date} onClick={save}>
+          Reprogramar
+        </Button>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 export function TaskRemindersEditor({ taskId }: Props) {
   const { reminders, upsert, remove, toggle } = useTaskReminders(taskId);
   const [customDate, setCustomDate] = useState<Date | undefined>();
@@ -61,23 +104,44 @@ export function TaskRemindersEditor({ taskId }: Props) {
     setCustomDate(undefined);
   };
 
-  const updateChannels = (id: string, channels: ReminderChannel[]) => {
-    const r = reminders.find(x => x.id === id);
-    if (!r) return;
+  const updateChannels = (r: TaskReminder, channels: ReminderChannel[]) => {
     upsert.mutate({ ...r, channels } as any);
   };
 
-  const updateRecipients = (id: string, recipients: ReminderRecipient[]) => {
-    const r = reminders.find(x => x.id === id);
-    if (!r) return;
+  const updateRecipients = (r: TaskReminder, recipients: ReminderRecipient[]) => {
     upsert.mutate({ ...r, recipients } as any);
   };
 
+  const reschedule = (r: TaskReminder, iso: string) => {
+    upsert.mutate({ ...r, scheduled_at: iso } as any, {
+      onSuccess: () => toast.success('Lembrete reprogramado'),
+      onError: () => toast.error('Falha ao reprogramar'),
+    });
+  };
+
+  const cancelAll = () => {
+    const active = reminders.filter(r => r.enabled);
+    if (!active.length) return;
+    Promise.all(active.map(r => new Promise<void>((res) => {
+      toggle.mutate({ id: r.id, enabled: false }, { onSuccess: () => res(), onError: () => res() });
+    }))).then(() => toast.success('Lembretes cancelados'));
+  };
+
+  const customReminders = reminders.filter(r => r.kind === 'custom');
+  const anyEnabled = reminders.some(r => r.enabled);
+
   return (
     <div className="space-y-3">
-      <Label className="flex items-center gap-2 text-sm font-medium">
-        <Bell className="h-4 w-4" /> Lembretes
-      </Label>
+      <div className="flex items-center justify-between">
+        <Label className="flex items-center gap-2 text-sm font-medium">
+          <Bell className="h-4 w-4" /> Lembretes
+        </Label>
+        {anyEnabled && (
+          <Button variant="ghost" size="sm" className="h-7 text-xs text-muted-foreground" onClick={cancelAll}>
+            <BellOff className="mr-1 h-3 w-3" /> Cancelar todos
+          </Button>
+        )}
+      </div>
 
       {/* Auto reminders */}
       <div className="space-y-2 rounded-md border border-border p-3">
@@ -87,11 +151,14 @@ export function TaskRemindersEditor({ taskId }: Props) {
           return (
             <div key={k} className="flex items-center justify-between">
               <span className="text-sm">{KIND_LABELS[k]}</span>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1">
                 {r?.scheduled_at && (
                   <span className="text-xs text-muted-foreground">
                     {format(new Date(r.scheduled_at), 'dd/MM HH:mm')}
                   </span>
+                )}
+                {r && r.enabled && (
+                  <ReschedulePopover reminder={r} onSave={(iso) => reschedule(r, iso)} />
                 )}
                 <Switch
                   checked={r?.enabled ?? false}
@@ -106,15 +173,23 @@ export function TaskRemindersEditor({ taskId }: Props) {
 
       {/* Custom reminders */}
       <div className="space-y-2">
-        {reminders.filter(r => r.kind === 'custom').map(r => (
+        {customReminders.map(r => (
           <div key={r.id} className="rounded-md border border-border p-3 space-y-2">
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">
                 {r.scheduled_at ? format(new Date(r.scheduled_at), 'dd/MM/yyyy HH:mm') : '—'}
+                {!r.enabled && <span className="ml-2 text-xs text-muted-foreground">(cancelado)</span>}
               </span>
-              <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove.mutate(r.id)}>
-                <X className="h-3 w-3" />
-              </Button>
+              <div className="flex items-center gap-1">
+                <ReschedulePopover reminder={r} onSave={(iso) => reschedule(r, iso)} />
+                <Switch
+                  checked={r.enabled}
+                  onCheckedChange={(v) => toggle.mutate({ id: r.id, enabled: v })}
+                />
+                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove.mutate(r.id)}>
+                  <X className="h-3 w-3" />
+                </Button>
+              </div>
             </div>
             <div className="flex flex-wrap gap-1">
               {CHANNEL_META.map(({ key, icon: Icon, label }) => {
@@ -124,7 +199,7 @@ export function TaskRemindersEditor({ taskId }: Props) {
                     key={key}
                     variant={active ? 'default' : 'outline'}
                     className="cursor-pointer text-xs"
-                    onClick={() => updateChannels(r.id, active ? r.channels.filter(c => c !== key) : [...r.channels, key])}
+                    onClick={() => updateChannels(r, active ? r.channels.filter(c => c !== key) : [...r.channels, key])}
                   >
                     <Icon className="mr-1 h-3 w-3" />{label}
                   </Badge>
@@ -139,7 +214,7 @@ export function TaskRemindersEditor({ taskId }: Props) {
                     key={rc}
                     variant={active ? 'secondary' : 'outline'}
                     className="cursor-pointer text-xs"
-                    onClick={() => updateRecipients(r.id, active ? r.recipients.filter(x => x !== rc) : [...r.recipients, rc])}
+                    onClick={() => updateRecipients(r, active ? r.recipients.filter(x => x !== rc) : [...r.recipients, rc])}
                   >
                     {RECIPIENT_LABELS[rc]}
                   </Badge>
