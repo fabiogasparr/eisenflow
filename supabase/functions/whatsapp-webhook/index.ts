@@ -388,9 +388,88 @@ async function executeToolCall(
       return `📅 Tarefa agendada para ${dateStr}: *${task.title}*`
     }
 
+    case 'add_task_reminder': {
+      const idx = (args.task_index || 0) - 1
+      if (idx < 0 || idx >= tasks.length) return '❌ Tarefa não encontrada'
+      const task = tasks[idx]
+      const channels: string[] = Array.isArray(args.channels) && args.channels.length
+        ? args.channels
+        : ['whatsapp_personal', 'in_app']
+      let scheduledAt: Date | null = null
+      let label = ''
+      const when = String(args.when || '')
+      if (when === 'custom') {
+        if (!args.custom_datetime) return '⚠️ Informe a data/hora do lembrete (custom_datetime).'
+        scheduledAt = new Date(args.custom_datetime)
+        label = 'na data escolhida'
+      } else if (when === 'at_start') {
+        if (!task.started_at) return '⚠️ A tarefa não tem início agendado. Defina o início antes de usar at_start.'
+        scheduledAt = new Date(task.started_at)
+        label = 'no início'
+      } else {
+        if (!task.due_date) return '⚠️ A tarefa não tem prazo. Defina o prazo primeiro (use schedule_task).'
+        const due = new Date(task.due_date).getTime()
+        if (when === '1d_before') { scheduledAt = new Date(due - 24 * 60 * 60 * 1000); label = '1 dia antes do prazo' }
+        else if (when === '1h_before') { scheduledAt = new Date(due - 60 * 60 * 1000); label = '1 hora antes do prazo' }
+        else if (when === 'at_due') { scheduledAt = new Date(due); label = 'no prazo' }
+        else return '⚠️ Valor de "when" inválido.'
+      }
+      if (!scheduledAt || isNaN(scheduledAt.getTime())) return '⚠️ Data/hora inválida.'
+      if (scheduledAt.getTime() < Date.now() - 60_000) return '⚠️ Esse horário já passou.'
+      const { error } = await supabaseAdmin.from('task_reminders').insert({
+        task_id: task.id,
+        created_by: userId,
+        kind: 'custom',
+        scheduled_at: scheduledAt.toISOString(),
+        recipients: ['creator'],
+        channels,
+        enabled: true,
+        auto_generated: false,
+      })
+      if (error) return `❌ Erro ao criar lembrete: ${error.message}`
+      const when_fmt = scheduledAt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
+      return `⏰ Lembrete criado (${label}) para *${task.title}* — ${when_fmt}`
+    }
+
+    case 'list_task_reminders': {
+      const idx = (args.task_index || 0) - 1
+      if (idx < 0 || idx >= tasks.length) return '❌ Tarefa não encontrada'
+      const task = tasks[idx]
+      const { data: rems } = await supabaseAdmin
+        .from('task_reminders')
+        .select('id, kind, scheduled_at, channels, enabled')
+        .eq('task_id', task.id)
+        .eq('enabled', true)
+        .order('scheduled_at', { ascending: true })
+      if (!rems?.length) return `📭 Nenhum lembrete ativo para *${task.title}*.`
+      const lines = rems.map((r: any, i: number) => {
+        const dt = r.scheduled_at ? new Date(r.scheduled_at).toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—'
+        const chans = (r.channels || []).join(', ')
+        return `${i + 1}. ${dt} (${chans})`
+      })
+      return `⏰ *Lembretes de "${task.title}":*\n${lines.join('\n')}`
+    }
+
+    case 'remove_task_reminder': {
+      const idx = (args.task_index || 0) - 1
+      if (idx < 0 || idx >= tasks.length) return '❌ Tarefa não encontrada'
+      const task = tasks[idx]
+      const rIdx = (args.reminder_index || 0) - 1
+      const { data: rems } = await supabaseAdmin
+        .from('task_reminders')
+        .select('id, scheduled_at')
+        .eq('task_id', task.id)
+        .eq('enabled', true)
+        .order('scheduled_at', { ascending: true })
+      if (!rems?.length || rIdx < 0 || rIdx >= rems.length) return '❌ Lembrete não encontrado.'
+      await supabaseAdmin.from('task_reminders').update({ enabled: false }).eq('id', rems[rIdx].id)
+      return `🚫 Lembrete cancelado para *${task.title}*.`
+    }
+
     case 'chat_response': {
       return args.message || '🤔 Não entendi. Pode reformular?'
     }
+
 
     default:
       return '❓ Ação não reconhecida.'
