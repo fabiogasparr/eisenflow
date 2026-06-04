@@ -224,8 +224,8 @@ export function TaskRemindersEditor({ taskId }: Props) {
                 <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => remove.mutate(r.id)}>
                   <X className="h-3 w-3" />
                 </Button>
-              </div>
             </div>
+            <StatusBadges rows={scheduledByReminder[r.id] ?? []} />
             <div className="flex flex-wrap gap-1">
               {CHANNEL_META.map(({ key, icon: Icon, label }) => {
                 const active = r.channels.includes(key);
