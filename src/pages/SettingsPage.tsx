@@ -430,6 +430,8 @@ export default function SettingsPage() {
             )}
           </CardContent>
         </Card>
+
+        <RemindersSettingsPanel />
       </div>
     </AppLayout>
   );
