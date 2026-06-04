@@ -416,7 +416,7 @@ async function executeToolCall(
       }
       if (!scheduledAt || isNaN(scheduledAt.getTime())) return '⚠️ Data/hora inválida.'
       if (scheduledAt.getTime() < Date.now() - 60_000) return '⚠️ Esse horário já passou.'
-      const { error } = await supabaseAdmin.from('task_reminders').insert({
+      const { data: inserted, error } = await supabaseAdmin.from('task_reminders').insert({
         task_id: task.id,
         created_by: userId,
         kind: 'custom',
@@ -425,10 +425,28 @@ async function executeToolCall(
         channels,
         enabled: true,
         auto_generated: false,
-      })
+      }).select('id').single()
       if (error) return `❌ Erro ao criar lembrete: ${error.message}`
-      const when_fmt = scheduledAt.toLocaleString('pt-BR', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' })
-      return `⏰ Lembrete criado (${label}) para *${task.title}* — ${when_fmt}`
+      const reminderId = inserted?.id as string
+      const whenPretty = formatReminderWhen(scheduledAt)
+      const channelsPretty = channels
+        .map((c) => c === 'whatsapp_personal' ? 'WhatsApp' : c === 'in_app' ? 'App' : c === 'browser' ? 'Navegador' : c === 'email' ? 'Email' : c)
+        .join(' + ')
+      // Persist pending quick-reply action (15min TTL)
+      const expiresAt = Date.now() + 15 * 60 * 1000
+      await saveChatMessage(supabaseAdmin, userId, 'system', `__pending_reminder__:${JSON.stringify({ reminder_id: reminderId, task_title: task.title, expires_at: expiresAt })}`)
+      return [
+        '⏰ *Lembrete criado*',
+        '',
+        `📌 Tarefa: *${task.title}*`,
+        `🗓️ Quando: ${whenPretty} (${label})`,
+        `📢 Canais: ${channelsPretty}`,
+        '',
+        'Responda:',
+        '1️⃣ Confirmar',
+        '2️⃣ Reagendar +1h',
+        '3️⃣ Cancelar',
+      ].join('\n')
     }
 
     case 'list_task_reminders': {
