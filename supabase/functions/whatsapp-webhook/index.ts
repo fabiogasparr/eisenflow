@@ -533,7 +533,10 @@ async function executeToolCall(
         enabled: true,
         auto_generated: false,
       }).select('id').single()
-      if (error) return `❌ Erro ao criar lembrete: ${error.message}`
+      if (error) {
+        console.error('add_task_reminder insert error:', error)
+        return '❌ Não consegui criar o lembrete agora. Tente novamente em alguns segundos.'
+      }
       const reminderId = inserted?.id as string
       const whenPretty = formatReminderWhen(scheduledAt)
       const channelsPretty = channels
