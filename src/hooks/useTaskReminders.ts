@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -77,7 +78,54 @@ export function useTaskReminders(taskId: string | undefined) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['task-reminders', taskId] }),
   });
 
+  // Realtime: refresh on any task_reminders or scheduled_reminders change for this task
+  useEffect(() => {
+    if (!taskId) return;
+    const ch = supabase
+      .channel(`task-reminders-${taskId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_reminders', filter: `task_id=eq.${taskId}` }, () => {
+        qc.invalidateQueries({ queryKey: ['task-reminders', taskId] });
+      })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_reminders', filter: `task_id=eq.${taskId}` }, () => {
+        qc.invalidateQueries({ queryKey: ['scheduled-reminders', taskId] });
+      })
+      .subscribe();
+    return () => { supabase.removeChannel(ch); };
+  }, [taskId, qc]);
+
   return { reminders: query.data ?? [], isLoading: query.isLoading, upsert, remove, toggle };
+}
+
+export interface ScheduledReminderRow {
+  id: string;
+  task_reminder_id: string | null;
+  task_id: string | null;
+  user_id: string;
+  channel: ReminderChannel;
+  kind: ReminderKind;
+  scheduled_at: string;
+  status: 'pending' | 'sent' | 'failed' | 'cancelled';
+  attempts: number;
+  last_error: string | null;
+  sent_at: string | null;
+}
+
+export function useTaskScheduledReminders(taskId: string | undefined) {
+  const query = useQuery({
+    queryKey: ['scheduled-reminders', taskId],
+    queryFn: async (): Promise<ScheduledReminderRow[]> => {
+      if (!taskId) return [];
+      const { data, error } = await (supabase as any)
+        .from('scheduled_reminders')
+        .select('*')
+        .eq('task_id', taskId)
+        .order('scheduled_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as ScheduledReminderRow[];
+    },
+    enabled: !!taskId,
+  });
+  return { rows: query.data ?? [], isLoading: query.isLoading };
 }
 
 export interface UserReminderPrefs {

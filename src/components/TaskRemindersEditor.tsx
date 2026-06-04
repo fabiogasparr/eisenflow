@@ -8,10 +8,12 @@ import { Calendar } from '@/components/ui/calendar';
 import { Bell, Plus, X, Smartphone, MessageCircle, Mail, Monitor, Building2, CalendarClock, BellOff } from 'lucide-react';
 import {
   useTaskReminders,
+  useTaskScheduledReminders,
   type ReminderChannel,
   type ReminderRecipient,
   type ReminderKind,
   type TaskReminder,
+  type ScheduledReminderRow,
 } from '@/hooks/useTaskReminders';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -82,10 +84,40 @@ function ReschedulePopover({ reminder, onSave }: { reminder: TaskReminder; onSav
   );
 }
 
+function StatusBadges({ rows }: { rows: ScheduledReminderRow[] }) {
+  if (!rows.length) return null;
+  const counts = rows.reduce(
+    (acc, r) => { acc[r.status] = (acc[r.status] ?? 0) + 1; return acc; },
+    {} as Record<string, number>
+  );
+  const meta: Record<string, { label: string; cls: string }> = {
+    pending: { label: 'agendado', cls: 'bg-blue-500/15 text-blue-600 border-blue-500/30' },
+    sent: { label: 'enviado', cls: 'bg-emerald-500/15 text-emerald-600 border-emerald-500/30' },
+    failed: { label: 'falhou', cls: 'bg-destructive/15 text-destructive border-destructive/30' },
+    cancelled: { label: 'cancelado', cls: 'bg-muted text-muted-foreground border-border' },
+  };
+  return (
+    <div className="flex flex-wrap gap-1">
+      {Object.entries(counts).map(([s, n]) => (
+        <Badge key={s} variant="outline" className={`text-[10px] px-1.5 py-0 ${meta[s]?.cls ?? ''}`}>
+          {meta[s]?.label ?? s} {n > 1 ? `×${n}` : ''}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
 export function TaskRemindersEditor({ taskId }: Props) {
   const { reminders, upsert, remove, toggle } = useTaskReminders(taskId);
+  const { rows: scheduled } = useTaskScheduledReminders(taskId);
   const [customDate, setCustomDate] = useState<Date | undefined>();
   const [customTime, setCustomTime] = useState('09:00');
+
+  const scheduledByReminder = scheduled.reduce((acc, row) => {
+    if (!row.task_reminder_id) return acc;
+    (acc[row.task_reminder_id] ||= []).push(row);
+    return acc;
+  }, {} as Record<string, ScheduledReminderRow[]>);
 
   const autoKinds: ReminderKind[] = ['due_d1', 'due_1h', 'due_now', 'start_now'];
 
@@ -149,23 +181,26 @@ export function TaskRemindersEditor({ taskId }: Props) {
         {autoKinds.map(k => {
           const r = reminders.find(x => x.kind === k);
           return (
-            <div key={k} className="flex items-center justify-between">
-              <span className="text-sm">{KIND_LABELS[k]}</span>
-              <div className="flex items-center gap-1">
-                {r?.scheduled_at && (
-                  <span className="text-xs text-muted-foreground">
-                    {format(new Date(r.scheduled_at), 'dd/MM HH:mm')}
-                  </span>
-                )}
-                {r && r.enabled && (
-                  <ReschedulePopover reminder={r} onSave={(iso) => reschedule(r, iso)} />
-                )}
-                <Switch
-                  checked={r?.enabled ?? false}
-                  disabled={!r}
-                  onCheckedChange={(v) => r && toggle.mutate({ id: r.id, enabled: v })}
-                />
+            <div key={k} className="flex flex-col gap-1 border-b border-border/40 pb-2 last:border-0 last:pb-0">
+              <div className="flex items-center justify-between">
+                <span className="text-sm">{KIND_LABELS[k]}</span>
+                <div className="flex items-center gap-1">
+                  {r?.scheduled_at && (
+                    <span className="text-xs text-muted-foreground">
+                      {format(new Date(r.scheduled_at), 'dd/MM HH:mm')}
+                    </span>
+                  )}
+                  {r && r.enabled && (
+                    <ReschedulePopover reminder={r} onSave={(iso) => reschedule(r, iso)} />
+                  )}
+                  <Switch
+                    checked={r?.enabled ?? false}
+                    disabled={!r}
+                    onCheckedChange={(v) => r && toggle.mutate({ id: r.id, enabled: v })}
+                  />
+                </div>
               </div>
+              {r && <StatusBadges rows={scheduledByReminder[r.id] ?? []} />}
             </div>
           );
         })}
@@ -191,6 +226,7 @@ export function TaskRemindersEditor({ taskId }: Props) {
                 </Button>
               </div>
             </div>
+            <StatusBadges rows={scheduledByReminder[r.id] ?? []} />
             <div className="flex flex-wrap gap-1">
               {CHANNEL_META.map(({ key, icon: Icon, label }) => {
                 const active = r.channels.includes(key);
