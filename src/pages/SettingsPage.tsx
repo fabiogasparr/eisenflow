@@ -13,7 +13,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Calendar, RefreshCw, Unplug, CheckCircle2 } from 'lucide-react';
+import { Calendar, RefreshCw, Unplug, CheckCircle2, Plug } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function SettingsPage() {
   const { t, language, setLanguage } = useLanguage();
