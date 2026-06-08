@@ -28,6 +28,22 @@ export default function SettingsPage() {
       <div className="p-4 md:p-6 space-y-6 max-w-2xl">
         <h1 className="font-display text-2xl font-bold">{t('settings')}</h1>
 
+        {/* Integrations */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display flex items-center gap-2">
+              <Plug className="h-5 w-5" /> Integrações
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link to="/integrations/mcp">Configurar MCP (Hermes / agentes externos)</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+
+
         {/* Language */}
         <Card>
           <CardHeader>
