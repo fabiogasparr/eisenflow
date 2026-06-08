@@ -22,6 +22,7 @@ import JoinTeamPage from "./pages/JoinTeamPage";
 import AdminPage from "./pages/AdminPage";
 import OrganizationPage from "./pages/OrganizationPage";
 import CompletedTasks from "./pages/CompletedTasks";
+import IntegrationsMcpPage from "./pages/IntegrationsMcpPage";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -58,6 +59,7 @@ const AppRoutes = () => (
     <Route path="/chat" element={<ProtectedRoute><AIChatPage /></ProtectedRoute>} />
     <Route path="/settings" element={<ProtectedRoute><SettingsPage /></ProtectedRoute>} />
     <Route path="/organization" element={<ProtectedRoute><OrganizationPage /></ProtectedRoute>} />
+    <Route path="/integrations/mcp" element={<ProtectedRoute><IntegrationsMcpPage /></ProtectedRoute>} />
     <Route path="/admin" element={<ProtectedRoute><AdminPage /></ProtectedRoute>} />
     <Route path="*" element={<NotFound />} />
   </Routes>

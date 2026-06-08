@@ -872,6 +872,107 @@ export type Database = {
           },
         ]
       }
+      tenant_api_audit_log: {
+        Row: {
+          api_key_id: string | null
+          created_at: string
+          error: string | null
+          id: string
+          input_preview: Json | null
+          status: string
+          tenant_id: string
+          tool: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          input_preview?: Json | null
+          status: string
+          tenant_id: string
+          tool?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          created_at?: string
+          error?: string | null
+          id?: string
+          input_preview?: Json | null
+          status?: string
+          tenant_id?: string
+          tool?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_api_audit_log_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "tenant_api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tenant_api_audit_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_api_keys: {
+        Row: {
+          created_at: string
+          created_by: string
+          expires_at: string | null
+          id: string
+          key_hash: string
+          key_prefix: string
+          last_used_at: string | null
+          last_used_ip: string | null
+          name: string
+          revoked_at: string | null
+          scopes: string[]
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          expires_at?: string | null
+          id?: string
+          key_hash: string
+          key_prefix: string
+          last_used_at?: string | null
+          last_used_ip?: string | null
+          name: string
+          revoked_at?: string | null
+          scopes?: string[]
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          key_hash?: string
+          key_prefix?: string
+          last_used_at?: string | null
+          last_used_ip?: string | null
+          name?: string
+          revoked_at?: string | null
+          scopes?: string[]
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_invites: {
         Row: {
           created_at: string
@@ -911,6 +1012,38 @@ export type Database = {
             foreignKeyName: "tenant_invites_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tenant_mcp_settings: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          tenant_id: string
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          tenant_id: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          tenant_id?: string
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_mcp_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
             referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
@@ -1328,6 +1461,10 @@ export type Database = {
       }
       is_team_member: {
         Args: { _team_id: string; _user_id: string }
+        Returns: boolean
+      }
+      is_tenant_admin: {
+        Args: { _tenant_id: string; _user_id: string }
         Returns: boolean
       }
       is_tenant_member: {

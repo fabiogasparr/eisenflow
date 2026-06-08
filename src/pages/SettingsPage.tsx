@@ -13,7 +13,8 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Calendar, RefreshCw, Unplug, CheckCircle2 } from 'lucide-react';
+import { Calendar, RefreshCw, Unplug, CheckCircle2, Plug } from 'lucide-react';
+import { Link } from 'react-router-dom';
 
 export default function SettingsPage() {
   const { t, language, setLanguage } = useLanguage();
@@ -26,6 +27,22 @@ export default function SettingsPage() {
     <AppLayout>
       <div className="p-4 md:p-6 space-y-6 max-w-2xl">
         <h1 className="font-display text-2xl font-bold">{t('settings')}</h1>
+
+        {/* Integrations */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="font-display flex items-center gap-2">
+              <Plug className="h-5 w-5" /> Integrações
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <Button asChild variant="outline">
+              <Link to="/integrations/mcp">Configurar MCP (Hermes / agentes externos)</Link>
+            </Button>
+          </CardContent>
+        </Card>
+
+
 
         {/* Language */}
         <Card>
