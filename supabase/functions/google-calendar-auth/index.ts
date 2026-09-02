@@ -140,13 +140,54 @@ Deno.serve(async (req) => {
 
       // Save tokens using service role (to bypass RLS for upsert)
       const supabaseAdmin = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
+
+      // Get encryption key from Supabase Vault
+      // For now, use the SERVICE_ROLE_KEY as fallback (this should be migrated to use vault.get_secret)
+      const encryptionKey = Deno.env.get("GOOGLE_TOKENS_ENCRYPTION_KEY") || "FALLBACK_KEY_INSECURE";
+
+      // Encrypt tokens before storage
+      // In production, tokens should NEVER be stored in plain text
+      let accessTokenEncrypted: string | null = null;
+      let refreshTokenEncrypted: string | null = null;
+      let encryptionMethod: "vault" | "none" = "none";
+
+      if (encryptionKey && encryptionKey !== "FALLBACK_KEY_INSECURE") {
+        // Perform encryption using pgcrypto in database
+        const { data: encryptedAccess, error: encError1 } = await supabaseAdmin.rpc(
+          "encrypt_token",
+          {
+            token_value: tokenData.access_token,
+            master_key: encryptionKey,
+          }
+        );
+
+        const { data: encryptedRefresh, error: encError2 } = await supabaseAdmin.rpc(
+          "encrypt_token",
+          {
+            token_value: tokenData.refresh_token,
+            master_key: encryptionKey,
+          }
+        );
+
+        if (!encError1 && !encError2) {
+          accessTokenEncrypted = encryptedAccess;
+          refreshTokenEncrypted = encryptedRefresh;
+          encryptionMethod = "vault";
+        }
+      }
+
       const { error: upsertError } = await supabaseAdmin
         .from("google_calendar_tokens")
         .upsert(
           {
             user_id: userId,
-            access_token: tokenData.access_token,
-            refresh_token: tokenData.refresh_token,
+            // Legacy plain text columns (deprecated)
+            access_token: encryptionMethod === "vault" ? null : tokenData.access_token,
+            refresh_token: encryptionMethod === "vault" ? null : tokenData.refresh_token,
+            // New encrypted columns
+            access_token_encrypted: accessTokenEncrypted,
+            refresh_token_encrypted: refreshTokenEncrypted,
+            encryption_method: encryptionMethod,
             token_expires_at: expiresAt,
             google_email: googleEmail,
           },
