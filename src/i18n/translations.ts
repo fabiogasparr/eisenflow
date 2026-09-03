@@ -14,6 +14,18 @@ export const translations = {
     settings: 'Configurações',
     
     // Quadrants
+    // Eixos da matriz — é o que transforma quatro caixas numa matriz de Eisenhower
+    axisUrgent: 'Urgente',
+    axisNotUrgent: 'Não urgente',
+    axisImportant: 'Importante',
+    axisNotImportant: 'Não importante',
+    // Cada quadrante vazio ensina o que pertence a ele, em vez de repetir "Nenhuma tarefa"
+    emptyDo: 'Crises, prazos de hoje, o que trava outra pessoa.',
+    emptySchedule: 'Planejamento, prevenção, o que constrói o longo prazo. É aqui que você quer viver.',
+    emptyDelegate: 'Interrupções e pedidos que alguém faria tão bem quanto você.',
+    emptyEliminate: 'Ruído. Arraste para cá o que não merece o seu dia.',
+    overloaded: 'Cheio',
+    overloadedHint: 'Muita coisa urgente e importante ao mesmo tempo. Veja o que dá para agendar ou delegar.',
     doNow: 'Fazer Agora',
     doNowDesc: 'Urgente e Importante',
     schedule: 'Agendar',
@@ -151,6 +163,16 @@ export const translations = {
     settings: 'Settings',
     
     // Quadrants
+    axisUrgent: 'Urgent',
+    axisNotUrgent: 'Not urgent',
+    axisImportant: 'Important',
+    axisNotImportant: 'Not important',
+    emptyDo: 'Crises, today\'s deadlines, whatever is blocking someone else.',
+    emptySchedule: 'Planning, prevention, what builds the long term. This is where you want to live.',
+    emptyDelegate: 'Interruptions and requests someone else would handle just as well.',
+    emptyEliminate: 'Noise. Drag here whatever does not deserve your day.',
+    overloaded: 'Full',
+    overloadedHint: 'Too much urgent and important at once. See what can be scheduled or delegated.',
     doNow: 'Do Now',
     doNowDesc: 'Urgent and Important',
     schedule: 'Schedule',

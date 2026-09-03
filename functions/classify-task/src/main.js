@@ -65,6 +65,8 @@ export default async ({ req, res, log, error }) => {
     }
 
     const result = await chat({
+      // Chamada curta e frequente: alias rápido do OmniRoute, com tool_calling.
+      proposito: 'classificar',
       temperature: 0,
       tools: [TOOL],
       messages: [
