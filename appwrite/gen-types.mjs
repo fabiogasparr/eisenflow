@@ -31,7 +31,9 @@ L.push('// =====================================================================
 L.push('');
 L.push("import type { Models } from 'appwrite';");
 L.push('');
-L.push(`export const DATABASE_ID = '${DATABASE_ID}' as const;`);
+L.push('// O ID do database vem do ambiente; o padrão é o database real do projeto.');
+L.push('// NÃO troque por um nome legível: o Appwrite gerou este ID e é ele que o servidor conhece.');
+L.push(`export const DATABASE_ID = (import.meta.env.VITE_APPWRITE_DATABASE_ID as string) || '${DATABASE_ID}';`);
 L.push('');
 
 L.push('/** IDs das collections — use sempre a constante, nunca a string solta. */');
