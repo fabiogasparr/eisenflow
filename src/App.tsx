@@ -13,6 +13,8 @@ import Projects from "./pages/Projects";
 import ProjectDetail from "./pages/ProjectDetail";
 import SettingsPage from "./pages/SettingsPage";
 import Auth from "./pages/Auth";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 import WeeklyPlanner from "./pages/WeeklyPlanner";
 import Gamification from "./pages/Gamification";
 import TeamsPage from "./pages/TeamsPage";
@@ -46,6 +48,11 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
 const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
+    <Route path="/auth/forgot" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+    {/* Destino do link do e-mail de recuperação: /auth/recovery?userId=...&secret=...
+        Fica FORA do PublicRoute porque quem esqueceu a senha pode ter uma sessão
+        antiga ainda válida no navegador, e o PublicRoute o mandaria para a home. */}
+    <Route path="/auth/recovery" element={<ResetPassword />} />
     <Route path="/invite/:code" element={<JoinTeamPage />} />
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
     <Route path="/metrics" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
