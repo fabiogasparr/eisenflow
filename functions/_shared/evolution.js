@@ -120,12 +120,23 @@ export function dataUrlParaBuffer(s) {
 /**
  * URL do webhook com o segredo na query. É a única autenticação possível:
  * o Evolution GO não assina o payload.
+ *
+ * No Appwrite self-hosted cada function ganha um domínio PRÓPRIO sob
+ * _APP_DOMAIN_FUNCTIONS (algo como <id>.functions.appwrite.seu-dominio) — não
+ * existe uma base comum com o nome da function no caminho. Por isso
+ * EVOLUTION_WEBHOOK_URL, quando definida, vence: é o endereço exato do
+ * whatsapp-webhook. PUBLIC_WEBHOOK_BASE_URL + /whatsapp-webhook fica como
+ * alternativa para quem publica as functions atrás de um proxy próprio.
  */
 export function webhookUrl() {
-  const base = (process.env.PUBLIC_WEBHOOK_BASE_URL || '').replace(/\/+$/, '');
   const segredo = process.env.EVOLUTION_WEBHOOK_SECRET || '';
-  if (!base) throw new Error('PUBLIC_WEBHOOK_BASE_URL não configurada');
   if (!segredo) throw new Error('EVOLUTION_WEBHOOK_SECRET não configurada');
+
+  const direta = (process.env.EVOLUTION_WEBHOOK_URL || '').replace(/\/+$/, '');
+  if (direta) return `${direta}?secret=${encodeURIComponent(segredo)}`;
+
+  const base = (process.env.PUBLIC_WEBHOOK_BASE_URL || '').replace(/\/+$/, '');
+  if (!base) throw new Error('defina EVOLUTION_WEBHOOK_URL (ou PUBLIC_WEBHOOK_BASE_URL)');
   return `${base}/whatsapp-webhook?secret=${encodeURIComponent(segredo)}`;
 }
 

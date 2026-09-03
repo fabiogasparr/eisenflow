@@ -35,7 +35,7 @@
  *   export AI_API_KEY="..."              # chave do OmniRoute para o EisenFlow
  *   export GOOGLE_CLIENT_ID="..."
  *   export GOOGLE_CLIENT_SECRET="..."
- *   export PUBLIC_WEBHOOK_BASE_URL="https://<dominio-publico-das-functions>"
+ *   export EVOLUTION_WEBHOOK_URL="https://<dominio-da-function>.functions.appwrite.kz3solucoes.cloud"
  *
  *   node appwrite/configurar-secrets.mjs --gerar     # 1ª vez
  *   node appwrite/configurar-secrets.mjs             # depois
@@ -138,6 +138,9 @@ async function main() {
     GOOGLE_CLIENT_ID: process.env.GOOGLE_CLIENT_ID || '',
     GOOGLE_CLIENT_SECRET: process.env.GOOGLE_CLIENT_SECRET || '',
     PUBLIC_WEBHOOK_BASE_URL: process.env.PUBLIC_WEBHOOK_BASE_URL || '',
+    // Endereço exato da function whatsapp-webhook. No Appwrite self-hosted cada
+    // function tem domínio próprio, então esta é a variável que vale na prática.
+    EVOLUTION_WEBHOOK_URL: process.env.EVOLUTION_WEBHOOK_URL || '',
   };
 
   // Toda function precisa das duas do Appwrite: o _shared/appwrite.js usa as duas
