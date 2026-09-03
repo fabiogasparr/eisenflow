@@ -53,6 +53,7 @@ const NOMES: Record<string, string> = {
   'tenant-whatsapp-connect': 'WhatsApp da organização',
   'tenant-whatsapp-verify-phone': 'verificação de telefone',
   'hermes-mcp': 'integração MCP',
+  'create-tenant': 'criação de organização',
 };
 
 export async function invoke<T = unknown>(

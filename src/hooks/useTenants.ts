@@ -1,8 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { create, update, remove, listDocs, findOne, Query } from '@/integrations/appwrite/database';
-import { ownerOnly } from '@/integrations/appwrite/permissions';
+import { create, update, remove, listDocs, findOne, Query, toRow } from '@/integrations/appwrite/database';
+import { invoke } from '@/integrations/appwrite/functions';
 
 export interface Tenant {
   id: string;
@@ -54,37 +54,17 @@ export function useTenants() {
     mutationFn: async (input: { name: string; slug: string; logo_url?: string }) => {
       if (!user) throw new Error('Not authenticated');
 
-      // TODO(migração): um tenant DEVERIA nascer junto com um Team nativo do
-      // Appwrite (teams.create + membership do criador), porque é o Team que
-      // dá o Role.team(...) usado em taskPermissions/projectPermissions para
-      // recortar o que o tenant inteiro enxerga. Criar Team exige API key de
-      // servidor — o SDK web não faz isso. Enquanto não existir a Function
-      // 'create-tenant', o documento fica SEM appwrite_team_id e os demais
-      // membros não herdam leitura por Role.team.
-      const tenant = await create(
-        'tenants',
-        { ...input, created_by: user.$id },
-        // PERMISSÕES DO DOCUMENTO — substitui a RLS de `tenants`:
-        //   "Tenant owners can update/delete their tenant" -> ownerOnly(criador)
-        // A parte "Tenant members can view their tenant" só volta quando a
-        // Function acima acrescentar Permission.read(Role.team(<teamId>)).
-        ownerOnly(user.$id),
+      // Tudo acontece na Function `create-tenant`: Team nativo, adesão do
+      // criador, documento em `tenants` com leitura para o Team, e o registro
+      // em `tenant_members`. Só a API key faz as duas primeiras, e
+      // `tenant_members` é server-doc — deixar o cliente gravar o próprio papel
+      // seria deixar qualquer um virar owner. Antes o front tentava fazer isso
+      // direto e a segunda escrita falhava em silêncio: ninguém conseguia ter
+      // organização.
+      const r = await invoke<{ ok: boolean; tenant: Record<string, unknown>; created: boolean }>(
+        'create-tenant', input,
       );
-
-      // Substitui o trigger handle_new_tenant, que inseria o criador em
-      // tenant_members como 'owner'. O Postgres fazia isso dentro da mesma
-      // transação; aqui são duas escritas independentes.
-      // TODO(migração): `tenant_members` é server-doc (só a API key cria), então
-      // esta linha pertence à mesma Function 'create-tenant'. Fica aqui para o
-      // fluxo não sumir da tela enquanto a Function não existe.
-      await create('tenant_members', {
-        tenant_id: tenant.id,
-        user_id: user.$id,
-        role: 'owner',
-        joined_at: new Date().toISOString(),
-      });
-
-      return tenant as unknown as Tenant;
+      return toRow(r.tenant as never) as unknown as Tenant;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });

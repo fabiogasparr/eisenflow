@@ -92,6 +92,31 @@
       ]
     },
     {
+      "$id": "create-tenant",
+      "name": "create-tenant",
+      "runtime": "node-20.0",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/create-tenant",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "users.read",
+        "teams.read",
+        "teams.write"
+      ]
+    },
+    {
       "$id": "dispatch-reminders",
       "name": "dispatch-reminders",
       "runtime": "node-20.0",

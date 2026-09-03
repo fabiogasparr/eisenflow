@@ -145,7 +145,15 @@ export const users = {
 // -------------------------------------------------------------------- teams
 export const teams = {
   get: (teamId) => call('GET', `/teams/${teamId}`),
+  /** Só a API key cria Team — é por isso que tenant nasce numa Function, não no front. */
+  create: (teamId, name, roles = ['owner', 'admin', 'member', 'guest']) =>
+    call('POST', '/teams', { teamId, name, roles }),
+  delete: (teamId) => call('DELETE', `/teams/${teamId}`),
   memberships: (teamId) => call('GET', `/teams/${teamId}/memberships`),
+  /**
+   * Com API key e `userId`, a adesão é imediata — sem e-mail de convite.
+   * `url` só é exigido no fluxo por e-mail, que não usamos aqui.
+   */
   createMembership: (teamId, body) => call('POST', `/teams/${teamId}/memberships`, body),
 };
 

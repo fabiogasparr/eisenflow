@@ -224,12 +224,14 @@ reproduzir:
 
 ## As 20 Functions
 
-As 20 estão **portadas**. O porte não foi mecânico: onde o original tinha um
-defeito, ele foi corrigido em vez de reproduzido, e cada correção está comentada
-no próprio arquivo. As que mais mudaram:
+As 20 estão **portadas**, e há uma 21ª que não existia como Edge Function:
+`create-tenant`. O porte não foi mecânico: onde o original tinha um defeito, ele
+foi corrigido em vez de reproduzido, e cada correção está comentada no próprio
+arquivo. As que mais mudaram:
 
 | Function | O que mudou além do porte |
 |---|---|
+| `create-tenant` (nova) | substitui os triggers `handle_new_tenant` e `handle_new_user_tenant`. Só a API key cria Team e escreve em `tenant_members` — o front tentava fazer isso direto e **ninguém conseguia ter organização**. Também cria o tenant pessoal no primeiro login (`{personal:true}`, idempotente). **Exige `teams.write` na API key do servidor.** |
 | `whatsapp-*` (8) | falam **Evolution GO**, não Evolution API v2 — ver seção abaixo |
 | `whatsapp-webhook` | passou a exigir autenticação; quebrada em `main/ia/comandos/dados`; transcreve áudio e lê imagem |
 | `google-calendar-*` | multi-tenant: 1 app OAuth, N contas Google; `state` assinado; tokens em AES-256-GCM |
