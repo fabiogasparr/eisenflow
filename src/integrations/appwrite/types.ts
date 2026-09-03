@@ -419,6 +419,7 @@ export type UserBadgesInput = Pick<UserBadges, 'user_id' | 'badge_id'> & Partial
 /** SERVER-ONLY. No Supabase o cliente conseguia ler os tokens; aqui não. Melhoria deliberada. */
 export interface GoogleCalendarTokens extends Models.Document {
   user_id: string;
+  tenant_id: string;
   access_token: string;
   refresh_token: string;
   token_expires_at: string;
@@ -432,20 +433,23 @@ export interface GoogleCalendarTokens extends Models.Document {
   created_at?: string | null;
   updated_at?: string | null;
 }
-export type GoogleCalendarTokensInput = Pick<GoogleCalendarTokens, 'user_id' | 'access_token' | 'refresh_token' | 'token_expires_at'> & Partial<Pick<GoogleCalendarTokens, 'calendar_id' | 'sync_enabled' | 'last_synced_at' | 'google_email' | 'is_revoked' | 'revoked_at' | 'revoked_reason' | 'created_at' | 'updated_at'>>;
+export type GoogleCalendarTokensInput = Pick<GoogleCalendarTokens, 'user_id' | 'tenant_id' | 'access_token' | 'refresh_token' | 'token_expires_at'> & Partial<Pick<GoogleCalendarTokens, 'calendar_id' | 'sync_enabled' | 'last_synced_at' | 'google_email' | 'is_revoked' | 'revoked_at' | 'revoked_reason' | 'created_at' | 'updated_at'>>;
 
 export interface GoogleTokenAuditLog extends Models.Document {
   user_id: string;
+  tenant_id?: string | null;
   action: string;
   ip_address?: string | null;
   user_agent?: string | null;
   created_at?: string | null;
 }
-export type GoogleTokenAuditLogInput = Pick<GoogleTokenAuditLog, 'user_id' | 'action'> & Partial<Pick<GoogleTokenAuditLog, 'ip_address' | 'user_agent' | 'created_at'>>;
+export type GoogleTokenAuditLogInput = Pick<GoogleTokenAuditLog, 'user_id' | 'action'> & Partial<Pick<GoogleTokenAuditLog, 'tenant_id' | 'ip_address' | 'user_agent' | 'created_at'>>;
 
 export interface WhatsappConnections extends Models.Document {
   user_id: string;
   instance_name: string;
+  instance_token?: string | null;
+  instance_id?: string | null;
   phone_number?: string | null;
   status?: string | null;
   qr_code?: string | null;
@@ -461,11 +465,13 @@ export interface WhatsappConnections extends Models.Document {
   created_at?: string | null;
   updated_at?: string | null;
 }
-export type WhatsappConnectionsInput = Pick<WhatsappConnections, 'user_id' | 'instance_name'> & Partial<Pick<WhatsappConnections, 'phone_number' | 'status' | 'qr_code' | 'reminders_enabled' | 'daily_report_enabled' | 'report_time' | 'reminder_times' | 'accept_messages_from' | 'weekly_report_enabled' | 'weekly_report_day' | 'weekly_report_time' | 'timezone' | 'created_at' | 'updated_at'>>;
+export type WhatsappConnectionsInput = Pick<WhatsappConnections, 'user_id' | 'instance_name'> & Partial<Pick<WhatsappConnections, 'instance_token' | 'instance_id' | 'phone_number' | 'status' | 'qr_code' | 'reminders_enabled' | 'daily_report_enabled' | 'report_time' | 'reminder_times' | 'accept_messages_from' | 'weekly_report_enabled' | 'weekly_report_day' | 'weekly_report_time' | 'timezone' | 'created_at' | 'updated_at'>>;
 
 export interface TenantWhatsappConnections extends Models.Document {
   tenant_id: string;
   instance_name: string;
+  instance_token?: string | null;
+  instance_id?: string | null;
   phone_number?: string | null;
   status?: string | null;
   qr_code?: string | null;
@@ -478,7 +484,7 @@ export interface TenantWhatsappConnections extends Models.Document {
   created_at?: string | null;
   updated_at?: string | null;
 }
-export type TenantWhatsappConnectionsInput = Pick<TenantWhatsappConnections, 'tenant_id' | 'instance_name' | 'created_by'> & Partial<Pick<TenantWhatsappConnections, 'phone_number' | 'status' | 'qr_code' | 'default_sender' | 'reminders_enabled' | 'daily_report_enabled' | 'weekly_report_enabled' | 'timezone' | 'created_at' | 'updated_at'>>;
+export type TenantWhatsappConnectionsInput = Pick<TenantWhatsappConnections, 'tenant_id' | 'instance_name' | 'created_by'> & Partial<Pick<TenantWhatsappConnections, 'instance_token' | 'instance_id' | 'phone_number' | 'status' | 'qr_code' | 'default_sender' | 'reminders_enabled' | 'daily_report_enabled' | 'weekly_report_enabled' | 'timezone' | 'created_at' | 'updated_at'>>;
 
 export interface TenantMemberPhones extends Models.Document {
   tenant_id: string;

@@ -65,7 +65,7 @@ appwrite.json         Config do Appwrite CLI: 20 functions, 7 agendamentos
 | Buckets | 3 | 4 |
 | Funções SQL | 16 | portadas para código de aplicação |
 | Triggers | 31 | portados para código de aplicação |
-| Edge Functions | 20 | 20 Appwrite Functions (3 prontas, 17 esqueletos) |
+| Edge Functions | 20 | 20 Appwrite Functions (todas portadas) |
 | Jobs pg_cron | 3 | agendamentos nativos de Function |
 
 ---
@@ -224,15 +224,24 @@ reproduzir:
 
 ## As 20 Functions
 
-Três estão **portadas e prontas**: `whatsapp-send`, `classify-task`,
-`cleanup-reminders`. As outras 17 são **esqueletos**: trazem o contrato exato
-(entrada, saída, secrets, collections tocadas, armadilhas), o scaffold de auth e
-os helpers já ligados — mas a lógica de negócio continua no `.ts` Deno original e
-precisa ser transposta. Cada arquivo marca o ponto com um bloco `PORTAR:` e a
-tabela de equivalências.
+As 20 estão **portadas**. O porte não foi mecânico: onde o original tinha um
+defeito, ele foi corrigido em vez de reproduzido, e cada correção está comentada
+no próprio arquivo. As que mais mudaram:
 
-Isto é deliberado: portar as 17 restantes às cegas, sem rodar contra o servidor,
-produziria código que compila e não funciona.
+| Function | O que mudou além do porte |
+|---|---|
+| `whatsapp-*` (8) | falam **Evolution GO**, não Evolution API v2 — ver seção abaixo |
+| `whatsapp-webhook` | passou a exigir autenticação; quebrada em `main/ia/comandos/dados`; transcreve áudio e lê imagem |
+| `google-calendar-*` | multi-tenant: 1 app OAuth, N contas Google; `state` assinado; tokens em AES-256-GCM |
+| `dispatch-reminders` | item é **reservado antes** da entrega (o original marcava depois: queda no meio reenviava) |
+| `process-recurring-schedules` | absorveu as 3 funções SQL de lembrete (`compute_reminder_scheduled_at`, `expand_task_reminder`, `sync_task_auto_reminders`) |
+| `generate-recurring-tasks` | o guard "existe filho pendente" duplicava ocorrências para sempre; virou "existe qualquer filho" |
+| `hermes-mcp` | rate limit por chave de tenant e whitelist de IP passaram a ser aplicados de verdade |
+| `ai-task-chat`, `analyze-task-image`, `reevaluate-deadlines` | Lovable AI Gateway → OmniRoute, com modelo escolhido por finalidade |
+
+Três módulos novos em `functions/_shared/`: `invoke.js` (chamada entre functions),
+`cripto.js` (AES-256-GCM + HMAC do state OAuth) e `google.js` (refresh e revogação
+do token do Google, comum às duas functions de calendário).
 
 ### Agendamentos
 
@@ -245,6 +254,57 @@ produziria código que compila e não funciona.
 | `cleanup-reminders` | 03:00 |
 | `generate-recurring-tasks` | 04:00 |
 | `reevaluate-deadlines` | 06:00 |
+
+### Evolution GO não é a Evolution API v2
+
+O WhatsApp agora roda numa instância **Evolution GO** (Go/whatsmeow) dedicada ao
+EisenFlow. Não é uma troca de URL: a API é outra, e três diferenças mudam o desenho.
+
+**1. Não existe `{instance}` no caminho.** Cada instância tem um **token próprio**,
+enviado no header `apikey`, e é ele que identifica a instância. A `GLOBAL_API_KEY`
+só cria, lista e deleta — ela **não envia mensagem**. Por isso
+`whatsapp_connections` e `tenant_whatsapp_connections` ganharam os atributos
+`instance_token` e `instance_id`. Conexão sem token gravado responde 409 pedindo
+reconectar; é intencional.
+
+**2. Não existe rota de webhook.** O webhook é declarado no corpo de
+`POST /instance/connect`.
+
+**3. Não existe assinatura de webhook** — nem HMAC, nem header, nada. A defesa é
+segredo na query da URL (`webhookUrl()` / `webhookAutorizado()`) **mais** a
+conferência de que o `instanceToken` do corpo bate com o gravado na conexão.
+
+O envelope do evento também é outro (`{event, data, instanceId, instanceToken,
+instanceName}`, com `Info` em PascalCase) e não há `MESSAGES_UPSERT` nem
+`CONNECTION_UPDATE`: os eventos de conexão são discretos (`Connected`,
+`PairSuccess`, `Disconnected`, `LoggedOut`, `ConnectFailure`, `TemporaryBan`).
+`parseWebhook()` normaliza tudo isso — o resto do código não vê PascalCase.
+
+Duas consequências operacionais que economizam uma tarde de depuração:
+- **O QR rotaciona** (~60s o primeiro, ~20s os seguintes). O front repola
+  `whatsapp-status`, que refaz o QR, e o webhook grava o QR novo a cada evento.
+- **A API responde 503 até a licença ser ativada** no Manager (`/manager/login`,
+  magic link por e-mail com a `GLOBAL_API_KEY`). Não sobe headless.
+
+Com `WEBHOOK_FILES=true` e MinIO desligado, o binário da mídia já vem em base64
+dentro do próprio webhook — é o que faz áudio virar tarefa sem round-trip.
+
+### Google Calendar: 1 app OAuth, N contas
+
+Cada tenant conecta a **própria conta Google**, com um único `GOOGLE_CLIENT_ID` do
+EisenFlow. A chave de `google_calendar_tokens` deixou de ser `user_id` e passou a
+ser `(user_id, tenant_id)`.
+
+O `state` do OAuth agora é assinado (HMAC, `{user_id, tenant_id, nonce, exp}`) —
+o original mandava o access_token da sessão cru na URL, que é CSRF mais credencial
+em query string. Os tokens ficam em AES-256-GCM com `GOOGLE_TOKENS_ENCRYPTION_KEY`.
+`invalid_grant` (usuário revogou pelo Google) marca `is_revoked` e devolve
+`google_reconnect_required`, que o front traduz em "reconecte sua conta".
+
+**Ação manual no servidor:** onde a migração já rodou, apague à mão o índice
+`uniq_gcal_user` (Databases → google_calendar_tokens → Indexes). Enquanto ele
+existir, o segundo tenant do mesmo usuário é rejeitado por duplicidade — o
+`migrate.mjs` cria índice, nunca substitui.
 
 ### O Lovable AI Gateway não sobrevive ao self-host
 
@@ -344,14 +404,18 @@ VITE_APPWRITE_PROJECT_ID=default-6a987e930039a4a13bea
 **Functions** (9 secrets):
 ```
 AI_PROVIDER=omniroute, AI_BASE_URL, AI_API_KEY, AI_MODEL   substituem LOVABLE_API_KEY
-EVOLUTION_API_URL, EVOLUTION_API_KEY                WhatsApp
-EVOLUTION_WEBHOOK_SECRET                            novo — valida o webhook
+EVOLUTION_API_URL, EVOLUTION_API_KEY                Evolution GO (a key é a GLOBAL_API_KEY)
+EVOLUTION_WEBHOOK_SECRET                            novo — vai na query do webhook
 GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET              Calendar
 GOOGLE_TOKENS_ENCRYPTION_KEY                        cifra os tokens do Google
 INTERNAL_FUNCTION_SECRET                            novo — chamadas entre functions
 PUBLIC_WEBHOOK_BASE_URL                             base pública das functions
 APPWRITE_API_KEY                                    acesso server-side ao banco
 ```
+
+Opcionais, com default no código: `AI_MODEL_CLASSIFICAR`, `AI_MODEL_CONVERSAR`,
+`AI_MODEL_VISAO`, `AI_MODEL_JULGAR`, `AI_MODEL_TRANSCREVER` (aliases `auto/*` do
+OmniRoute) e `REMINDER_SYNC_HORIZON_DAYS` (7).
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` e `SUPABASE_SERVICE_ROLE_KEY` deixam de
 existir.
@@ -360,17 +424,18 @@ existir.
 
 ## O que falta para o app rodar
 
-Este pacote entrega backend e camada de integração. Falta reescrever os hooks do
-front, que hoje importam `@/integrations/supabase/client`:
+O front **já está convertido** — nenhum hook importa mais `@/integrations/supabase`.
+O que falta é ambiente, não código:
 
-`useTasks`, `useSubtasks`, `useTaskShares`, `useTaskReminders`, `useReminders`,
-`useTeams`, `useTenants`, `useTenantContext`, `useGamification`,
-`useNotifications`, `useAuth`, `useAdminGuard`, `useGoogleCalendar`,
-`useGoogleCalendarEvents`, `useFocusSessions`, `useTaskAttachments`,
-`useWhatsApp`, `useTenantMcp`, `useCalendarSettings`, `usePomodoroSettings`,
-`useTimezone`.
+1. Rodar `node appwrite/migrate.mjs` de novo (traz `instance_token`, `instance_id`,
+   `tenant_id` em `google_calendar_tokens` e os índices novos).
+2. Apagar à mão o índice `uniq_gcal_user`, se a migração já tinha rodado antes.
+3. `appwrite push functions` e cadastrar os secrets por function.
+4. Subir a instância Evolution GO do EisenFlow, ativar a licença no Manager e
+   apontar `EVOLUTION_API_URL` para ela.
+5. Cadastrar no Google Cloud Console o redirect
+   `${PUBLIC_WEBHOOK_BASE_URL}/google-calendar-auth?action=callback` e habilitar a
+   Google Calendar API.
 
-O padrão da conversão está inteiro em `database.ts` e `permissions.ts` — a
-tradução é mecânica, com uma exceção que merece atenção: **todo ponto onde a
-titularidade de um documento muda precisa recalcular as permissões**. É aí que
-uma migração Supabase→Appwrite costuma quebrar em silêncio.
+Enquanto uma function não estiver implantada, o app não quebra: `functions.ts`
+traduz o 404 em "este recurso ainda não foi ativado neste servidor".

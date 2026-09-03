@@ -108,7 +108,10 @@
         "databases.read",
         "documents.read",
         "documents.write",
-        "collections.read"
+        "collections.read",
+        "functions.read",
+        "execution.write",
+        "execution.read"
       ]
     },
     {
@@ -136,7 +139,7 @@
       "name": "google-calendar-auth",
       "runtime": "node-20.0",
       "execute": [
-        "users"
+        "any"
       ],
       "events": [],
       "schedule": "",

@@ -451,6 +451,12 @@ export const COLLECTIONS = [
     note: 'SERVER-ONLY. No Supabase o cliente conseguia ler os tokens; aqui não. Melhoria deliberada.',
     attributes: [
       ref('user_id', { required: true }),
+      // MULTI-TENANT: um único app OAuth do EisenFlow no Google Cloud, mas cada
+      // TENANT conecta a própria conta Google. A conexão é (user_id, tenant_id):
+      // o mesmo usuário pode ter contas Google diferentes em tenants diferentes.
+      ref('tenant_id', { required: true }),
+      // access_token/refresh_token guardam o blob AES-256-GCM montado por
+      // functions/_shared/cripto.js: base64(iv[12] + authTag[16] + ciphertext).
       str('access_token', 5000, { required: true }),
       str('refresh_token', 5000, { required: true }),
       dt('token_expires_at', { required: true }),
@@ -463,24 +469,40 @@ export const COLLECTIONS = [
       str('revoked_reason', 500),
       ...stamps(),
     ],
-    indexes: [uniq('uniq_gcal_user', ['user_id'])],
+    // O índice único passou de (user_id) para (user_id, tenant_id): amarrar a
+    // conexão só ao usuário impedia o multi-tenant.
+    // ATENÇÃO: migrate.mjs só CRIA índices (POST), nunca substitui. Num servidor
+    // que já rodou a migração antes desta mudança, o índice antigo
+    // `uniq_gcal_user` continua lá e precisa ser removido À MÃO no console do
+    // Appwrite (Databases → google_calendar_tokens → Indexes), senão o segundo
+    // tenant do mesmo usuário é rejeitado por duplicidade.
+    indexes: [
+      uniq('uniq_gcal_user_tenant', ['user_id', 'tenant_id']),
+      idx('idx_gcal_tenant', ['tenant_id']),
+    ],
   },
   {
     id: 'google_token_audit_log', name: 'Google Token Audit Log', group: 'extras', access: 'server',
     attributes: [
       ref('user_id', { required: true }),
-      str('action', 64, { required: true }),
+      // Auditoria por tenant: a conexão do Google é do tenant, não só do usuário.
+      ref('tenant_id'),
+      str('action', 64, { required: true }),   // connect | refresh | revoke
       str('ip_address', 45),
       str('user_agent', 500),
       dt('created_at'),
     ],
-    indexes: [idx('idx_gtal_user', ['user_id'])],
+    indexes: [idx('idx_gtal_user', ['user_id']), idx('idx_gtal_tenant', ['tenant_id'])],
   },
   {
     id: 'whatsapp_connections', name: 'WhatsApp Connections (pessoal)', group: 'core', access: 'server-doc',
     attributes: [
       ref('user_id', { required: true }),
       str('instance_name', 128, { required: true }),
+      // Evolution GO identifica a instância pelo TOKEN dela (não pelo nome no path):
+      // sem guardar o token aqui, não há como enviar mensagem nem ler status.
+      str('instance_token', 128),
+      str('instance_id', 64),
       str('phone_number', 32),
       str('status', 32, { default: 'disconnected' }),
       str('qr_code', 65535),
@@ -502,6 +524,9 @@ export const COLLECTIONS = [
     attributes: [
       ref('tenant_id', { required: true }),
       str('instance_name', 128, { required: true }),
+      // ver nota em whatsapp_connections: o token É a credencial da instância.
+      str('instance_token', 128),
+      str('instance_id', 64),
       str('phone_number', 32),
       str('status', 32, { default: 'disconnected' }),
       str('qr_code', 65535),

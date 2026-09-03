@@ -16,16 +16,18 @@ export type CalendarItem =
   | { type: 'google-event'; data: GoogleEvent };
 
 export function useGoogleCalendarEvents(timeMin: string | null, timeMax: string | null) {
-  const { isConnected, tokenData } = useGoogleCalendar();
-  const enabled = isConnected && !!tokenData?.sync_enabled && !!timeMin && !!timeMax;
+  const { isConnected, tokenData, tenantId } = useGoogleCalendar();
+  const enabled = isConnected && !!tenantId && !!tokenData?.sync_enabled && !!timeMin && !!timeMax;
 
   return useQuery({
-    queryKey: ['google-calendar-events', timeMin, timeMax],
+    // O tenant entra na chave: cada organização tem a própria conta Google.
+    queryKey: ['google-calendar-events', tenantId, timeMin, timeMax],
     queryFn: async () => {
       // Os eventos vêm da Function: o token do Google fica no servidor e o
       // cliente nunca fala direto com a API do Google.
       const data = await invoke<{ events?: GoogleEvent[] }>('google-calendar-sync', {
         action: 'list-events',
+        tenant_id: tenantId,
         timeMin,
         timeMax,
       });
