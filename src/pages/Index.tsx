@@ -2,6 +2,7 @@ import { useState, useMemo } from 'react';
 import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, PointerSensor, TouchSensor, useSensor, useSensors } from '@dnd-kit/core';
 import { AppLayout } from '@/components/AppLayout';
 import { QuadrantDropZone } from '@/components/QuadrantDropZone';
+import { EisenhowerMatrix } from '@/components/EisenhowerMatrix';
 import { TaskCard } from '@/components/TaskCard';
 import { CreateTaskDialog } from '@/components/CreateTaskDialog';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
@@ -220,9 +221,8 @@ export default function Index() {
           </div>
         ) : (
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-          <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-2 md:gap-3">
-            <div className="contents">
-              {quadrants.map((q) =>
+          <EisenhowerMatrix>
+            {(q) => (
               <QuadrantDropZone
                 key={q}
                 quadrant={q}
@@ -231,9 +231,8 @@ export default function Index() {
                 onComplete={handleSwipeComplete}
                 onDelete={handleSwipeDelete}
                 defaultCollapsed={q !== 'do'} />
-              )}
-            </div>
-          </div>
+            )}
+          </EisenhowerMatrix>
           <DragOverlay>
             {activeTask ? <TaskCard task={activeTask} /> : null}
           </DragOverlay>
