@@ -121,6 +121,16 @@ ${guard.join('\n\n')}
 }
 
 // ------------------------------------------------------------------ escrita
+// Só gera arquivos quando executado direto. Outros scripts (deploy-functions.mjs)
+// importam FUNCTIONS daqui e não devem disparar geração como efeito colateral.
+const EXECUTADO_DIRETO = process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+if (!EXECUTADO_DIRETO) {
+  // exporta só os dados
+} else {
+gerar();
+}
+
+function gerar() {
 let created = 0;
 for (const f of FUNCTIONS) {
   const dir = resolve(ROOT, 'functions', f.name, 'src');
@@ -164,3 +174,4 @@ writeFileSync(resolve(ROOT, 'appwrite.json'), JSON.stringify(config, null, 2) + 
 console.log(`functions: ${FUNCTIONS.length} (${created} main.js novos)`);
 console.log(`crons: ${FUNCTIONS.filter((f) => f.cron).length}`);
 console.log(`secrets distintos: ${allSecrets.length} -> ${allSecrets.join(', ')}`);
+}
