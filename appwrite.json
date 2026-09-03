@@ -5,7 +5,7 @@
     {
       "$id": "ai-task-chat",
       "name": "ai-task-chat",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -27,7 +27,7 @@
     {
       "$id": "analyze-task-image",
       "name": "analyze-task-image",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -52,7 +52,7 @@
     {
       "$id": "classify-task",
       "name": "classify-task",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -74,7 +74,7 @@
     {
       "$id": "cleanup-reminders",
       "name": "cleanup-reminders",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [],
       "events": [],
       "schedule": "0 3 * * *",
@@ -94,7 +94,7 @@
     {
       "$id": "dispatch-reminders",
       "name": "dispatch-reminders",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [],
       "events": [],
       "schedule": "*/5 * * * *",
@@ -114,7 +114,7 @@
     {
       "$id": "generate-recurring-tasks",
       "name": "generate-recurring-tasks",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [],
       "events": [],
       "schedule": "0 4 * * *",
@@ -134,7 +134,7 @@
     {
       "$id": "google-calendar-auth",
       "name": "google-calendar-auth",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -157,7 +157,7 @@
     {
       "$id": "google-calendar-sync",
       "name": "google-calendar-sync",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -180,7 +180,7 @@
     {
       "$id": "hermes-mcp",
       "name": "hermes-mcp",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [],
       "events": [],
       "schedule": "",
@@ -200,7 +200,7 @@
     {
       "$id": "process-recurring-schedules",
       "name": "process-recurring-schedules",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [],
       "events": [],
       "schedule": "*/5 * * * *",
@@ -220,7 +220,7 @@
     {
       "$id": "reevaluate-deadlines",
       "name": "reevaluate-deadlines",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [],
       "events": [],
       "schedule": "0 6 * * *",
@@ -240,7 +240,7 @@
     {
       "$id": "tenant-whatsapp-connect",
       "name": "tenant-whatsapp-connect",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -263,7 +263,7 @@
     {
       "$id": "tenant-whatsapp-verify-phone",
       "name": "tenant-whatsapp-verify-phone",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -286,7 +286,7 @@
     {
       "$id": "whatsapp-connect",
       "name": "whatsapp-connect",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -309,7 +309,7 @@
     {
       "$id": "whatsapp-deadline-reminders",
       "name": "whatsapp-deadline-reminders",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [],
       "events": [],
       "schedule": "*/15 * * * *",
@@ -329,7 +329,7 @@
     {
       "$id": "whatsapp-disconnect",
       "name": "whatsapp-disconnect",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -352,7 +352,7 @@
     {
       "$id": "whatsapp-report",
       "name": "whatsapp-report",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [],
       "events": [],
       "schedule": "0 * * * *",
@@ -371,7 +371,7 @@
     {
       "$id": "whatsapp-send",
       "name": "whatsapp-send",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [],
       "events": [],
       "schedule": "",
@@ -390,7 +390,7 @@
     {
       "$id": "whatsapp-status",
       "name": "whatsapp-status",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "users"
       ],
@@ -413,7 +413,7 @@
     {
       "$id": "whatsapp-webhook",
       "name": "whatsapp-webhook",
-      "runtime": "node-22",
+      "runtime": "node-20.0",
       "execute": [
         "any"
       ],

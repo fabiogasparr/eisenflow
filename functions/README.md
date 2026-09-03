@@ -1,6 +1,6 @@
 # functions/ — Appwrite Functions
 
-20 funções, runtime `node-22`, entrypoint `src/main.js`, sem dependências npm
+20 funções, runtime `node-20.0`, entrypoint `src/main.js`, sem dependências npm
 (tudo em `_shared/` usa só o fetch nativo).
 
 ## Estado

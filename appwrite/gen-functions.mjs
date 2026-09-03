@@ -16,6 +16,13 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
+/**
+ * Runtime das functions. O servidor 1.7.4 do projeto só tem `node-20.0`
+ * instalado — pedir `node-22` devolve "Runtime is not supported". Confirme com
+ * GET /v1/functions/runtimes antes de trocar.
+ */
+const RUNTIME = process.env.APPWRITE_RUNTIME || 'node-20.0';
+
 export const FUNCTIONS = [
   { name:'ai-task-chat', purpose:'Chat de IA que cria tarefas estruturadas ou responde em linguagem natural, com texto e imagens', trigger:'http-frontend', cron:null, auth:'jwt-usuario', secrets:['AI_API_KEY'], tables_read:[], tables_write:[], external:['IA'], input:'{ messages[], context?: {teamMembers[], projects[]}, images?: string[] }', output:"{ type:'tasks', tasks[], summary } | { type:'chat', message }", complexity:'media', notes:'Era público no Supabase — aqui passa a exigir sessão. Lovable AI Gateway -> OmniRoute via _shared/ai.js.' },
   { name:'analyze-task-image', purpose:'OCR, descrição visual e sugestão de subtarefas sobre imagem anexada a uma tarefa', trigger:'http-frontend', cron:null, auth:'jwt-usuario', secrets:['AI_API_KEY'], tables_read:['task_attachments','tasks','tenant_members'], tables_write:['task_attachments'], external:['IA'], input:'{ attachment_id, task_title?, task_description? }', output:'{ ocr_text, description, suggested_subtasks[] }', complexity:'alta', notes:'createSignedUrl do Supabase Storage -> storage.asDataUrl() do _shared/appwrite.js.' },
@@ -72,7 +79,7 @@ function scaffold(f) {
  * ${f.purpose}
  *
  * Origem: supabase/functions/${f.name}/index.ts (Deno)
- * Destino: Appwrite Function, runtime node-22
+ * Destino: Appwrite Function, runtime node-20.0
  *
  * Gatilho .......... ${f.trigger}${f.cron ? `  (cron: ${f.cron.replaceAll('*/', '*\\/')})` : ''}
  * Autenticação ..... ${f.auth}
@@ -151,7 +158,7 @@ const config = {
   functions: FUNCTIONS.map((f) => ({
     $id: f.name,
     name: f.name,
-    runtime: 'node-22',
+    runtime: RUNTIME,
     execute: f.auth === 'jwt-usuario' ? ['users'] : (f.auth === 'publica' ? ['any'] : []),
     events: [],
     schedule: f.cron || '',
