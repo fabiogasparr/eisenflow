@@ -41,6 +41,13 @@ const ALL = args.includes('--all');
 const ONLY = (args.find((a) => a.startsWith('--only=')) || '').split('=')[1] || null;
 
 /**
+ * Runtime das functions. O servidor 1.7.4 do projeto só tem `node-20.0`
+ * instalado — pedir `node-22` devolve "Runtime is not supported". Confirme com
+ * GET /v1/functions/runtimes antes de trocar.
+ */
+const RUNTIME = process.env.APPWRITE_RUNTIME || 'node-20.0';
+
+/**
  * Funções cuja lógica foi realmente portada. As demais são esqueletos: se
  * implantadas, respondem 200 com `ported:false`, e o app trataria isso como
  * sucesso — pior do que o erro honesto de "ainda não implantada". Por isso
@@ -175,7 +182,7 @@ async function run() {
       // 1. cria a function (409 = já existe, seguimos para o deploy)
       try {
         await api('POST', '/functions', {
-          functionId: f.name, name: f.name, runtime: 'node-22',
+          functionId: f.name, name: f.name, runtime: RUNTIME,
           execute: f.auth === 'jwt-usuario' ? ['users'] : (f.auth === 'publica' ? ['any'] : []),
           schedule: f.cron || '', timeout: f.complexity === 'alta' ? 300 : 60,
           enabled: true, logging: true, entrypoint: 'src/main.js',
