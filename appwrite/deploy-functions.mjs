@@ -48,12 +48,15 @@ const ONLY = (args.find((a) => a.startsWith('--only=')) || '').split('=')[1] || 
 const RUNTIME = process.env.APPWRITE_RUNTIME || 'node-20.0';
 
 /**
- * Funções cuja lógica foi realmente portada. As demais são esqueletos: se
- * implantadas, respondem 200 com `ported:false`, e o app trataria isso como
- * sucesso — pior do que o erro honesto de "ainda não implantada". Por isso
- * ficam de fora salvo `--all` explícito.
+ * Funções cuja lógica foi realmente portada.
+ *
+ * Hoje são TODAS — a distinção existia enquanto 17 eram esqueleto: implantar um
+ * esqueleto o fazia responder 200 com `ported:false`, e o app leria isso como
+ * sucesso, o que é pior do que o erro honesto de "ainda não implantada".
+ * A constante fica porque o problema volta se alguém acrescentar uma function
+ * nova a partir do gerador de esqueletos.
  */
-const PRONTAS = new Set(['classify-task', 'whatsapp-send', 'cleanup-reminders']);
+const PRONTAS = new Set(FUNCTIONS.map((f) => f.name));
 
 const C = { r: '\x1b[31m', g: '\x1b[32m', y: '\x1b[33m', b: '\x1b[34m', d: '\x1b[2m', x: '\x1b[0m' };
 const ok = (m) => console.log(`  ${C.g}✓${C.x} ${m}`);
