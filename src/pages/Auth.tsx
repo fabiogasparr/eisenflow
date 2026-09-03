@@ -1,5 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
+import { sendVerificationEmail } from '@/integrations/appwrite/auth';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -25,9 +27,15 @@ export default function Auth() {
         await signIn(email, password);
       } else {
         await signUp(email, password, displayName);
+        // O toast antigo prometia um e-mail de confirmação que nunca era
+        // enviado. Agora enviamos de fato — e sem bloquear o cadastro: se o
+        // SMTP estiver fora do ar, a conta continua criada e o usuário entra.
+        sendVerificationEmail().catch((err) =>
+          console.warn('Não foi possível enviar o e-mail de verificação:', err),
+        );
         toast({
-          title: isLogin ? t('login') : t('signup'),
-          description: 'Check your email to confirm your account.',
+          title: t('signup'),
+          description: t('signupSuccess'),
         });
       }
     } catch (error: any) {
@@ -77,7 +85,7 @@ export default function Auth() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
-              minLength={6}
+              minLength={8}
             />
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
@@ -91,6 +99,14 @@ export default function Auth() {
             >
               {isLogin ? t('noAccount') : t('hasAccount')}
             </button>
+            {isLogin && (
+              <Link
+                to="/auth/forgot"
+                className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+              >
+                {t('forgotPassword')}
+              </Link>
+            )}
           </CardFooter>
         </form>
       </Card>
