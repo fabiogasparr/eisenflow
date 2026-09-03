@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { listDocs, loadRelated, Query } from '@/integrations/appwrite/database';
+import { uploadFile, fileViewUrl, fileOwnerPermissions } from '@/integrations/appwrite/files';
 import { AppLayout } from '@/components/AppLayout';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTenants, useTenantMembers, useTenantInvites, type Tenant } from '@/hooks/useTenants';
@@ -226,7 +227,7 @@ function TenantMembersTab({ tenant }: { tenant: Tenant }) {
   const [inviteRole, setInviteRole] = useState<'member' | 'guest' | 'admin'>('member');
   const [copied, setCopied] = useState<string | null>(null);
 
-  const myMembership = members.find(m => m.user_id === user?.id);
+  const myMembership = members.find(m => m.user_id === user?.$id);
   const canManage = myMembership?.role === 'owner' || myMembership?.role === 'admin';
 
   const handleInvite = async () => {
@@ -343,7 +344,7 @@ function TenantMembersTab({ tenant }: { tenant: Tenant }) {
                   <span className="text-xs text-muted-foreground">{roleLabel(member.role)}</span>
                 </div>
               </div>
-              {canManage && member.user_id !== user?.id && member.role !== 'owner' && (
+              {canManage && member.user_id !== user?.$id && member.role !== 'owner' && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -434,7 +435,7 @@ function TenantSettingsTab({ tenant, onDelete }: { tenant: Tenant; onDelete: () 
 
   const { members } = useTenantMembers(tenant.id);
   const { user } = useAuth();
-  const myMembership = members.find(m => m.user_id === user?.id);
+  const myMembership = members.find(m => m.user_id === user?.$id);
   const isOwner = myMembership?.role === 'owner';
   const canEdit = isOwner || myMembership?.role === 'admin';
 
@@ -451,17 +452,25 @@ function TenantSettingsTab({ tenant, onDelete }: { tenant: Tenant; onDelete: () 
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (!user) return;
     setUploading(true);
     try {
-      const ext = file.name.split('.').pop();
-      const path = `${tenant.id}/logo.${ext}`;
-      const { error: uploadErr } = await supabase.storage
-        .from('tenant-logos')
-        .upload(path, file, { upsert: true });
-      if (uploadErr) throw uploadErr;
+      // O caminho fixo `${tenant.id}/logo.${ext}` com `upsert: true` não tem
+      // equivalente: o Appwrite gera um fileId novo a cada envio.
+      // TODO(migração): o logo antigo fica órfão no bucket. Para apagá-lo seria
+      // preciso guardar o file_id no documento do tenant (hoje só existe
+      // `logo_url`) e chamar deleteFile antes de subir o novo.
+      // PERMISSÕES DO ARQUIVO: no Supabase o bucket era público
+      // (getPublicUrl) e qualquer membro via o logo. Aqui a permissão fica NO
+      // ARQUIVO e o helper disponível só cobre o dono.
+      // TODO(migração): quando o tenant tiver `appwrite_team_id` (ver o TODO de
+      // create-tenant em useTenants), trocar por leitura do Role.team para que
+      // os demais membros voltem a enxergar o logo.
+      const uploaded = await uploadFile('tenant-logos', file, fileOwnerPermissions(user.$id));
 
-      const { data: urlData } = supabase.storage.from('tenant-logos').getPublicUrl(path);
-      await updateTenant.mutateAsync({ id: tenant.id, logo_url: urlData.publicUrl + '?t=' + Date.now() });
+      // Sem URL pública e sem cache-buster: fileViewUrl já aponta para o
+      // arquivo novo, que tem um id novo.
+      await updateTenant.mutateAsync({ id: tenant.id, logo_url: fileViewUrl('tenant-logos', uploaded.$id) });
       toast({ title: '✅', description: pt ? 'Logo atualizado!' : 'Logo updated!' });
     } catch (err: any) {
       toast({ title: pt ? 'Erro' : 'Error', description: err.message, variant: 'destructive' });
@@ -471,6 +480,9 @@ function TenantSettingsTab({ tenant, onDelete }: { tenant: Tenant; onDelete: () 
   };
 
   const handleRemoveLogo = async () => {
+    // TODO(migração): só limpa a referência. O arquivo continua no bucket
+    // porque o documento do tenant não guarda o file_id (mesmo motivo do TODO
+    // em handleLogoUpload).
     await updateTenant.mutateAsync({ id: tenant.id, logo_url: null });
     toast({ title: '✅', description: pt ? 'Logo removido.' : 'Logo removed.' });
   };
@@ -655,16 +667,22 @@ function PendingInvitesSection() {
 function useMyPendingInvites() {
   const { user } = useAuth();
   return useQuery({
-    queryKey: ['my-tenant-invites', user?.id],
+    queryKey: ['my-tenant-invites', user?.$id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from('tenant_invites')
-        .select('*, tenants(name)')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []).map((inv: any) => ({ ...inv, tenant_name: inv.tenants?.name || null }));
+      // A policy "Users can view invites sent to their email" recortava por
+      // e-mail no Postgres. Aqui o recorte é a permissão do documento: só
+      // chegam os convites que esta sessão pode ler.
+      const convites = await listDocs('tenant_invites', [
+        Query.equal('status', 'pending'),
+        Query.orderDesc('created_at'),
+      ]);
+      // Join `tenants(name)` do PostgREST -> loadRelated + junção em memória.
+      const orgs = await loadRelated('tenants', convites.map(c => c.tenant_id));
+      return convites.map(inv => ({
+        ...inv,
+        tenant_name: (inv.tenant_id ? orgs.get(inv.tenant_id)?.name : null) ?? null,
+      }));
     },
     enabled: !!user,
   });

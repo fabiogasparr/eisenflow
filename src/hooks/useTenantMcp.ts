@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useTenantContext } from '@/hooks/useTenantContext';
+import { findOne, Query } from '@/integrations/appwrite/database';
 
 export interface TenantApiKey {
   id: string;
@@ -38,127 +38,94 @@ const SCOPES_ALL = [
 export type Scope = (typeof SCOPES_ALL)[number];
 export const ALL_SCOPES: readonly Scope[] = SCOPES_ALL;
 
-function randomToken() {
-  const bytes = new Uint8Array(24);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
-
-async function sha256Hex(input: string) {
-  const data = new TextEncoder().encode(input);
-  const buf = await crypto.subtle.digest('SHA-256', data);
-  return Array.from(new Uint8Array(buf)).map((b) => b.toString(16).padStart(2, '0')).join('');
-}
+/**
+ * Mensagem única para tudo que depende de uma Function de gestão de chaves.
+ * Melhor um erro explícito na tela do que um 401 cru do Appwrite.
+ */
+const SEM_FUNCTION =
+  'Gestão de chaves MCP ainda não migrada: tenant_api_keys é uma collection de servidor '
+  + 'e precisa de uma Appwrite Function para criar, revogar e listar as chaves.';
 
 export function useTenantMcp() {
   const { activeTenantId, myRole } = useTenantContext();
   const qc = useQueryClient();
+  // `get_tenant_role` (RPC do Postgres) não existe mais: o papel vem do
+  // useTenantContext, que lê tenant_members no cliente.
   const isAdmin = myRole === 'owner' || myRole === 'admin';
 
   const settings = useQuery({
     queryKey: ['tenant-mcp-settings', activeTenantId],
     enabled: !!activeTenantId,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tenant_mcp_settings' as any)
-        .select('*')
-        .eq('tenant_id', activeTenantId!)
-        .maybeSingle();
-      if (error) throw error;
-      return data as any;
+      // `tenant_mcp_settings` é server-doc: o servidor concede LEITURA por
+      // documento aos membros do tenant, então o findOne funciona no cliente.
+      // (No Postgres o recorte era a policy "Tenant members can read mcp settings".)
+      return findOne('tenant_mcp_settings', [Query.equal('tenant_id', activeTenantId!)]);
     },
   });
 
   const keys = useQuery({
     queryKey: ['tenant-api-keys', activeTenantId],
     enabled: !!activeTenantId && isAdmin,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tenant_api_keys' as any)
-        .select('id, tenant_id, name, key_prefix, scopes, created_by, last_used_at, last_used_ip, expires_at, revoked_at, created_at')
-        .eq('tenant_id', activeTenantId!)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as unknown as TenantApiKey[];
+    queryFn: async (): Promise<TenantApiKey[]> => {
+      // TODO(migração): `tenant_api_keys` é access 'server' — o cliente não
+      // enxerga a collection (guarda key_hash). No Postgres a policy
+      // "Tenant admins can view api keys" mostrava as colunas não-sensíveis;
+      // aqui a listagem tem que vir de uma Function que devolva a projeção
+      // segura (sem key_hash). Enquanto ela não existe, a lista fica vazia.
+      return [];
     },
   });
 
   const audit = useQuery({
     queryKey: ['tenant-api-audit', activeTenantId],
     enabled: !!activeTenantId && isAdmin,
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('tenant_api_audit_log' as any)
-        .select('id, tenant_id, api_key_id, tool, status, error, created_at')
-        .eq('tenant_id', activeTenantId!)
-        .order('created_at', { ascending: false })
-        .limit(50);
-      if (error) throw error;
-      return (data ?? []) as unknown as TenantAuditEntry[];
+    queryFn: async (): Promise<TenantAuditEntry[]> => {
+      // TODO(migração): `tenant_api_audit_log` também é access 'server'
+      // (quem escreve é a function hermes-mcp). A leitura para a UI depende da
+      // mesma Function de gestão citada acima.
+      return [];
     },
   });
 
   const toggleEnabled = useMutation({
-    mutationFn: async (enabled: boolean) => {
+    mutationFn: async (_enabled: boolean) => {
       if (!activeTenantId) throw new Error('no tenant');
-      const { data: user } = await supabase.auth.getUser();
-      const payload = { tenant_id: activeTenantId, enabled, updated_by: user.user?.id };
-      const { error } = await supabase
-        .from('tenant_mcp_settings' as any)
-        .upsert(payload, { onConflict: 'tenant_id' });
-      if (error) throw error;
+      // TODO(migração): o upsert com onConflict 'tenant_id' viraria
+      // upsert('tenant_mcp_settings', [Query.equal('tenant_id', ...)], ...),
+      // mas a collection é server-doc: o cliente lê e não escreve. Ligar/desligar
+      // o MCP passa a ser uma Function (que valida o papel de admin no lugar da
+      // policy "Tenant admins can manage mcp settings").
+      throw new Error(SEM_FUNCTION);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenant-mcp-settings', activeTenantId] }),
   });
 
   const createKey = useMutation({
-    mutationFn: async (input: { name: string; scopes: Scope[]; expiresInDays?: number | null }) => {
+    mutationFn: async (_input: { name: string; scopes: Scope[]; expiresInDays?: number | null }): Promise<{ record: TenantApiKey; token: string }> => {
       if (!activeTenantId) throw new Error('no tenant');
-      const { data: u } = await supabase.auth.getUser();
-      const userId = u.user?.id;
-      if (!userId) throw new Error('not authenticated');
-      const tenantPrefix = activeTenantId.replace(/-/g, '').slice(0, 6);
-      const secret = randomToken();
-      const token = `efk_${tenantPrefix}_${secret}`;
-      const hash = await sha256Hex(token);
-      const expires =
-        input.expiresInDays && input.expiresInDays > 0
-          ? new Date(Date.now() + input.expiresInDays * 24 * 60 * 60 * 1000).toISOString()
-          : null;
-      const { data, error } = await supabase
-        .from('tenant_api_keys' as any)
-        .insert({
-          tenant_id: activeTenantId,
-          name: input.name,
-          key_prefix: `efk_${tenantPrefix}`,
-          key_hash: hash,
-          scopes: input.scopes,
-          created_by: userId,
-          expires_at: expires,
-        })
-        .select()
-        .single();
-      if (error) throw error;
-      return { record: data as any, token };
+      // TODO(migração): a geração do token e o hash SHA-256 saem do navegador.
+      // Motivo: o segredo em claro só pode existir na resposta de quem o cria, e
+      // `tenant_api_keys` é access 'server' — o cliente não escreve nem lê.
+      // A Function deve sortear o segredo, gravar apenas o hash (é o que a
+      // hermes-mcp confere a cada chamada) e devolver o token uma única vez.
+      throw new Error(SEM_FUNCTION);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenant-api-keys', activeTenantId] }),
   });
 
   const revokeKey = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('tenant_api_keys' as any)
-        .update({ revoked_at: new Date().toISOString() })
-        .eq('id', id);
-      if (error) throw error;
+    mutationFn: async (_id: string) => {
+      // TODO(migração): update de revoked_at em collection 'server' — Function.
+      throw new Error(SEM_FUNCTION);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenant-api-keys', activeTenantId] }),
   });
 
   const deleteKey = useMutation({
-    mutationFn: async (id: string) => {
-      const { error } = await supabase.from('tenant_api_keys' as any).delete().eq('id', id);
-      if (error) throw error;
+    mutationFn: async (_id: string) => {
+      // TODO(migração): delete em collection 'server' — Function.
+      throw new Error(SEM_FUNCTION);
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenant-api-keys', activeTenantId] }),
   });

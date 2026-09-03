@@ -1,13 +1,19 @@
 /**
- * Timezone Hook
+ * Hook de fuso horário
  *
- * Detects and manages user's timezone for all date/time operations.
- * Automatically syncs with server preferences.
+ * Detecta e gerencia o fuso do usuário, sincronizando com user_preferences.
+ *
+ * DUAS CORREÇÕES FEITAS NA MIGRAÇÃO — este arquivo nunca compilou:
+ *  1. Tinha JSX (TimezoneProvider) dentro de um `.ts`, o que é erro de sintaxe.
+ *     Renomeado para `.tsx`.
+ *  2. Importava `@supabase/auth-helpers-react`, um pacote que nunca esteve no
+ *     package.json. Agora usa o `useAuth` do próprio app.
  */
 
 import { useEffect, useState, useCallback } from "react";
-import { useSupabaseClient } from "@supabase/auth-helpers-react";
-import { useUser } from "@supabase/auth-helpers-react";
+import { useAuth } from "@/hooks/useAuth";
+import { findOne, create, update, Query } from "@/integrations/appwrite/database";
+import { ownerOnly } from "@/integrations/appwrite/permissions";
 
 /**
  * Get browser's detected timezone (Intl API)
@@ -103,11 +109,10 @@ interface UserTimezonePreference {
  * ```
  */
 export function useTimezone() {
-  const supabase = useSupabaseClient();
-  const user = useUser();
+  const { user } = useAuth();
 
   const [timezone, setTimezoneState] = useState<string>(() =>
-    typeof window !== "undefined" ? detectBrowserTimezone() : "UTC"
+    typeof window !== "undefined" ? detectBrowserTimezone() : "America/Sao_Paulo"
   );
   const [preferences, setPreferences] = useState<UserTimezonePreference | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -124,16 +129,11 @@ export function useTimezone() {
       try {
         setIsLoading(true);
 
-        const { data, error } = await supabase
-          .from("user_preferences")
-          .select("timezone, language, date_format, time_format, week_starts_on")
-          .eq("id", user.id)
-          .single();
-
-        if (error && error.code !== "PGRST116") {
-          // PGRST116 = not found, which is okay for first-time users
-          throw error;
-        }
+        // findOne devolve null quando não existe — não precisa mais tratar o
+        // código PGRST116 do PostgREST.
+        const data = await findOne("user_preferences", [
+          Query.equal("user_id", user.$id),
+        ]);
 
         if (data) {
           setPreferences({
@@ -149,24 +149,26 @@ export function useTimezone() {
           const detectedTz = detectBrowserTimezone();
           const newPrefs: UserTimezonePreference = {
             timezone: detectedTz,
-            language: "en",
+            language: "pt-BR",
             dateFormat: "YYYY-MM-DD",
             timeFormat: "24h",
             weekStartsOn: 0,
           };
 
-          await supabase
-            .from("user_preferences")
-            .insert({
-              id: user.id,
+          // Primeiro acesso: grava a preferência já com a permissão do dono —
+          // no Postgres isso vinha da policy "view/update own" sobre user_preferences.
+          await create(
+            "user_preferences",
+            {
+              user_id: user.$id,
               timezone: detectedTz,
-              language: "en",
+              language: "pt-BR",
               date_format: "YYYY-MM-DD",
               time_format: "24h",
               week_starts_on: 0,
-            })
-            .select()
-            .single();
+            } as never,
+            ownerOnly(user.$id),
+          );
 
           setPreferences(newPrefs);
           setTimezoneState(detectedTz);
@@ -183,7 +185,7 @@ export function useTimezone() {
     };
 
     loadPreferences();
-  }, [user, supabase]);
+  }, [user]);
 
   /**
    * Update timezone in database and state
@@ -200,13 +202,12 @@ export function useTimezone() {
           throw new Error(`Invalid timezone: ${newTimezone}`);
         }
 
-        // Update in database
-        const { error } = await supabase
-          .from("user_preferences")
-          .update({ timezone: newTimezone })
-          .eq("id", user.id);
-
-        if (error) throw error;
+        // Sem UPDATE por filtro no Appwrite: acha o documento, depois atualiza.
+        const atual = await findOne("user_preferences", [
+          Query.equal("user_id", user.$id),
+        ]);
+        if (!atual) throw new Error("Preferências do usuário não encontradas");
+        await update("user_preferences", atual.id, { timezone: newTimezone } as never);
 
         // Update local state
         setTimezoneState(newTimezone);
@@ -219,7 +220,7 @@ export function useTimezone() {
         throw error;
       }
     },
-    [user, supabase]
+    [user]
   );
 
   /**

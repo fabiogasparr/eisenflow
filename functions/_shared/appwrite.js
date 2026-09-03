@@ -1,0 +1,152 @@
+/**
+ * Cliente Appwrite server-side para as Functions — zero dependências.
+ * Usa fetch nativo (Node >= 18) contra a API REST.
+ *
+ * Env esperadas (o Appwrite injeta as duas primeiras automaticamente):
+ *   APPWRITE_FUNCTION_API_ENDPOINT
+ *   APPWRITE_FUNCTION_PROJECT_ID
+ *   APPWRITE_API_KEY   (crie uma key com escopo de databases/storage/users)
+ */
+const ENDPOINT = (process.env.APPWRITE_FUNCTION_API_ENDPOINT || process.env.APPWRITE_ENDPOINT || '').replace(/\/+$/, '');
+const PROJECT = process.env.APPWRITE_FUNCTION_PROJECT_ID || process.env.APPWRITE_PROJECT_ID || '';
+const API_KEY = process.env.APPWRITE_API_KEY || '';
+export const DATABASE_ID = process.env.APPWRITE_DATABASE_ID || 'eisenflow';
+
+async function call(method, path, body, extraHeaders = {}) {
+  const res = await fetch(`${ENDPOINT}${path}`, {
+    method,
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Appwrite-Project': PROJECT,
+      'X-Appwrite-Response-Format': '1.7.0',
+      ...(API_KEY ? { 'X-Appwrite-Key': API_KEY } : {}),
+      ...extraHeaders,
+    },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const txt = await res.text();
+  let data; try { data = txt ? JSON.parse(txt) : {}; } catch { data = { message: txt }; }
+  if (!res.ok) {
+    const e = new Error(data.message || `HTTP ${res.status}`);
+    e.status = res.status; e.type = data.type;
+    throw e;
+  }
+  return data;
+}
+
+// ------------------------------------------------------------------ queries
+// Espelham a sintaxe de Query do SDK, mas como strings puras.
+export const Query = {
+  equal: (a, v) => `equal("${a}", ${JSON.stringify(Array.isArray(v) ? v : [v])})`,
+  notEqual: (a, v) => `notEqual("${a}", ${JSON.stringify([v])})`,
+  lessThan: (a, v) => `lessThan("${a}", ${JSON.stringify([v])})`,
+  lessThanEqual: (a, v) => `lessThanEqual("${a}", ${JSON.stringify([v])})`,
+  greaterThan: (a, v) => `greaterThan("${a}", ${JSON.stringify([v])})`,
+  greaterThanEqual: (a, v) => `greaterThanEqual("${a}", ${JSON.stringify([v])})`,
+  isNull: (a) => `isNull("${a}")`,
+  isNotNull: (a) => `isNotNull("${a}")`,
+  search: (a, v) => `search("${a}", ${JSON.stringify([v])})`,
+  orderAsc: (a) => `orderAsc("${a}")`,
+  orderDesc: (a) => `orderDesc("${a}")`,
+  limit: (n) => `limit(${n})`,
+  offset: (n) => `offset(${n})`,
+  cursorAfter: (id) => `cursorAfter("${id}")`,
+  or: (qs) => `or([${qs.join(',')}])`,
+  and: (qs) => `and([${qs.join(',')}])`,
+};
+
+const qs = (queries) => (queries?.length ? '?' + queries.map((q) => `queries[]=${encodeURIComponent(q)}`).join('&') : '');
+
+// ---------------------------------------------------------------- databases
+export const db = {
+  list: (collection, queries = []) =>
+    call('GET', `/databases/${DATABASE_ID}/collections/${collection}/documents${qs(queries)}`),
+
+  async findOne(collection, queries = []) {
+    const r = await this.list(collection, [...queries, Query.limit(1)]);
+    return r.documents?.[0] ?? null;
+  },
+
+  /** Pagina com cursor além do teto de 100 por request. */
+  async listAll(collection, queries = [], pageSize = 100, hardLimit = 10000) {
+    const out = []; let cursor = null;
+    while (out.length < hardLimit) {
+      const q = [...queries, Query.limit(pageSize)];
+      if (cursor) q.push(Query.cursorAfter(cursor));
+      const page = await this.list(collection, q);
+      out.push(...(page.documents || []));
+      if (!page.documents || page.documents.length < pageSize) break;
+      cursor = page.documents[page.documents.length - 1].$id;
+    }
+    return out;
+  },
+
+  get: (collection, id) => call('GET', `/databases/${DATABASE_ID}/collections/${collection}/documents/${id}`),
+
+  create: (collection, data, permissions, documentId = 'unique()') =>
+    call('POST', `/databases/${DATABASE_ID}/collections/${collection}/documents`, {
+      documentId, data: stamp(data), ...(permissions ? { permissions } : {}),
+    }),
+
+  update: (collection, id, data, permissions) =>
+    call('PATCH', `/databases/${DATABASE_ID}/collections/${collection}/documents/${id}`, {
+      data: stamp(data, true), ...(permissions ? { permissions } : {}),
+    }),
+
+  delete: (collection, id) =>
+    call('DELETE', `/databases/${DATABASE_ID}/collections/${collection}/documents/${id}`),
+
+  /**
+   * Substitui os joins do PostgREST: carrega os relacionados em lote.
+   * loadRelated('projects', tasks.map(t => t.project_id)) -> Map<id, doc>
+   */
+  async loadRelated(collection, ids) {
+    const unique = [...new Set(ids.filter(Boolean))];
+    const map = new Map();
+    for (let i = 0; i < unique.length; i += 100) {
+      const page = await this.list(collection, [Query.equal('$id', unique.slice(i, i + 100)), Query.limit(100)]);
+      (page.documents || []).forEach((d) => map.set(d.$id, d));
+    }
+    return map;
+  },
+};
+
+function stamp(data, isUpdate = false) {
+  const out = { ...data };
+  const now = new Date().toISOString();
+  if (!isUpdate && out.created_at === undefined) out.created_at = now;
+  if (out.updated_at === undefined) out.updated_at = now;
+  return out;
+}
+
+// ------------------------------------------------------------------ storage
+export const storage = {
+  getFile: (bucketId, fileId) => call('GET', `/storage/buckets/${bucketId}/files/${fileId}`),
+  async download(bucketId, fileId) {
+    const res = await fetch(`${ENDPOINT}/storage/buckets/${bucketId}/files/${fileId}/download`, {
+      headers: { 'X-Appwrite-Project': PROJECT, 'X-Appwrite-Key': API_KEY },
+    });
+    if (!res.ok) throw new Error(`download falhou: HTTP ${res.status}`);
+    return Buffer.from(await res.arrayBuffer());
+  },
+  /** Base64 para mandar imagem a um modelo multimodal. */
+  async asDataUrl(bucketId, fileId, mimeType = 'image/png') {
+    const buf = await this.download(bucketId, fileId);
+    return `data:${mimeType};base64,${buf.toString('base64')}`;
+  },
+};
+
+// -------------------------------------------------------------------- users
+export const users = {
+  get: (userId) => call('GET', `/users/${userId}`),
+  listByEmail: (email) => call('GET', `/users?${`queries[]=${encodeURIComponent(Query.equal('email', email))}`}`),
+};
+
+// -------------------------------------------------------------------- teams
+export const teams = {
+  get: (teamId) => call('GET', `/teams/${teamId}`),
+  memberships: (teamId) => call('GET', `/teams/${teamId}/memberships`),
+  createMembership: (teamId, body) => call('POST', `/teams/${teamId}/memberships`, body),
+};
+
+export { call as rawCall, ENDPOINT, PROJECT };

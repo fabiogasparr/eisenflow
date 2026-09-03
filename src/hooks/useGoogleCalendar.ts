@@ -1,15 +1,34 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useEffect, useCallback } from 'react';
+import { invoke } from '@/integrations/appwrite/functions';
+import { update } from '@/integrations/appwrite/database';
+
+/**
+ * Metadados da conexão com o Google Calendar.
+ *
+ * MUDANÇA DE SEGURANÇA DELIBERADA: no backend antigo o cliente lia
+ * `google_calendar_tokens` direto (e portanto enxergava access_token e
+ * refresh_token do usuário — isso era uma falha). No Appwrite a collection é
+ * SERVER-ONLY: o cliente não lê nem escreve. Todo acesso passa pelas Functions
+ * `google-calendar-auth` e `google-calendar-sync`, que devolvem apenas os
+ * metadados não sensíveis descritos abaixo. Token nenhum chega ao navegador.
+ */
+export interface GoogleCalendarStatus {
+  connected: boolean;
+  google_email?: string | null;
+  calendar_id?: string | null;
+  sync_enabled?: boolean | null;
+  last_synced_at?: string | null;
+}
 
 export function useGoogleCalendar() {
-  const { user, session } = useAuth();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Listen for popup callback
+  // Aviso do popup de OAuth quando a Function termina o callback
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'google-calendar-connected') {
@@ -22,60 +41,65 @@ export function useGoogleCalendar() {
   }, [queryClient, toast]);
 
   const tokenQuery = useQuery({
-    queryKey: ['google-calendar-token', user?.id],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('google_calendar_tokens')
-        .select('*')
-        .eq('user_id', user!.id)
-        .maybeSingle();
-      if (error) throw error;
-      return data;
+    queryKey: ['google-calendar-token', user?.$id],
+    queryFn: async (): Promise<GoogleCalendarStatus | null> => {
+      // Antes: SELECT em google_calendar_tokens. Agora a Function responde por
+      // ela — o cliente não tem permissão de leitura na collection.
+      // TODO(migração): a action 'status' precisa existir em google-calendar-auth
+      // (o scaffold hoje documenta apenas authorize/callback/disconnect) e deve
+      // devolver SÓ os metadados de GoogleCalendarStatus, nunca os tokens.
+      const status = await invoke<GoogleCalendarStatus>('google-calendar-auth', { action: 'status' });
+      return status?.connected ? status : null;
     },
     enabled: !!user,
   });
 
-  // Auto-import events once per session when connected + sync enabled
+  // Importa os eventos uma vez por sessão quando a sincronização está ligada
   useEffect(() => {
     if (tokenQuery.data?.sync_enabled && sessionStorage.getItem('gcal-auto-imported') !== 'true') {
       sessionStorage.setItem('gcal-auto-imported', 'true');
-      supabase.functions.invoke('google-calendar-sync', {
-        body: { action: 'import-events' },
-      }).then(({ error }) => {
-        if (!error) {
+      invoke('google-calendar-sync', { action: 'import-events' })
+        .then(() => {
           queryClient.invalidateQueries({ queryKey: ['tasks'] });
-        }
-      }).catch(console.error);
+        })
+        .catch(console.error);
     }
   }, [tokenQuery.data?.sync_enabled, queryClient]);
 
   const isConnected = !!tokenQuery.data;
 
   const calendarsQuery = useQuery({
-    queryKey: ['google-calendars', user?.id],
+    queryKey: ['google-calendars', user?.$id],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('google-calendar-sync', {
-        body: { action: 'list-calendars' },
-      });
-      if (error) throw error;
-      return data?.calendars as Array<{ id: string; summary: string; primary: boolean; backgroundColor: string }> || [];
+      const data = await invoke<{
+        calendars?: Array<{ id: string; summary: string; primary: boolean; backgroundColor: string }>;
+      }>('google-calendar-sync', { action: 'list-calendars' });
+      return data?.calendars ?? [];
     },
     enabled: !!user && isConnected,
   });
 
-  const connect = useCallback(() => {
-    if (!session?.access_token) return;
-    const projectId = import.meta.env.VITE_SUPABASE_PROJECT_ID;
-    const authUrl = `https://${projectId}.supabase.co/functions/v1/google-calendar-auth?action=authorize&state=${session.access_token}`;
-    window.open(authUrl, 'google-calendar-auth', 'width=500,height=700');
-  }, [session]);
+  const connect = useCallback(async () => {
+    if (!user) return;
+    try {
+      // Antes a URL da function era montada no cliente com o access_token da
+      // sessão na querystring (`state=<access_token>`) — token de sessão
+      // viajando em URL. Agora a própria Function monta a URL de consent do
+      // Google e a devolve; a sessão do Appwrite viaja no cabeçalho.
+      const { url } = await invoke<{ url: string }>('google-calendar-auth', { action: 'authorize' });
+      window.open(url, 'google-calendar-auth', 'width=500,height=700');
+    } catch (err) {
+      toast({
+        title: 'Erro ao conectar',
+        description: (err as Error).message,
+        variant: 'destructive',
+      });
+    }
+  }, [user, toast]);
 
   const disconnect = useMutation({
     mutationFn: async () => {
-      const { error } = await supabase.functions.invoke('google-calendar-auth', {
-        body: { action: 'disconnect' },
-      });
-      if (error) throw error;
+      await invoke('google-calendar-auth', { action: 'disconnect' });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['google-calendar-token'] });
@@ -89,17 +113,15 @@ export function useGoogleCalendar() {
 
   const syncAllTasks = useMutation({
     mutationFn: async () => {
-      // Export tasks → Google
-      const { data: exportData, error: exportError } = await supabase.functions.invoke('google-calendar-sync', {
-        body: { action: 'sync-tasks' },
+      // Exporta tarefas → Google
+      const exportData = await invoke<{ synced?: number }>('google-calendar-sync', {
+        action: 'sync-tasks',
       });
-      if (exportError) throw exportError;
 
-      // Import Google → tasks
-      const { data: importData, error: importError } = await supabase.functions.invoke('google-calendar-sync', {
-        body: { action: 'import-events' },
+      // Importa Google → tarefas
+      const importData = await invoke<{ imported?: number; updated?: number }>('google-calendar-sync', {
+        action: 'import-events',
       });
-      if (importError) throw importError;
 
       return { export: exportData, import: importData };
     },
@@ -119,13 +141,10 @@ export function useGoogleCalendar() {
   });
 
   const importEvents = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('google-calendar-sync', {
-        body: { action: 'import-events' },
-      });
-      if (error) throw error;
-      return data;
-    },
+    mutationFn: async () =>
+      invoke<{ imported?: number; updated?: number }>('google-calendar-sync', {
+        action: 'import-events',
+      }),
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast({
@@ -140,14 +159,18 @@ export function useGoogleCalendar() {
 
   const updateSettings = useMutation({
     mutationFn: async (updates: { sync_enabled?: boolean; calendar_id?: string }) => {
-      const { error } = await supabase
-        .from('google_calendar_tokens')
-        .update(updates)
-        .eq('user_id', user!.id);
-      if (error) throw error;
+      // Antes: UPDATE em google_calendar_tokens. A collection é server-only,
+      // então quem grava é a Function — mesmo para campos inofensivos, porque a
+      // permissão é do documento inteiro.
+      // TODO(migração): a action 'update-settings' precisa existir em
+      // google-calendar-auth e aceitar apenas sync_enabled e calendar_id.
+      await invoke('google-calendar-auth', { action: 'update-settings', ...updates });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['google-calendar-token'] });
+    },
+    onError: (err: Error) => {
+      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
     },
   });
 
@@ -182,14 +205,12 @@ export function useGoogleCalendar() {
           body.eventId = task.google_event_id;
         }
 
-        const { data, error } = await supabase.functions.invoke('google-calendar-sync', { body });
-        if (error) throw error;
+        const data = await invoke<{ event?: { id?: string } }>('google-calendar-sync', body);
 
+        // `tasks` continua sendo escrita pelo cliente: guardar o id do evento não
+        // muda a titularidade do documento, então as permissões seguem as mesmas.
         if (!task.google_event_id && data?.event?.id) {
-          await supabase
-            .from('tasks')
-            .update({ google_event_id: data.event.id })
-            .eq('id', task.id);
+          await update('tasks', task.id, { google_event_id: data.event.id });
         }
       } catch (err) {
         console.error('Google Calendar sync error:', err);
@@ -207,7 +228,7 @@ export function useGoogleCalendar() {
     connect,
     disconnect,
     syncAllTasks,
-    
+    importEvents,
     syncTask,
     updateSettings,
   };

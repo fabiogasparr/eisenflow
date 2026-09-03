@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { invoke } from '@/integrations/appwrite/functions';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 
 export interface GoogleEvent {
@@ -22,11 +22,14 @@ export function useGoogleCalendarEvents(timeMin: string | null, timeMax: string 
   return useQuery({
     queryKey: ['google-calendar-events', timeMin, timeMax],
     queryFn: async () => {
-      const { data, error } = await supabase.functions.invoke('google-calendar-sync', {
-        body: { action: 'list-events', timeMin, timeMax },
+      // Os eventos vêm da Function: o token do Google fica no servidor e o
+      // cliente nunca fala direto com a API do Google.
+      const data = await invoke<{ events?: GoogleEvent[] }>('google-calendar-sync', {
+        action: 'list-events',
+        timeMin,
+        timeMax,
       });
-      if (error) throw error;
-      return (data?.events ?? []) as GoogleEvent[];
+      return data?.events ?? [];
     },
     enabled,
     staleTime: 5 * 60 * 1000,

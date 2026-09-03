@@ -34,6 +34,8 @@ export interface Task {
   recurrence_rule: RecurrenceRule | null;
   recurrence_parent_id: string | null;
   google_event_id: string | null;
+  /** Tenant dono da tarefa. Existia no Postgres e faltava neste tipo. */
+  tenant_id: string | null;
 }
 
 export interface CreateTaskInput {

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { listDocs, listAll, Query } from '@/integrations/appwrite/database';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTeamMembers } from '@/hooks/useTeams';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,22 +20,19 @@ export function TeamDashboard({ teamId }: TeamDashboardProps) {
   const { data: teamTasks = [], isLoading } = useQuery({
     queryKey: ['team_tasks', teamId],
     queryFn: async (): Promise<Task[]> => {
-      // Get projects for this team
-      const { data: projects } = await supabase
-        .from('projects')
-        .select('id')
-        .eq('team_id', teamId);
+      // Projetos do time. Só chegam os que a permissão do documento libera para
+      // esta sessão — o recorte que a RLS fazia a cada query.
+      const projects = await listDocs('projects', [
+        Query.equal('team_id', teamId),
+        Query.limit(100),
+      ]);
+      if (projects.length === 0) return [];
 
-      if (!projects?.length) return [];
-
+      // `.in('project_id', ids)` vira Query.equal com array. listAll pagina com
+      // cursor: um time pode passar bem do teto de 100 tarefas por request.
       const projectIds = projects.map((p) => p.id);
-      const { data: tasks, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .in('project_id', projectIds);
-
-      if (error) throw error;
-      return (tasks ?? []) as Task[];
+      const tasks = await listAll('tasks', [Query.equal('project_id', projectIds)]);
+      return tasks as unknown as Task[];
     },
     enabled: !!teamId,
   });

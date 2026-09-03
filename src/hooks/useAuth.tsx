@@ -1,10 +1,22 @@
-import { useState, useEffect, createContext, useContext } from 'react';
-import { supabase } from '@/integrations/supabase/client';
-import type { User, Session } from '@supabase/supabase-js';
+import { useState, useEffect, createContext, useContext, useCallback } from 'react';
+import {
+  onAuthChange,
+  signUp as awSignUp,
+  signIn as awSignIn,
+  signOut as awSignOut,
+  refreshAuth,
+  type AppUser,
+} from '@/integrations/appwrite/auth';
+import { findOne, Query } from '@/integrations/appwrite/database';
 
 interface AuthContextType {
-  user: User | null;
-  session: Session | null;
+  user: AppUser | null;
+  /**
+   * O Appwrite não expõe um objeto de sessão como o Supabase. Mantido como
+   * espelho de `user` para os componentes que só checavam `session` para saber
+   * se havia alguém logado.
+   */
+  session: AppUser | null;
   loading: boolean;
   signUp: (email: string, password: string, displayName?: string) => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
@@ -14,62 +26,46 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
-  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<AppUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    // O Appwrite não emite evento de auth: onAuthChange resolve a sessão uma vez
+    // e revalida quando a aba volta ao foco.
+    const unsubscribe = onAuthChange((u) => {
+      setUser(u);
       setLoading(false);
     });
-
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
-    return () => subscription.unsubscribe();
+    return unsubscribe;
   }, []);
 
-  const signUp = async (email: string, password: string, displayName?: string) => {
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        data: { display_name: displayName },
-        emailRedirectTo: window.location.origin,
-      },
-    });
-    if (error) throw error;
-  };
+  const signUp = useCallback(async (email: string, password: string, displayName?: string) => {
+    await awSignUp(email, password, displayName);
+    await refreshAuth();
+  }, []);
 
-  const signIn = async (email: string, password: string) => {
-    const { error, data } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) throw error;
+  const signIn = useCallback(async (email: string, password: string) => {
+    await awSignIn(email, password);
+    const me = await refreshAuth();
 
-    // Check if user is disabled
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('disabled')
-      .eq('user_id', data.user.id)
-      .maybeSingle();
-
-    if ((profile as any)?.disabled) {
-      await supabase.auth.signOut();
-      throw new Error('Sua conta foi desativada. Entre em contato com o administrador.');
+    // Mesma regra de antes: conta desativada não entra.
+    if (me) {
+      const profile = await findOne('profiles', [Query.equal('user_id', me.$id)]);
+      if (profile?.disabled) {
+        await awSignOut();
+        await refreshAuth();
+        throw new Error('Sua conta foi desativada. Entre em contato com o administrador.');
+      }
     }
-  };
+  }, []);
 
-  const signOut = async () => {
-    const { error } = await supabase.auth.signOut();
-    if (error) throw error;
-  };
+  const signOut = useCallback(async () => {
+    await awSignOut();
+    await refreshAuth();
+  }, []);
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, signUp, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, session: user, loading, signUp, signIn, signOut }}>
       {children}
     </AuthContext.Provider>
   );

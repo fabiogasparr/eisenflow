@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { AppLayout } from '@/components/AppLayout';
 import { useAdminGuard } from '@/hooks/useAdminGuard';
-import { supabase } from '@/integrations/supabase/client';
+import { list, listAll, Query } from '@/integrations/appwrite/database';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -77,48 +77,66 @@ export default function AdminPage() {
     if (!isSuperAdmin) return;
 
     const fetchData = async () => {
-      const [profilesRes, tasksRes, completedRes, gamificationRes, allTasksRes, teamsRes, teamMembersRes, tenantsRes, tenantMembersRes] = await Promise.all([
-        supabase.from('profiles').select('user_id, display_name, created_at, preferred_language, disabled'),
-        supabase.from('tasks').select('id', { count: 'exact', head: true }),
-        supabase.from('tasks').select('id', { count: 'exact', head: true }).eq('status', 'completed'),
-        supabase.from('gamification').select('*'),
-        supabase.from('tasks').select('created_by, status'),
-        supabase.from('teams').select('id, name, description, created_at, created_by'),
-        supabase.from('team_members').select('team_id, user_id, role, joined_at'),
-        supabase.from('tenants').select('*'),
-        supabase.from('tenant_members').select('*'),
+      // TODO(migração): no Postgres as policies "Super admins can view all ..."
+      // davam ao super admin leitura global a cada query. No Appwrite a
+      // permissão está gravada em cada documento e a sessão do admin não
+      // aparece nelas: estas leituras só devolvem o que ESTE usuário já podia
+      // ver. Um painel administrativo de verdade precisa de uma Appwrite
+      // Function com API key (Role de servidor) devolvendo os agregados
+      // prontos. Nada aqui é falseado — os números simplesmente ficam
+      // limitados ao que a sessão enxerga até essa Function existir.
+      const [profilesDocs, tasksTotal, completedTotal, gamificationDocs, allTasksDocs, teamsDocs, teamMembersDocs, tenantsDocs, tenantMembersDocs] = await Promise.all([
+        // Não existe projeção de colunas (`select('user_id, display_name, ...')`):
+        // o Appwrite devolve o documento inteiro.
+        listAll('profiles'),
+        // `select('id', { count: 'exact', head: true })` -> list() devolve o
+        // `total` do servidor; Query.limit(1) evita trazer os documentos.
+        list('tasks', [Query.limit(1)]),
+        list('tasks', [Query.equal('status', 'completed'), Query.limit(1)]),
+        listAll('gamification'),
+        // listAll pagina com cursor: o teto é 100 documentos por request e a
+        // contagem por usuário precisa varrer tudo.
+        listAll('tasks'),
+        listAll('teams'),
+        listAll('team_members'),
+        listAll('tenants'),
+        listAll('tenant_members'),
       ]);
 
-      setProfiles((profilesRes.data as UserProfile[]) || []);
+      setProfiles(profilesDocs as unknown as UserProfile[]);
 
       // Build gamification map
       const gMap: Record<string, UserGamification> = {};
-      (gamificationRes.data || []).forEach((g: any) => {
+      gamificationDocs.forEach((g: any) => {
         gMap[g.user_id] = g;
       });
       setGamificationMap(gMap);
 
       // Build task count map per user
+      // O `count(*) group by` que faria isso em SQL não existe no Appwrite:
+      // a contagem por usuário é feita em memória sobre o listAll acima.
       const tMap: Record<string, { pending: number; in_progress: number; completed: number; eliminated: number }> = {};
-      (allTasksRes.data || []).forEach((t: any) => {
+      allTasksDocs.forEach((t: any) => {
         if (!tMap[t.created_by]) {
           tMap[t.created_by] = { pending: 0, in_progress: 0, completed: 0, eliminated: 0 };
         }
-        if (t.status in tMap[t.created_by]) {
-          tMap[t.created_by][t.status as keyof typeof tMap[string]]++;
+        // `status` tinha DEFAULT 'pending' no Postgres; no Appwrite é opcional.
+        const st = t.status ?? 'pending';
+        if (st in tMap[t.created_by]) {
+          tMap[t.created_by][st as keyof typeof tMap[string]]++;
         }
       });
       setTaskCountMap(tMap);
 
       // Build teams data
-      setTeamsData((teamsRes.data as TeamInfo[]) || []);
+      setTeamsData(teamsDocs as unknown as TeamInfo[]);
 
       // Build team members map with profile names
       const profileMap: Record<string, string | null> = {};
-      (profilesRes.data || []).forEach((p: any) => { profileMap[p.user_id] = p.display_name; });
+      profilesDocs.forEach((p: any) => { profileMap[p.user_id] = p.display_name; });
 
       const tmMap: Record<string, TeamMemberInfo[]> = {};
-      (teamMembersRes.data || []).forEach((m: any) => {
+      teamMembersDocs.forEach((m: any) => {
         if (!tmMap[m.team_id]) tmMap[m.team_id] = [];
         tmMap[m.team_id].push({
           user_id: m.user_id,
@@ -130,9 +148,9 @@ export default function AdminPage() {
       setTeamMembersMap(tmMap);
 
       // Build tenants data
-      setTenantsData((tenantsRes.data as any[]) || []);
+      setTenantsData(tenantsDocs as any[]);
       const tmemMap: Record<string, any[]> = {};
-      (tenantMembersRes.data || []).forEach((m: any) => {
+      tenantMembersDocs.forEach((m: any) => {
         if (!tmemMap[m.tenant_id]) tmemMap[m.tenant_id] = [];
         tmemMap[m.tenant_id].push({
           ...m,
@@ -143,14 +161,14 @@ export default function AdminPage() {
 
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      const activeUsers = (gamificationRes.data || []).filter(
+      const activeUsers = gamificationDocs.filter(
         (g: any) => g.last_active_date && new Date(g.last_active_date) >= sevenDaysAgo
       ).length;
 
       setStats({
-        totalUsers: (profilesRes.data || []).length,
-        totalTasks: tasksRes.count || 0,
-        completedTasks: completedRes.count || 0,
+        totalUsers: profilesDocs.length,
+        totalTasks: tasksTotal.total,
+        completedTasks: completedTotal.total,
         activeUsers7d: activeUsers,
       });
       setLoadingData(false);
@@ -159,20 +177,19 @@ export default function AdminPage() {
     fetchData();
   }, [isSuperAdmin]);
 
+  // TODO(migração): ativar/desativar OUTRO usuário era permitido pela policy
+  // "Super admins can update any profile", avaliada no banco. No Appwrite a
+  // permissão de update do documento `profiles` é do próprio dono — a sessão do
+  // admin não consegue escrever no perfil alheio, e um update daqui falharia
+  // com 401 depois de já ter mexido no estado da tela. Esta operação precisa de
+  // uma Appwrite Function com API key (que também deve bloquear a sessão do
+  // usuário desativado, coisa que o `disabled` sozinho não faz).
   const toggleUserDisabled = async (userId: string, currentDisabled: boolean) => {
-    setTogglingUser(userId);
-    const { error } = await supabase
-      .from('profiles')
-      .update({ disabled: !currentDisabled } as any)
-      .eq('user_id', userId);
-
-    if (error) {
-      toast({ title: 'Erro', description: 'Não foi possível alterar o status do usuário.', variant: 'destructive' });
-    } else {
-      setProfiles(prev => prev.map(p => p.user_id === userId ? { ...p, disabled: !currentDisabled } : p));
-      toast({ title: !currentDisabled ? 'Usuário desativado' : 'Usuário ativado' });
-    }
-    setTogglingUser(null);
+    const mensagem =
+      'Ativar/desativar usuário não é possível pelo cliente: a escrita em perfis de terceiros ' +
+      'exige uma Appwrite Function com API key de servidor (admin-toggle-user), que ainda não existe.';
+    toast({ title: 'Operação indisponível', description: mensagem, variant: 'destructive' });
+    throw new Error(mensagem);
   };
 
   if (loading || !isSuperAdmin) {

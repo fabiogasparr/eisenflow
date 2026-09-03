@@ -14,7 +14,8 @@ import { Plus, FolderKanban, Users, Archive, ArchiveRestore, MoreVertical, Penci
 import { Progress } from '@/components/ui/progress';
 import { Tooltip, TooltipContent, TooltipTrigger, TooltipProvider } from '@/components/ui/tooltip';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { create, update, remove, listDocs, listAll, loadRelated, Query } from '@/integrations/appwrite/database';
+import { projectPermissions } from '@/integrations/appwrite/permissions';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useTeams } from '@/hooks/useTeams';
@@ -54,28 +55,30 @@ export default function Projects() {
   const [deleteProject, setDeleteProject] = useState<any>(null);
 
   const { data: projects = [] } = useQuery({
-    queryKey: ['projects', user?.id],
+    queryKey: ['projects', user?.$id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*, teams(name)')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
+      // O join embutido `select('*, teams(name)')` do PostgREST não existe no
+      // Appwrite: buscamos os times referenciados em uma segunda query e
+      // juntamos em memória, mantendo a chave `teams` que a UI já lê.
+      const docs = await listDocs('projects', [Query.orderDesc('created_at')]);
+      const times = await loadRelated('teams', docs.map((p) => p.team_id));
+      return docs.map((p) => ({
+        ...p,
+        teams: p.team_id ? times.get(p.team_id) ?? null : null,
+      }));
     },
     enabled: !!user,
   });
 
   const { data: taskStats = {} } = useQuery({
-    queryKey: ['project-task-stats', user?.id],
+    queryKey: ['project-task-stats', user?.$id],
     queryFn: async () => {
       if (!user) return {};
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('project_id, status, quadrant')
-        .not('project_id', 'is', null);
-      if (error) throw error;
+      // `.not('project_id', 'is', null)` vira Query.isNotNull. listAll pagina
+      // com cursor porque o teto do Appwrite é 100 documentos por request e a
+      // contagem precisa varrer TODAS as tarefas com projeto.
+      const data = await listAll('tasks', [Query.isNotNull('project_id')]);
       const stats: Record<string, { total: number; completed: number; quadrants: Record<string, number>; statuses: Record<string, number> }> = {};
       for (const task of data ?? []) {
         if (!task.project_id) continue;
@@ -84,7 +87,10 @@ export default function Projects() {
         if (task.status === 'completed') stats[task.project_id].completed++;
         const q = task.quadrant ?? 'do';
         stats[task.project_id].quadrants[q] = (stats[task.project_id].quadrants[q] || 0) + 1;
-        stats[task.project_id].statuses[task.status] = (stats[task.project_id].statuses[task.status] || 0) + 1;
+        // No Postgres `status` tinha DEFAULT 'pending'; no Appwrite o campo é
+        // opcional, então o fallback fica aqui.
+        const st = task.status ?? 'pending';
+        stats[task.project_id].statuses[st] = (stats[task.project_id].statuses[st] || 0) + 1;
       }
       return stats;
     },
@@ -98,14 +104,20 @@ export default function Projects() {
   const createProject = useMutation({
     mutationFn: async () => {
       if (!user) throw new Error('Not auth');
-      const { error } = await supabase.from('projects').insert({
-        name,
-        color,
-        owner_id: user.id,
-        team_id: teamId || null,
-        tenant_id: activeTenantId ?? null,
-      } as any);
-      if (error) throw error;
+      await create(
+        'projects',
+        {
+          name,
+          color,
+          owner_id: user.$id,
+          team_id: teamId || null,
+          tenant_id: activeTenantId ?? null,
+        },
+        // A RLS do Postgres decidia quem via o projeto a cada query. Aqui a
+        // regra é gravada NO DOCUMENTO: dono lê/edita/apaga e, havendo tenant,
+        // o time do tenant ganha leitura.
+        projectPermissions({ ownerId: user.$id, tenantTeamId: activeTenantId }),
+      );
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -120,8 +132,9 @@ export default function Projects() {
 
   const archiveProject = useMutation({
     mutationFn: async ({ id, archived }: { id: string; archived: boolean }) => {
-      const { error } = await supabase.from('projects').update({ archived }).eq('id', id);
-      if (error) throw error;
+      // Arquivar não muda a titularidade do documento: as permissões seguem
+      // as mesmas, por isso nada no terceiro argumento de update().
+      await update('projects', id, { archived });
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['projects'] }),
     onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
@@ -130,12 +143,14 @@ export default function Projects() {
   const updateProject = useMutation({
     mutationFn: async () => {
       if (!editProject) return;
-      const { error } = await supabase.from('projects').update({
+      // Trocar o time interno (`team_id`) não altera quem é dono nem o tenant,
+      // que são o que projectPermissions usa — as permissões do documento
+      // continuam válidas e não são reescritas aqui.
+      await update('projects', editProject.id, {
         name: editName,
         color: editColor,
         team_id: editTeamId || null,
-      }).eq('id', editProject.id);
-      if (error) throw error;
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -146,11 +161,20 @@ export default function Projects() {
 
   const removeProject = useMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('projects').delete().eq('id', id);
-      if (error) throw error;
+      // Sem ON DELETE CASCADE no Appwrite. No Postgres o FK de tasks.project_id
+      // era ON DELETE SET NULL: apagar o projeto direto deixaria as tarefas
+      // apontando para um projeto inexistente. Desanexamos antes de remover.
+      const tarefas = await listAll('tasks', [Query.equal('project_id', id)]);
+      await Promise.all(
+        tarefas.map((t) => update('tasks', t.id, { project_id: null }).catch(() => undefined)),
+      );
+      await remove('projects', id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
+      queryClient.invalidateQueries({ queryKey: ['project-task-stats'] });
+      // As tarefas desanexadas mudaram: a matriz precisa recarregar.
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       setDeleteProject(null);
     },
     onError: (err: Error) => toast({ title: 'Error', description: err.message, variant: 'destructive' }),
