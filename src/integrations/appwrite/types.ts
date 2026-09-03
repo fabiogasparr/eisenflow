@@ -5,7 +5,9 @@
 
 import type { Models } from 'appwrite';
 
-export const DATABASE_ID = 'eisenflow' as const;
+// O ID do database vem do ambiente; o padrão é o database real do projeto.
+// NÃO troque por um nome legível: o Appwrite gerou este ID e é ele que o servidor conhece.
+export const DATABASE_ID = (import.meta.env.VITE_APPWRITE_DATABASE_ID as string) || '6a9887fe000ab0ab3b2e';
 
 /** IDs das collections — use sempre a constante, nunca a string solta. */
 export const COLLECTIONS = {
