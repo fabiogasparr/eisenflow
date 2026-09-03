@@ -4,7 +4,8 @@ import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from '@/co
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Check, X, Loader2, ArrowRight } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
+import { update, listDocs, loadRelated, Query } from '@/integrations/appwrite/database';
+import { invoke } from '@/integrations/appwrite/functions';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { QUADRANT_CONFIG } from '@/types/task';
@@ -35,14 +36,22 @@ export function AISuggestionsSheet() {
 
   const { data: suggestions = [], isLoading } = useQuery({
     queryKey: ['ai-reclassification-suggestions'],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('task_reclassification_suggestions')
-        .select('*, tasks(title)')
-        .eq('status', 'pending')
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as unknown as Suggestion[];
+    queryFn: async (): Promise<Suggestion[]> => {
+      // Sem `.eq('user_id', ...)`: só chegam as sugestões cuja permissão de
+      // documento inclui esta sessão — é o recorte que a RLS fazia por query.
+      const docs = await listDocs('task_reclassification_suggestions', [
+        Query.equal('status', 'pending'),
+        Query.orderDesc('created_at'),
+      ]);
+
+      // O join embutido `tasks(title)` do PostgREST não existe: as tarefas vêm
+      // em uma segunda query e a junção é feita em memória.
+      const taskMap = await loadRelated('tasks', docs.map((d) => d.task_id));
+
+      return docs.map((d) => ({
+        ...d,
+        tasks: d.task_id ? { title: taskMap.get(d.task_id)?.title ?? '—' } : null,
+      })) as unknown as Suggestion[];
     },
     refetchInterval: 60_000,
   });
@@ -52,15 +61,21 @@ export function AISuggestionsSheet() {
       const s = suggestions.find((x) => x.id === id);
       if (!s) return;
       if (accept) {
-        await supabase.from('tasks').update({
+        // Sem terceiro argumento em update(): importância/urgência/quadrante não
+        // mudam a titularidade da tarefa (criador, responsável e tenant seguem
+        // os mesmos), então as permissões gravadas no documento continuam
+        // válidas e NÃO devem ser recalculadas.
+        await update('tasks', s.task_id, {
           importance: s.suggested_importance,
           urgency: s.applied_urgency,
           quadrant: s.suggested_quadrant,
-        }).eq('id', s.task_id);
+        });
       }
-      await supabase.from('task_reclassification_suggestions')
-        .update({ status: accept ? 'accepted' : 'rejected', resolved_at: new Date().toISOString() })
-        .eq('id', id);
+      // Idem para a sugestão: só o status muda, quem lê o documento é o mesmo.
+      await update('task_reclassification_suggestions', id, {
+        status: accept ? 'accepted' : 'rejected',
+        resolved_at: new Date().toISOString(),
+      });
     },
     onSuccess: (_d, vars) => {
       qc.invalidateQueries({ queryKey: ['ai-reclassification-suggestions'] });
@@ -76,8 +91,17 @@ export function AISuggestionsSheet() {
   const reevaluate = async () => {
     setRunning(true);
     try {
-      const { data, error } = await supabase.functions.invoke('reevaluate-deadlines', { body: {} });
-      if (error) throw error;
+      // invoke() LANÇA em caso de erro — não devolve `{ data, error }`.
+      // TODO(migração): `reevaluate-deadlines` nasceu como function de cron
+      // (auth: servidor) e o scaffold rejeita chamada que não venha do
+      // agendador nem traga INTERNAL_FUNCTION_SECRET. Para este botão
+      // ("Reavaliar agora") funcionar, a Function precisa passar a aceitar
+      // também uma invocação autenticada de usuário e limitar o processamento
+      // ao dono da sessão.
+      const data = await invoke<{ suggestionsCreated?: number; urgencyApplied?: number }>(
+        'reevaluate-deadlines',
+        {},
+      );
       toast({
         title: t('Reavaliação concluída', 'Reevaluation done'),
         description: t(
@@ -87,8 +111,9 @@ export function AISuggestionsSheet() {
       });
       qc.invalidateQueries({ queryKey: ['ai-reclassification-suggestions'] });
       qc.invalidateQueries({ queryKey: ['tasks'] });
-    } catch (e: any) {
-      toast({ title: t('Erro', 'Error'), description: e.message, variant: 'destructive' });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      toast({ title: t('Erro', 'Error'), description: msg, variant: 'destructive' });
     } finally {
       setRunning(false);
     }

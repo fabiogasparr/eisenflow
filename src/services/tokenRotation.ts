@@ -1,384 +1,229 @@
 /**
- * Token Rotation Service
- * Implements secure token rotation with expiration and audit logging
+ * Sessões e rotação de token.
+ *
+ * O QUE MUDOU NA MIGRAÇÃO
+ * -----------------------
+ * Este arquivo dependia de duas tabelas (`session_tokens`, `token_rotation_log`)
+ * e de RPCs do Postgres (`is_refresh_token_expired`, `revoke_all_user_tokens`,
+ * `detect_token_reuse_attack`, `log_token_rotation`, `cleanup_expired_tokens`).
+ * NADA disso foi migrado, de propósito:
+ *
+ * - Sessão é nativa do Appwrite. Criar, listar, expirar e revogar sessão é
+ *   trabalho do `account.*` — não existe mais uma tabela paralela de sessões
+ *   mantida à mão, que era exatamente a fonte de bugs que este arquivo tentava
+ *   remediar.
+ * - A rotação do token do GOOGLE (access/refresh do Google Calendar) acontece
+ *   agora DENTRO da Function `google-calendar-auth`, no servidor, cifrada com
+ *   `node:crypto` e a chave `GOOGLE_TOKENS_ENCRYPTION_KEY`. O cliente não toca
+ *   em token do Google em momento nenhum — `google_calendar_tokens` é
+ *   server-only.
+ *
+ * As assinaturas exportadas foram mantidas (menos o parâmetro do cliente de
+ * banco, que deixou de existir). O que virou API nativa está implementado; o que não
+ * tem equivalente LANÇA erro — nenhuma função aqui finge funcionar em silêncio,
+ * porque um controle de segurança que falha calado é pior do que não existir.
  */
 
-import { SupabaseClient } from "@supabase/supabase-js";
+import { account } from '@/integrations/appwrite/client';
+import type { Models } from 'appwrite';
+
+/** Erro único para tudo que não tem equivalente do lado do cliente. */
+function naoMigrado(funcao: string, detalhe: string): never {
+  throw new Error(`[tokenRotation] ${funcao}() não existe mais no cliente: ${detalhe}`);
+}
 
 /**
- * Generate a token family ID
- * Used to track related tokens across rotations
+ * Gera um id de família de token.
+ * Função pura, mantida porque não dependia de banco.
  */
 export function generateTokenFamily(): string {
-  return `tf_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+  return `tf_${Date.now()}_${Math.random().toString(36).substring(2, 11)}`;
 }
 
 /**
- * Initialize token rotation for a user
- * Should be called when tokens are first created
+ * Antes: marcava token_family/token_generation em google_calendar_tokens.
+ * Agora: quem emite e versiona o token do Google é a Function
+ * `google-calendar-auth`, no servidor.
  */
 export async function initializeTokenRotation(
-  supabase: SupabaseClient,
-  userId: string,
-  refreshTokenExpiresIn: number = 30 * 24 * 60 * 60 // 30 days in seconds
+  _userId: string,
+  _refreshTokenExpiresIn: number = 30 * 24 * 60 * 60,
 ): Promise<void> {
-  try {
-    const tokenFamily = generateTokenFamily();
-    const expiresAt = new Date(Date.now() + refreshTokenExpiresIn * 1000);
-
-    await supabase
-      .from("google_calendar_tokens")
-      .update({
-        token_family: tokenFamily,
-        token_generation: 0,
-        refresh_token_expires_at: expiresAt.toISOString(),
-        is_revoked: false,
-      })
-      .eq("user_id", userId);
-
-    // Log initialization
-    await logTokenRotation(
-      supabase,
-      userId,
-      "refresh",
-      "issued",
-      tokenFamily,
-      0,
-      null,
-      null,
-      "Initial token issued"
-    );
-  } catch (err) {
-    console.error("Failed to initialize token rotation:", err);
-    throw err;
-  }
+  naoMigrado(
+    'initializeTokenRotation',
+    'a emissão do token do Google acontece dentro da Function google-calendar-auth; ' +
+      'google_calendar_tokens é server-only.',
+  );
 }
 
 /**
- * Rotate a refresh token
- * Called when an access token expires and needs refresh
+ * Antes: reescrevia access/refresh token cifrados na tabela.
+ * Agora: a Function `google-calendar-auth` renova e regrava o token quando ele
+ * expira. O navegador nunca vê o valor.
  */
 export async function rotateRefreshToken(
-  supabase: SupabaseClient,
-  userId: string,
-  newAccessToken: string,
-  accessTokenExpiresIn: number = 3600, // 1 hour in seconds
-  newRefreshToken?: string,
-  refreshTokenExpiresIn: number = 30 * 24 * 60 * 60 // 30 days
+  _userId: string,
+  _newAccessToken: string,
+  _accessTokenExpiresIn: number = 3600,
+  _newRefreshToken?: string,
+  _refreshTokenExpiresIn: number = 30 * 24 * 60 * 60,
 ): Promise<boolean> {
-  try {
-    // Get current token family and generation
-    const { data: current, error: getError } = await supabase
-      .from("google_calendar_tokens")
-      .select("token_family, token_generation, is_revoked")
-      .eq("user_id", userId)
-      .single();
-
-    if (getError || !current) {
-      console.error("Failed to get current token:", getError);
-      return false;
-    }
-
-    if (current.is_revoked) {
-      console.warn("Cannot rotate revoked token");
-      await logTokenRotation(
-        supabase,
-        userId,
-        "refresh",
-        "revoked",
-        current.token_family,
-        current.token_generation + 1,
-        null,
-        null,
-        "Token rotation attempted on revoked token"
-      );
-      return false;
-    }
-
-    const newGeneration = current.token_generation + 1;
-    const expiresAt = new Date(Date.now() + refreshTokenExpiresIn * 1000);
-    const accessTokenExpiresAt = new Date(Date.now() + accessTokenExpiresIn * 1000);
-
-    // Update tokens with new generation
-    const { error: updateError } = await supabase
-      .from("google_calendar_tokens")
-      .update({
-        access_token_encrypted: newAccessToken,
-        refresh_token_encrypted: newRefreshToken || null,
-        token_generation: newGeneration,
-        refresh_token_expires_at: expiresAt.toISOString(),
-        token_expires_at: accessTokenExpiresAt.toISOString(),
-        updated_at: new Date().toISOString(),
-      })
-      .eq("user_id", userId);
-
-    if (updateError) {
-      console.error("Failed to update tokens:", updateError);
-      return false;
-    }
-
-    // Log rotation
-    await logTokenRotation(
-      supabase,
-      userId,
-      "refresh",
-      "rotated",
-      current.token_family,
-      newGeneration,
-      null,
-      null,
-      `Token rotated to generation ${newGeneration}`
-    );
-
-    return true;
-  } catch (err) {
-    console.error("Failed to rotate token:", err);
-    return false;
-  }
+  naoMigrado(
+    'rotateRefreshToken',
+    'a rotação do token do Google é feita no servidor pela Function google-calendar-auth.',
+  );
 }
 
 /**
- * Check if refresh token is expired
+ * Antes: RPC is_refresh_token_expired.
+ * A validade do token do Google só é conhecida pelo servidor; responder daqui
+ * seria chute.
  */
-export async function isRefreshTokenExpired(
-  supabase: SupabaseClient,
-  userId: string
-): Promise<boolean> {
-  try {
-    const { data, error } = await supabase.rpc("is_refresh_token_expired", {
-      p_user_id: userId,
-    });
-
-    if (error) return false;
-    return data === true;
-  } catch (err) {
-    console.error("Failed to check token expiration:", err);
-    return false;
-  }
+export async function isRefreshTokenExpired(_userId: string): Promise<boolean> {
+  naoMigrado(
+    'isRefreshTokenExpired',
+    'só a Function google-calendar-auth conhece a validade do refresh token.',
+  );
 }
 
 /**
- * Revoke all tokens for a user (security breach)
+ * Revoga TODAS as sessões do usuário logado — o equivalente nativo do
+ * `revoke_all_user_tokens`. Note que o Appwrite age sobre a conta da sessão
+ * atual: não dá (nem deve dar) para derrubar as sessões de outro usuário a
+ * partir do cliente.
  */
 export async function revokeAllTokens(
-  supabase: SupabaseClient,
-  userId: string,
-  reason: string = "User requested revocation"
+  userId?: string,
+  reason: string = 'User requested revocation',
 ): Promise<void> {
-  try {
-    await supabase.rpc("revoke_all_user_tokens", {
-      p_user_id: userId,
-      p_reason: reason,
-    });
-
-    console.log(`All tokens revoked for user ${userId}. Reason: ${reason}`);
-  } catch (err) {
-    console.error("Failed to revoke all tokens:", err);
-    throw err;
+  const me = await account.get();
+  if (userId && userId !== me.$id) {
+    naoMigrado(
+      'revokeAllTokens',
+      'derrubar a sessão de OUTRO usuário exige API key de servidor (Users API).',
+    );
   }
+  await account.deleteSessions();
+  console.log(`Todas as sessões revogadas para ${me.$id}. Motivo: ${reason}`);
 }
 
 /**
- * Log token rotation event
+ * Antes: RPC log_token_rotation gravando em token_rotation_log.
+ * A tabela não foi migrada; a auditoria de token vive no servidor
+ * (`google_token_audit_log`, escrita pelas Functions).
  */
 export async function logTokenRotation(
-  supabase: SupabaseClient,
-  userId: string,
-  tokenType: "access" | "refresh" | "all",
-  action: "issued" | "rotated" | "expired" | "revoked" | "refreshed",
-  tokenFamily?: string | null,
-  generation?: number | null,
-  ipAddress?: string | null,
-  userAgent?: string | null,
-  reason?: string | null
+  _userId: string,
+  _tokenType: 'access' | 'refresh' | 'all',
+  _action: 'issued' | 'rotated' | 'expired' | 'revoked' | 'refreshed',
+  _tokenFamily?: string | null,
+  _generation?: number | null,
+  _ipAddress?: string | null,
+  _userAgent?: string | null,
+  _reason?: string | null,
 ): Promise<void> {
-  try {
-    await supabase.rpc("log_token_rotation", {
-      p_user_id: userId,
-      p_token_type: tokenType,
-      p_action: action,
-      p_token_family: tokenFamily || null,
-      p_generation: generation || null,
-      p_ip_address: ipAddress || null,
-      p_user_agent: userAgent || null,
-      p_reason: reason || null,
-    });
-  } catch (err) {
-    console.warn("Failed to log token rotation:", err);
-  }
+  naoMigrado(
+    'logTokenRotation',
+    'token_rotation_log não foi migrada; a auditoria é escrita pelas Functions em google_token_audit_log.',
+  );
 }
 
 /**
- * Get token rotation history for a user
+ * Antes: SELECT em token_rotation_log.
  */
 export async function getTokenRotationHistory(
-  supabase: SupabaseClient,
-  userId: string,
-  hoursBack: number = 168 // 1 week
-): Promise<any[]> {
-  try {
-    const { data, error } = await supabase
-      .from("token_rotation_log")
-      .select("*")
-      .eq("user_id", userId)
-      .gte("timestamp", new Date(Date.now() - hoursBack * 60 * 60 * 1000).toISOString())
-      .order("timestamp", { ascending: false });
-
-    if (error) throw error;
-    return data || [];
-  } catch (err) {
-    console.error("Failed to get token rotation history:", err);
-    return [];
-  }
+  _userId: string,
+  _hoursBack: number = 168,
+): Promise<never[]> {
+  naoMigrado(
+    'getTokenRotationHistory',
+    'token_rotation_log não foi migrada; exponha o histórico por uma Function se ele voltar a ser necessário.',
+  );
 }
 
 /**
- * Detect token reuse attack
+ * Antes: RPC detect_token_reuse_attack.
+ * TODO(migração): não há equivalente. Detecção de reuso de token de sessão é
+ * responsabilidade do servidor (Appwrite invalida a sessão sozinho); se o
+ * produto precisar do sinal, ele tem que nascer numa Function com acesso aos
+ * logs de sessão, nunca no cliente.
  */
 export async function detectTokenReuseAttack(
-  supabase: SupabaseClient,
-  sessionId: string,
-  ipAddress: string,
-  userAgent: string
+  _sessionId: string,
+  _ipAddress: string,
+  _userAgent: string,
 ): Promise<boolean> {
-  try {
-    const { data, error } = await supabase.rpc("detect_token_reuse_attack", {
-      p_session_id: sessionId,
-      p_ip_address: ipAddress,
-      p_user_agent: userAgent,
-    });
-
-    if (error) return false;
-    return data === true;
-  } catch (err) {
-    console.error("Failed to detect token reuse:", err);
-    return false;
-  }
+  naoMigrado('detectTokenReuseAttack', 'sem equivalente no cliente — ver TODO(migração) acima.');
 }
 
 /**
- * Create a session token for a user
+ * Antes: INSERT em session_tokens.
+ * Agora: sessão se cria fazendo login (`signIn` / `signInWithOAuth`). O cliente
+ * não emite sessão avulsa.
  */
 export async function createSessionToken(
-  supabase: SupabaseClient,
-  userId: string,
-  expiresInSeconds: number = 3600, // 1 hour
-  ipAddress?: string,
-  userAgent?: string
-): Promise<{ session_id: string; token_family: string } | null> {
-  try {
-    const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-    const tokenFamily = generateTokenFamily();
-    const expiresAt = new Date(Date.now() + expiresInSeconds * 1000);
-
-    const { data, error } = await supabase
-      .from("session_tokens")
-      .insert({
-        user_id: userId,
-        token_family: tokenFamily,
-        token_generation: 0,
-        session_id: sessionId,
-        ip_address: ipAddress || null,
-        user_agent: userAgent || null,
-        expires_at: expiresAt.toISOString(),
-      })
-      .select()
-      .single();
-
-    if (error || !data) throw error;
-
-    return {
-      session_id: data.session_id,
-      token_family: data.token_family,
-    };
-  } catch (err) {
-    console.error("Failed to create session token:", err);
-    return null;
-  }
+  _userId: string,
+  _expiresInSeconds: number = 3600,
+  _ipAddress?: string,
+  _userAgent?: string,
+): Promise<{ session_id: string; token_family: string }> {
+  naoMigrado(
+    'createSessionToken',
+    'sessão do Appwrite nasce do login (account.createEmailPasswordSession), não de um INSERT.',
+  );
 }
 
 /**
- * Revoke a session token
+ * Revoga UMA sessão — equivalente nativo do antigo `is_revoked = true`.
+ * `sessionId` é o `$id` da sessão (ou 'current' para a sessão atual).
  */
-export async function revokeSessionToken(
-  supabase: SupabaseClient,
-  sessionId: string
-): Promise<boolean> {
+export async function revokeSessionToken(sessionId: string): Promise<boolean> {
   try {
-    const { error } = await supabase
-      .from("session_tokens")
-      .update({
-        is_revoked: true,
-        revoked_at: new Date().toISOString(),
-      })
-      .eq("session_id", sessionId);
-
-    if (error) throw error;
+    await account.deleteSession(sessionId);
     return true;
   } catch (err) {
-    console.error("Failed to revoke session token:", err);
+    console.error('Failed to revoke session:', err);
     return false;
   }
 }
 
 /**
- * Get active session tokens for a user
+ * Sessões ativas do usuário logado — equivalente nativo do SELECT em
+ * session_tokens. O Appwrite já exclui as expiradas.
  */
-export async function getActiveSessionTokens(
-  supabase: SupabaseClient,
-  userId: string
-): Promise<any[]> {
+export async function getActiveSessionTokens(_userId?: string): Promise<Models.Session[]> {
   try {
-    const { data, error } = await supabase
-      .from("session_tokens")
-      .select("*")
-      .eq("user_id", userId)
-      .eq("is_revoked", false)
-      .gt("expires_at", new Date().toISOString())
-      .order("created_at", { ascending: false });
-
-    if (error) throw error;
-    return data || [];
+    const r = await account.listSessions();
+    return r.sessions;
   } catch (err) {
-    console.error("Failed to get active session tokens:", err);
+    console.error('Failed to list sessions:', err);
     return [];
   }
 }
 
 /**
- * Cleanup expired tokens (normally done via cron)
+ * Limpeza de tokens expirados.
+ *
+ * VALOR NEUTRO DOCUMENTADO: devolve sempre 0 porque o Appwrite expira sessão
+ * sozinho — não existe fila de limpeza para o cliente rodar. Mantida só para
+ * não quebrar quem chamava; pode ser removida com segurança.
  */
-export async function cleanupExpiredTokens(supabase: SupabaseClient): Promise<number> {
-  try {
-    const { data, error } = await supabase.rpc("cleanup_expired_tokens");
-
-    if (error) throw error;
-    return data || 0;
-  } catch (err) {
-    console.error("Failed to cleanup expired tokens:", err);
-    return 0;
-  }
+export async function cleanupExpiredTokens(): Promise<number> {
+  return 0;
 }
 
 /**
- * Check if a session token is valid and not expired/revoked
+ * A sessão ainda vale? Responde com a lista nativa de sessões, comparando o
+ * `$id` e a data de expiração que o próprio Appwrite devolve.
  */
-export async function isSessionTokenValid(
-  supabase: SupabaseClient,
-  sessionId: string
-): Promise<boolean> {
+export async function isSessionTokenValid(sessionId: string): Promise<boolean> {
   try {
-    const { data, error } = await supabase
-      .from("session_tokens")
-      .select("is_revoked, expires_at")
-      .eq("session_id", sessionId)
-      .single();
-
-    if (error || !data) return false;
-
-    return !data.is_revoked && new Date(data.expires_at) > new Date();
+    const sessions = await getActiveSessionTokens();
+    const s = sessions.find((x) => x.$id === sessionId);
+    if (!s) return false;
+    return !s.expire || new Date(s.expire) > new Date();
   } catch (err) {
-    console.error("Failed to validate session token:", err);
+    console.error('Failed to validate session:', err);
     return false;
   }
 }

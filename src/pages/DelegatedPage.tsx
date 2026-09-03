@@ -4,7 +4,7 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useSharedWithMe } from '@/hooks/useTaskShares';
 import { useQuery } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { listAll, Query } from '@/integrations/appwrite/database';
 import { TaskDetailSheet } from '@/components/TaskDetailSheet';
 import { useTasks } from '@/hooks/useTasks';
 import { QUADRANT_CONFIG } from '@/types/task';
@@ -24,17 +24,17 @@ export default function DelegatedPage() {
 
   // Tasks assigned to me (via assigned_to field)
   const assignedQuery = useQuery({
-    queryKey: ['assigned-to-me', user?.id],
+    queryKey: ['assigned-to-me', user?.$id],
     queryFn: async () => {
       if (!user) return [];
-      const { data, error } = await supabase
-        .from('tasks')
-        .select('*')
-        .eq('assigned_to', user.id)
-        .neq('created_by', user.id)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data ?? [];
+      // A tarefa delegada só aparece aqui porque taskPermissions() gravou
+      // Permission.read(Role.user(assignedTo)) no documento no momento da
+      // delegação — sem isso o Appwrite nem devolveria a linha.
+      return await listAll('tasks', [
+        Query.equal('assigned_to', user.$id),
+        Query.notEqual('created_by', user.$id),
+        Query.orderDesc('created_at'),
+      ]);
     },
     enabled: !!user,
   });

@@ -1,0 +1,438 @@
+{
+  "projectId": "default-6a987e930039a4a13bea",
+  "projectName": "EisenFlow",
+  "functions": [
+    {
+      "$id": "ai-task-chat",
+      "name": "ai-task-chat",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/ai-task-chat",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "analyze-task-image",
+      "name": "analyze-task-image",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 300,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/analyze-task-image",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "files.read",
+        "files.write",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "classify-task",
+      "name": "classify-task",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/classify-task",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "cleanup-reminders",
+      "name": "cleanup-reminders",
+      "runtime": "node-22",
+      "execute": [],
+      "events": [],
+      "schedule": "0 3 * * *",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/cleanup-reminders",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read"
+      ]
+    },
+    {
+      "$id": "dispatch-reminders",
+      "name": "dispatch-reminders",
+      "runtime": "node-22",
+      "execute": [],
+      "events": [],
+      "schedule": "*/5 * * * *",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/dispatch-reminders",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read"
+      ]
+    },
+    {
+      "$id": "generate-recurring-tasks",
+      "name": "generate-recurring-tasks",
+      "runtime": "node-22",
+      "execute": [],
+      "events": [],
+      "schedule": "0 4 * * *",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/generate-recurring-tasks",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read"
+      ]
+    },
+    {
+      "$id": "google-calendar-auth",
+      "name": "google-calendar-auth",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 300,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/google-calendar-auth",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "google-calendar-sync",
+      "name": "google-calendar-sync",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 300,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/google-calendar-sync",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "hermes-mcp",
+      "name": "hermes-mcp",
+      "runtime": "node-22",
+      "execute": [],
+      "events": [],
+      "schedule": "",
+      "timeout": 300,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/hermes-mcp",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read"
+      ]
+    },
+    {
+      "$id": "process-recurring-schedules",
+      "name": "process-recurring-schedules",
+      "runtime": "node-22",
+      "execute": [],
+      "events": [],
+      "schedule": "*/5 * * * *",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/process-recurring-schedules",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read"
+      ]
+    },
+    {
+      "$id": "reevaluate-deadlines",
+      "name": "reevaluate-deadlines",
+      "runtime": "node-22",
+      "execute": [],
+      "events": [],
+      "schedule": "0 6 * * *",
+      "timeout": 300,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/reevaluate-deadlines",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read"
+      ]
+    },
+    {
+      "$id": "tenant-whatsapp-connect",
+      "name": "tenant-whatsapp-connect",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/tenant-whatsapp-connect",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "tenant-whatsapp-verify-phone",
+      "name": "tenant-whatsapp-verify-phone",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/tenant-whatsapp-verify-phone",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "whatsapp-connect",
+      "name": "whatsapp-connect",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/whatsapp-connect",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "whatsapp-deadline-reminders",
+      "name": "whatsapp-deadline-reminders",
+      "runtime": "node-22",
+      "execute": [],
+      "events": [],
+      "schedule": "*/15 * * * *",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/whatsapp-deadline-reminders",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read"
+      ]
+    },
+    {
+      "$id": "whatsapp-disconnect",
+      "name": "whatsapp-disconnect",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/whatsapp-disconnect",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "whatsapp-report",
+      "name": "whatsapp-report",
+      "runtime": "node-22",
+      "execute": [],
+      "events": [],
+      "schedule": "0 * * * *",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/whatsapp-report",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write"
+      ]
+    },
+    {
+      "$id": "whatsapp-send",
+      "name": "whatsapp-send",
+      "runtime": "node-22",
+      "execute": [],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/whatsapp-send",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write"
+      ]
+    },
+    {
+      "$id": "whatsapp-status",
+      "name": "whatsapp-status",
+      "runtime": "node-22",
+      "execute": [
+        "users"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 60,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/whatsapp-status",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "users.read"
+      ]
+    },
+    {
+      "$id": "whatsapp-webhook",
+      "name": "whatsapp-webhook",
+      "runtime": "node-22",
+      "execute": [
+        "any"
+      ],
+      "events": [],
+      "schedule": "",
+      "timeout": 300,
+      "enabled": true,
+      "logging": true,
+      "entrypoint": "src/main.js",
+      "commands": "",
+      "path": "functions/whatsapp-webhook",
+      "scopes": [
+        "databases.read",
+        "documents.read",
+        "documents.write",
+        "collections.read",
+        "files.read",
+        "files.write"
+      ]
+    }
+  ]
+}

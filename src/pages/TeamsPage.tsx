@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/integrations/supabase/client';
+import { update, listDocs, Query } from '@/integrations/appwrite/database';
 import { AppLayout } from '@/components/AppLayout';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useTeams, useTeamMembers, useTeamInvites, type Team } from '@/hooks/useTeams';
@@ -236,7 +236,7 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
   const [showQR, setShowQR] = useState<string | null>(null);
 
   const getInviteUrl = (code: string) => `${window.location.origin}/invite/${code}`;
-  const myMembership = members.find((m) => m.user_id === user?.id);
+  const myMembership = members.find((m) => m.user_id === user?.$id);
   const isAdmin = myMembership?.role === 'admin';
   const isManager = myMembership?.role === 'manager';
   const canManage = isAdmin || isManager;
@@ -330,7 +330,7 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
                           <span className="text-xs text-muted-foreground">{roleLabel(member.role)}</span>
                         </div>
                       </div>
-                      {isAdmin && member.user_id !== user?.id && (
+                      {isAdmin && member.user_id !== user?.$id && (
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8">
@@ -525,37 +525,36 @@ function TeamProjectsTab({ teamId, canManage }: { teamId: string; canManage: boo
   const { data: teamProjects = [], isLoading } = useQuery({
     queryKey: ['projects', 'team', teamId],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('team_id', teamId)
-        .eq('archived', false)
-        .order('name');
-      if (error) throw error;
-      return data;
+      // Só chegam aqui os projetos que a sessão pode LER: o recorte que a RLS
+      // fazia por query agora vem da permissão gravada no documento.
+      return await listDocs('projects', [
+        Query.equal('team_id', teamId),
+        Query.equal('archived', false),
+        Query.orderAsc('name'),
+      ]);
     },
   });
 
   const { data: myUnlinkedProjects = [] } = useQuery({
-    queryKey: ['projects', 'unlinked', user?.id],
+    queryKey: ['projects', 'unlinked', user?.$id],
     enabled: linkOpen && !!user,
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('owner_id', user!.id)
-        .is('team_id', null)
-        .eq('archived', false)
-        .order('name');
-      if (error) throw error;
-      return data;
+      // `.is('team_id', null)` vira Query.isNull.
+      return await listDocs('projects', [
+        Query.equal('owner_id', user!.$id),
+        Query.isNull('team_id'),
+        Query.equal('archived', false),
+        Query.orderAsc('name'),
+      ]);
     },
   });
 
   const linkProject = useMutation({
     mutationFn: async (projectId: string) => {
-      const { error } = await supabase.from('projects').update({ team_id: teamId }).eq('id', projectId);
-      if (error) throw error;
+      // `team_id` é o time INTERNO (collection `teams`), não o Team nativo do
+      // Appwrite que representa o tenant — projectPermissions só usa dono e
+      // tenant, então vincular ao time não recalcula permissão nenhuma.
+      await update('projects', projectId, { team_id: teamId });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -566,8 +565,8 @@ function TeamProjectsTab({ teamId, canManage }: { teamId: string; canManage: boo
 
   const unlinkProject = useMutation({
     mutationFn: async (projectId: string) => {
-      const { error } = await supabase.from('projects').update({ team_id: null }).eq('id', projectId);
-      if (error) throw error;
+      // Desvincular também não mexe em dono nem tenant: permissões inalteradas.
+      await update('projects', projectId, { team_id: null });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
@@ -646,7 +645,7 @@ function TeamProjectsTab({ teamId, canManage }: { teamId: string; canManage: boo
                 style={{ backgroundColor: project.color }}
               />
               <span className="flex-1 text-sm font-medium truncate">{project.name}</span>
-              {canManage && project.owner_id === user?.id && (
+              {canManage && project.owner_id === user?.$id && (
                 <Button
                   variant="ghost"
                   size="icon"

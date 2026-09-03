@@ -16,8 +16,11 @@ import { useTenantMcp, ALL_SCOPES, type Scope } from '@/hooks/useTenantMcp';
 import { useToast } from '@/hooks/use-toast';
 import { Copy, KeyRound, ShieldAlert, Trash2 } from 'lucide-react';
 
-const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL as string;
-const MCP_BASE_URL = `${SUPABASE_URL}/functions/v1/hermes-mcp`;
+// Endpoint público da Function hermes-mcp no Appwrite.
+// No Supabase era `${SUPABASE_URL}/functions/v1/hermes-mcp`; no Appwrite a rota
+// de execução pública de uma function é /v1/functions/<id>/executions.
+const APPWRITE_ENDPOINT = import.meta.env.VITE_APPWRITE_ENDPOINT as string;
+const MCP_BASE_URL = `${APPWRITE_ENDPOINT}/functions/hermes-mcp/executions`;
 
 export default function IntegrationsMcpPage() {
   const { activeTenant } = useTenantContext();
