@@ -35,24 +35,47 @@ async function call(method, path, body, extraHeaders = {}) {
 }
 
 // ------------------------------------------------------------------ queries
-// Espelham a sintaxe de Query do SDK, mas como strings puras.
+/**
+ * Espelham a Query do SDK, produzindo EXATAMENTE o que ele produz: JSON.
+ *
+ * A versão anterior emitia a sintaxe antiga em string (`equal("a", ["x"])`,
+ * `limit(5)`). O Appwrite 1.7 só aceita o formato JSON
+ * (`{"method":"equal","attribute":"a","values":["x"]}`) e responde
+ * "Invalid query: Syntax error" a qualquer outra coisa — era isso que derrubava
+ * TODA function que consultava o banco, a começar pelo whatsapp-connect.
+ * migrate.mjs e verify.mjs já usavam o formato novo; este arquivo não.
+ *
+ * Cada método devolve a string JSON (como o SDK), para continuar sendo
+ * concatenável em `queries[]=`. `or`/`and` recebem essas strings e as
+ * reidratam, porque no JSON os filhos são objetos, não strings.
+ */
+const lista = (v) => (Array.isArray(v) ? v : [v]);
+const q = (method, attribute, values) =>
+  JSON.stringify({ method, ...(attribute !== undefined ? { attribute } : {}), ...(values !== undefined ? { values } : {}) });
+const filhos = (qs) => qs.map((s) => (typeof s === 'string' ? JSON.parse(s) : s));
+
 export const Query = {
-  equal: (a, v) => `equal("${a}", ${JSON.stringify(Array.isArray(v) ? v : [v])})`,
-  notEqual: (a, v) => `notEqual("${a}", ${JSON.stringify([v])})`,
-  lessThan: (a, v) => `lessThan("${a}", ${JSON.stringify([v])})`,
-  lessThanEqual: (a, v) => `lessThanEqual("${a}", ${JSON.stringify([v])})`,
-  greaterThan: (a, v) => `greaterThan("${a}", ${JSON.stringify([v])})`,
-  greaterThanEqual: (a, v) => `greaterThanEqual("${a}", ${JSON.stringify([v])})`,
-  isNull: (a) => `isNull("${a}")`,
-  isNotNull: (a) => `isNotNull("${a}")`,
-  search: (a, v) => `search("${a}", ${JSON.stringify([v])})`,
-  orderAsc: (a) => `orderAsc("${a}")`,
-  orderDesc: (a) => `orderDesc("${a}")`,
-  limit: (n) => `limit(${n})`,
-  offset: (n) => `offset(${n})`,
-  cursorAfter: (id) => `cursorAfter("${id}")`,
-  or: (qs) => `or([${qs.join(',')}])`,
-  and: (qs) => `and([${qs.join(',')}])`,
+  equal: (a, v) => q('equal', a, lista(v)),
+  notEqual: (a, v) => q('notEqual', a, lista(v)),
+  lessThan: (a, v) => q('lessThan', a, lista(v)),
+  lessThanEqual: (a, v) => q('lessThanEqual', a, lista(v)),
+  greaterThan: (a, v) => q('greaterThan', a, lista(v)),
+  greaterThanEqual: (a, v) => q('greaterThanEqual', a, lista(v)),
+  between: (a, ini, fim) => q('between', a, [ini, fim]),
+  isNull: (a) => q('isNull', a),
+  isNotNull: (a) => q('isNotNull', a),
+  startsWith: (a, v) => q('startsWith', a, [v]),
+  contains: (a, v) => q('contains', a, lista(v)),
+  search: (a, v) => q('search', a, [v]),
+  select: (attrs) => q('select', undefined, lista(attrs)),
+  orderAsc: (a) => q('orderAsc', a),
+  orderDesc: (a) => q('orderDesc', a),
+  limit: (n) => q('limit', undefined, [n]),
+  offset: (n) => q('offset', undefined, [n]),
+  cursorAfter: (id) => q('cursorAfter', undefined, [id]),
+  cursorBefore: (id) => q('cursorBefore', undefined, [id]),
+  or: (qs) => q('or', undefined, filhos(qs)),
+  and: (qs) => q('and', undefined, filhos(qs)),
 };
 
 const qs = (queries) => (queries?.length ? '?' + queries.map((q) => `queries[]=${encodeURIComponent(q)}`).join('&') : '');
