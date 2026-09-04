@@ -120,6 +120,25 @@ async function api(method, caminho, corpo) {
   return dados;
 }
 
+/**
+ * Domínio público de uma function, via /proxy/rules (é onde o Appwrite guarda
+ * os domínios de function/site). Exige o escopo `rules.read` na API key; sem
+ * ele, avisa e deixa a variável para ser passada à mão.
+ */
+async function descobrirDominio(functionId) {
+  try {
+    const r = await api('GET', `/proxy/rules?queries[]=${encodeURIComponent(JSON.stringify({ method: 'equal', attribute: 'resourceId', values: [functionId] }))}&queries[]=${encodeURIComponent(JSON.stringify({ method: 'equal', attribute: 'resourceType', values: ['function'] }))}`);
+    const regra = (r.rules || []).find((x) => x.domain);
+    if (!regra) { aviso(`nenhum domínio encontrado para ${functionId} — a function já foi implantada?`); return ''; }
+    const url = `https://${regra.domain}`;
+    ok(`${functionId} atende em ${url}`);
+    return url;
+  } catch (e) {
+    aviso(`não consegui descobrir o domínio de ${functionId} (${e.message}); passe EVOLUTION_WEBHOOK_URL à mão`);
+    return '';
+  }
+}
+
 async function main() {
   if (!PROJECT || !API_KEY) {
     erro('APPWRITE_PROJECT_ID e APPWRITE_API_KEY são obrigatórias');
@@ -127,6 +146,10 @@ async function main() {
   }
 
   const gerados = carregarGerados();
+
+  // O Appwrite dá a cada function um domínio próprio sob _APP_DOMAIN_FUNCTIONS.
+  // Em vez de pedir para alguém copiar do console, pergunta ao servidor.
+  const webhookUrl = process.env.EVOLUTION_WEBHOOK_URL || await descobrirDominio('whatsapp-webhook');
 
   const valores = {
     ...gerados,
@@ -140,7 +163,7 @@ async function main() {
     PUBLIC_WEBHOOK_BASE_URL: process.env.PUBLIC_WEBHOOK_BASE_URL || '',
     // Endereço exato da function whatsapp-webhook. No Appwrite self-hosted cada
     // function tem domínio próprio, então esta é a variável que vale na prática.
-    EVOLUTION_WEBHOOK_URL: process.env.EVOLUTION_WEBHOOK_URL || '',
+    EVOLUTION_WEBHOOK_URL: webhookUrl || '',
   };
 
   // Toda function precisa das duas do Appwrite: o _shared/appwrite.js usa as duas

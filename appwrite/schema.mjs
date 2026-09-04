@@ -470,12 +470,11 @@ export const COLLECTIONS = [
       ...stamps(),
     ],
     // O índice único passou de (user_id) para (user_id, tenant_id): amarrar a
-    // conexão só ao usuário impedia o multi-tenant.
-    // ATENÇÃO: migrate.mjs só CRIA índices (POST), nunca substitui. Num servidor
-    // que já rodou a migração antes desta mudança, o índice antigo
-    // `uniq_gcal_user` continua lá e precisa ser removido À MÃO no console do
-    // Appwrite (Databases → google_calendar_tokens → Indexes), senão o segundo
-    // tenant do mesmo usuário é rejeitado por duplicidade.
+    // conexão só ao usuário impedia o multi-tenant. Num servidor que já rodou a
+    // migração antes desta mudança, o índice antigo continuaria lá e o segundo
+    // tenant do mesmo usuário seria rejeitado por duplicidade — por isso ele
+    // está em `obsoleteIndexes`, que o migrate.mjs remove antes de criar os novos.
+    obsoleteIndexes: ['uniq_gcal_user'],
     indexes: [
       uniq('uniq_gcal_user_tenant', ['user_id', 'tenant_id']),
       idx('idx_gcal_tenant', ['tenant_id']),

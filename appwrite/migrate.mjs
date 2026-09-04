@@ -203,6 +203,19 @@ async function run() {
       if (!DRY) await new Promise((r) => setTimeout(r, 120)); // evita rate limit do servidor
     }
 
+    // Índices que o schema declarou obsoletos: o POST de índice nunca substitui,
+    // então sem este passo um índice único antigo continuaria valendo para sempre.
+    for (const key of col.obsoleteIndexes || []) {
+      if (DRY) { console.log(`  ${C.d}[dry] remover índice ${key}${C.x}`); continue; }
+      try {
+        await api('DELETE', `/databases/${DATABASE_ID}/collections/${col.id}/indexes/${key}`);
+        ok(`  índice obsoleto ${key} removido`);
+      } catch (e) {
+        if (e.status === 404) console.log(`  ${C.d}·${C.x} índice obsoleto ${key} já não existia`);
+        else warn(`  não removeu índice ${key}: ${e.message}`);
+      }
+    }
+
     if (col.indexes?.length) {
       const keys = [...new Set(col.indexes.flatMap((i) => i.attributes))];
       const ready = await waitAttributes(col.id, keys);
