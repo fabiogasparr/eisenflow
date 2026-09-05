@@ -71,7 +71,9 @@ function DraggableWeekTask({ task, onClick }: { task: Task; onClick: (t: Task) =
           >
             <GripVertical className="h-3.5 w-3.5 text-muted-foreground md:h-2.5 md:w-2.5" />
           </button>
-          <p className={`text-[11px] font-medium leading-tight truncate flex-1 ${
+          {/* Duas linhas em vez de `truncate`: numa coluna de dia, cortar na
+              primeira linha deixava toda tarefa como "Instalar luminária d…". */}
+          <p className={`min-w-0 flex-1 text-[11px] font-medium leading-tight line-clamp-2 ${
             isCompleted ? 'line-through text-muted-foreground' : ''
           }`}>
             {task.title}
@@ -107,7 +109,7 @@ function GoogleEventCard({ event }: { event: GoogleEvent }) {
         >
           <CalendarIcon className="h-2.5 w-2.5 text-blue-500 shrink-0" />
           <div className="flex-1 min-w-0">
-            <p className="text-[11px] font-medium leading-tight truncate text-foreground">
+            <p className="min-w-0 text-[11px] font-medium leading-tight line-clamp-2 text-foreground">
               {event.summary}
             </p>
             {startTime && (
@@ -280,26 +282,70 @@ function DayColumn({
   );
 }
 
-function BacklogPanel({ tasks, onTaskClick }: { tasks: Task[]; onTaskClick: (t: Task) => void }) {
+/**
+ * Trilho do backlog recolhido: 40px em vez de 224px, e continua sendo alvo de
+ * soltura — arrastar uma tarefa para cá desagenda, mesmo com o painel fechado.
+ * Existe porque o backlog vazio ocupava uma coluna inteira da semana dizendo
+ * "Nenhuma tarefa", e era essa largura que faltava para o domingo caber.
+ */
+function TrilhoDoBacklog({ quantidade, aoAbrir }: { quantidade: number; aoAbrir: () => void }) {
+  const { language } = useLanguage();
+  const { isOver, setNodeRef } = useDroppable({ id: 'unscheduled' });
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      onClick={aoAbrir}
+      title={language === 'pt-BR' ? 'Abrir o backlog' : 'Open the backlog'}
+      className={`flex w-10 shrink-0 flex-col items-center gap-2 rounded-xl border-2 py-3 transition-all ${
+        isOver ? 'border-quadrant-schedule bg-quadrant-schedule-bg' : 'border-border bg-card/50 hover:bg-card'
+      }`}
+    >
+      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+      <span
+        className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground"
+        style={{ writingMode: 'vertical-rl' }}
+      >
+        Backlog{quantidade > 0 ? ` · ${quantidade}` : ''}
+      </span>
+    </button>
+  );
+}
+
+function BacklogPanel({ tasks, onTaskClick, aoFechar }: { tasks: Task[]; onTaskClick: (t: Task) => void; aoFechar?: () => void }) {
   const { t, language } = useLanguage();
   const { isOver, setNodeRef } = useDroppable({ id: 'unscheduled' });
 
   return (
     <div
       ref={setNodeRef}
-      className={`rounded-xl border-2 transition-all overflow-hidden ${
+      className={`flex min-h-0 flex-col rounded-xl border-2 transition-all overflow-hidden ${
         isOver ? 'border-quadrant-schedule bg-quadrant-schedule-bg' : 'border-border bg-card/50'
       }`}
     >
-      <div className="px-3 py-2 border-b bg-muted/30">
-        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-          Backlog
-        </p>
-        <p className="text-[10px] text-muted-foreground">
-          {language === 'pt-BR' ? 'Arraste para agendar' : 'Drag to schedule'}
-        </p>
+      <div className="flex items-start gap-2 border-b bg-muted/30 px-3 py-2">
+        <div className="min-w-0 flex-1">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+            Backlog{tasks.length > 0 ? ` · ${tasks.length}` : ''}
+          </p>
+          <p className="text-[10px] text-muted-foreground">
+            {language === 'pt-BR' ? 'Arraste para agendar' : 'Drag to schedule'}
+          </p>
+        </div>
+        {aoFechar && (
+          <button
+            type="button"
+            onClick={aoFechar}
+            className="-m-1 hidden p-1 text-muted-foreground hover:text-foreground md:block"
+            title={language === 'pt-BR' ? 'Recolher' : 'Collapse'}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+        )}
       </div>
-      <ScrollArea className="p-2 max-h-[calc(100vh-220px)]">
+      {/* min-h-0 + flex-1: a lista rola DENTRO do painel em vez de esticá-lo. */}
+      <ScrollArea className="min-h-0 flex-1 p-2">
         <SortableContext items={tasks.map((t) => t.id)} strategy={verticalListSortingStrategy}>
           <div className="space-y-1">
             {tasks.length === 0 ? (
@@ -341,6 +387,10 @@ export default function WeeklyPlanner() {
   );
   // No celular a semana é vista um dia por vez; este é o dia à mostra.
   const [diaSelecionado, setDiaSelecionado] = useState(() => new Date());
+  // No desktop o backlog abre sozinho quando tem algo. Vazio, vira um trilho:
+  // eram 224px fixos escritos "Nenhuma tarefa" — a largura que faltava para o
+  // domingo caber na tela.
+  const [backlogAberto, setBacklogAberto] = useState<boolean | null>(null);
   // Monthly state
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
 
@@ -494,8 +544,18 @@ export default function WeeklyPlanner() {
 
         <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
           <div className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
-            <div className="hidden md:block w-56 shrink-0">
-              <BacklogPanel tasks={backlogTasks} onTaskClick={setSelectedTask} />
+            <div className="hidden min-h-0 md:block">
+              {(backlogAberto ?? backlogTasks.length > 0) ? (
+                <div className="h-full w-56 shrink-0">
+                  <BacklogPanel
+                    tasks={backlogTasks}
+                    onTaskClick={setSelectedTask}
+                    aoFechar={() => setBacklogAberto(false)}
+                  />
+                </div>
+              ) : (
+                <TrilhoDoBacklog quantidade={backlogTasks.length} aoAbrir={() => setBacklogAberto(true)} />
+              )}
             </div>
             {/* Mobile backlog - collapsible */}
             <details className="md:hidden border rounded-xl bg-card/50">
@@ -537,7 +597,11 @@ export default function WeeklyPlanner() {
                   </div>
                 </div>
               ) : (
-              <div className={`flex-1 grid gap-2 overflow-x-auto`} style={{ gridTemplateColumns: `repeat(${colCount}, minmax(140px, 1fr))` }}>
+              // minmax(0,1fr) e não minmax(140px,1fr): com o mínimo de 140px as
+              // sete colunas somavam mais do que a largura disponível e o
+              // domingo ficava cortado fora da tela. Agora elas dividem o que
+              // existe e o dia todo cabe.
+              <div className="grid min-h-0 flex-1 gap-2" style={{ gridTemplateColumns: `repeat(${colCount}, minmax(0, 1fr))` }}>
                 {weekDays.map((day) => (
                   <DayColumn
                     key={format(day, 'yyyy-MM-dd')}
