@@ -30,10 +30,15 @@ VOL_FUNCS="$SERVICO_DIR/volumes/functions"
 docker inspect "$DB" >/dev/null 2>&1 || { echo "✗ container $DB não encontrado (a stack subiu?)"; exit 1; }
 
 ENV_ARQ="$AQUI/.env"
+# O INTERNAL_FUNCTION_SECRET tem que ser o MESMO que o edge-runtime recebe, senão
+# o pg_cron bate na function e leva 401. Se deploy/coolify/criar-stack.sh já
+# gerou um, é ele que vale; só se gera aqui quando não existe em lugar nenhum.
+COOLIFY_ENV="$AQUI/../coolify/.env"
 if [ ! -f "$ENV_ARQ" ]; then
   echo "· gerando segredos do projeto em $ENV_ARQ"
+  SEG=""; [ -f "$COOLIFY_ENV" ] && SEG="$(grep '^INTERNAL_FUNCTION_SECRET=' "$COOLIFY_ENV" | cut -d= -f2-)"
   {
-    echo "INTERNAL_FUNCTION_SECRET=$(openssl rand -hex 32)"
+    echo "INTERNAL_FUNCTION_SECRET=${SEG:-$(openssl rand -hex 32)}"
     echo "ENCRYPTION_KEY=$(openssl rand -hex 32)"
   } > "$ENV_ARQ"
   chmod 600 "$ENV_ARQ"

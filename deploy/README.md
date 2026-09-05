@@ -17,7 +17,28 @@ evo-eisenflow.kz3solucoes.cloud ──────► [Coolify: Evo-Go-EisenFlow
 omniroute.kz3solucoes.cloud ──────────► IA (protocolo OpenAI)
 ```
 
-## 1. Stack Supabase (uma vez)
+## 0. Caminho sem painel (recomendado)
+
+Tudo das seções 1 e 3 pode ser feito pela API do Coolify, a partir do próprio
+Terminal do Coolify, sem clicar em nada:
+
+```bash
+cd /root && rm -rf eisenflow && git clone --depth 1 https://github.com/fabiogasparr/eisenflow.git && cd eisenflow
+cat > deploy/coolify/.env <<'EOF'
+COOLIFY_TOKEN=<Coolify → Keys & Tokens → API tokens, com escrita>
+RESEND_API_KEY=<SMTP do GoTrue>
+EVOLUTION_API_KEY=<GLOBAL_API_KEY do Evo-Go-EisenFlow>
+AI_API_KEY=<chave do OmniRoute>
+EOF
+deploy/coolify/criar-stack.sh
+```
+
+O script cria a stack e o app, cadastra domínios e variáveis, gera os segredos
+do projeto e dispara os deploys. Rode-o de novo depois que a stack subir (ele
+pega a anon key gerada e injeta as variáveis no compose do edge-runtime). Depois,
+`deploy/supabase/implantar.sh`.
+
+## 1. Stack Supabase (uma vez, pelo painel)
 
 1. Coolify → *Meus Projetos* → **+ New** → **Supabase** (one-click). Nome: `Supabase-EisenFlow`.
 2. Domínio do Kong: `https://supabase-eisenflow.kz3solucoes.cloud` (CNAME → `kz3solucoes.cloud`
