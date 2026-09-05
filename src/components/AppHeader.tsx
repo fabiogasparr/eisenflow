@@ -1,4 +1,4 @@
-import { Search, Globe, Moon, Sun, Target, Plus, Building2, Check, MoreVertical } from 'lucide-react';
+import { Search, Globe, Moon, Sun, Target, Plus, Building2, Check, MoreVertical, X } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { SidebarTrigger } from '@/components/ui/sidebar';
@@ -6,6 +6,7 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { useTheme } from '@/hooks/useTheme';
 import { NotificationCenter } from '@/components/NotificationCenter';
 import { useTenantContext } from '@/hooks/useTenantContext';
+import { useState } from 'react';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -25,6 +26,33 @@ export function AppHeader({ onSearch, onFocusMode, onCreateTask }: AppHeaderProp
   const { t, language, setLanguage } = useLanguage();
   const { theme, toggleTheme } = useTheme();
   const { tenants, activeTenant, setActiveTenantId } = useTenantContext();
+  // A busca some inteira abaixo de 640px — não havia como procurar uma tarefa
+  // pelo celular. Aqui ela vira uma lupa que abre o campo ocupando a barra.
+  const [buscaAberta, setBuscaAberta] = useState(false);
+
+  const fecharBusca = () => {
+    setBuscaAberta(false);
+    onSearch?.('');
+  };
+
+  if (buscaAberta) {
+    return (
+      <header className="flex h-14 items-center gap-2 border-b bg-card/80 px-2 backdrop-blur-sm sm:hidden">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            autoFocus
+            placeholder={t('search')}
+            className="h-9 border-0 bg-secondary/50 pl-9"
+            onChange={(e) => onSearch?.(e.target.value)}
+          />
+        </div>
+        <Button variant="ghost" size="icon" onClick={fecharBusca} aria-label={language === 'pt-BR' ? 'Fechar busca' : 'Close search'}>
+          <X className="h-4 w-4" />
+        </Button>
+      </header>
+    );
+  }
 
   return (
     <header className="flex h-14 items-center gap-1.5 sm:gap-3 border-b bg-card/80 backdrop-blur-sm px-2 sm:px-4">
@@ -75,6 +103,17 @@ export function AppHeader({ onSearch, onFocusMode, onCreateTask }: AppHeaderProp
       </div>
 
       <div className="ml-auto flex items-center gap-1 sm:gap-2">
+        {onSearch && (
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-8 w-8 text-muted-foreground sm:hidden"
+            onClick={() => setBuscaAberta(true)}
+            aria-label={t('search')}
+          >
+            <Search className="h-4 w-4" />
+          </Button>
+        )}
         {onFocusMode && (
           <Button variant="outline" size="icon" onClick={onFocusMode} className="h-8 w-8 sm:h-9 sm:w-auto sm:px-3 sm:gap-1.5">
             <Target className="h-4 w-4" />

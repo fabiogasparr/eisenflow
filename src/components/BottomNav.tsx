@@ -3,16 +3,21 @@ import { NavLink, useLocation } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { cn } from '@/lib/utils';
 
+/**
+ * `curto` existe porque o rótulo cheio não cabe: "Planejamento Semanal"
+ * quebrava em duas linhas, empurrava o ícone para cima e desalinhava a barra
+ * inteira. A barra de baixo é atalho — o nome completo está no menu lateral.
+ */
 const items = [
-  { key: 'matrix', url: '/', icon: Grid3X3 },
-  { key: 'weeklyPlanning', url: '/weekly', icon: CalendarDays },
-  { key: 'aiChat', url: '/chat', icon: MessageSquare },
-  { key: 'gamification', url: '/gamification', icon: Trophy },
-  { key: 'settings', url: '/settings', icon: Settings },
+  { key: 'matrix', url: '/', icon: Grid3X3, curto: { 'pt-BR': 'Matriz', en: 'Matrix' } },
+  { key: 'weeklyPlanning', url: '/weekly', icon: CalendarDays, curto: { 'pt-BR': 'Semana', en: 'Week' } },
+  { key: 'aiChat', url: '/chat', icon: MessageSquare, curto: { 'pt-BR': 'Chat', en: 'Chat' } },
+  { key: 'gamification', url: '/gamification', icon: Trophy, curto: { 'pt-BR': 'Conquistas', en: 'Awards' } },
+  { key: 'settings', url: '/settings', icon: Settings, curto: { 'pt-BR': 'Ajustes', en: 'Settings' } },
 ] as const;
 
 export function BottomNav() {
-  const { t } = useLanguage();
+  const { language } = useLanguage();
   const location = useLocation();
 
   return (
@@ -32,8 +37,8 @@ export function BottomNav() {
               )}
             >
               <item.icon className="h-5 w-5" />
-              <span className="text-[10px] leading-tight font-medium">
-                {t(item.key as any)}
+              <span className="text-[10px] leading-none font-medium truncate max-w-full px-0.5">
+                {item.curto[language]}
               </span>
             </NavLink>
           );

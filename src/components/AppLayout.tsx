@@ -16,9 +16,12 @@ export function AppLayout({ children, onSearch, onFocusMode, onCreateTask, mainC
   return (
     <SidebarProvider>
       <div className="min-h-screen flex w-full">
-        <div className="hidden md:block">
-          <AppSidebar />
-        </div>
+        {/* Sem wrapper `hidden md:block`: o Sidebar do shadcn já se transforma
+            em gaveta no celular, e escondê-lo por CSS matava essa gaveta — o
+            botão de menu não fazia nada e Projetos, Times, Delegadas, Métricas,
+            Concluídas e Organização ficavam inalcançáveis no telefone, porque a
+            barra de baixo só tem cinco atalhos. */}
+        <AppSidebar />
         <div className="flex-1 flex flex-col">
           <AppHeader onSearch={onSearch} onFocusMode={onFocusMode} onCreateTask={onCreateTask} />
           <main className={cn("flex-1 overflow-auto min-h-0 pb-safe-14 md:pb-0", mainClassName)}>

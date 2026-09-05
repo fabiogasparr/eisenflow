@@ -21,6 +21,8 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { type Task } from '@/types/task';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useDeslizar } from '@/hooks/useDeslizar';
 
 const QUADRANT_BORDER_COLORS: Record<string, string> = {
   do: 'border-l-quadrant-do',
@@ -57,13 +59,17 @@ function DraggableWeekTask({ task, onClick }: { task: Task; onClick: (t: Task) =
           } ${isInProgress ? 'ring-1 ring-primary/30' : ''}`}
           onClick={() => onClick(task)}
         >
+          {/* No celular não existe hover: o punho ficava invisível e não havia
+              como mover uma tarefa de dia pelo telefone. Visível e com área de
+              toque decente por padrão; discreto no desktop até o mouse chegar. */}
           <button
             {...attributes}
             {...listeners}
-            className="cursor-grab opacity-0 group-hover:opacity-60 transition-opacity shrink-0"
+            aria-label={task.title}
+            className="cursor-grab touch-none -m-1 p-1 opacity-60 transition-opacity shrink-0 md:opacity-0 md:group-hover:opacity-60"
             onClick={(e) => e.stopPropagation()}
           >
-            <GripVertical className="h-2.5 w-2.5 text-muted-foreground" />
+            <GripVertical className="h-3.5 w-3.5 text-muted-foreground md:h-2.5 md:w-2.5" />
           </button>
           <p className={`text-[11px] font-medium leading-tight truncate flex-1 ${
             isCompleted ? 'line-through text-muted-foreground' : ''
@@ -118,6 +124,61 @@ function GoogleEventCard({ event }: { event: GoogleEvent }) {
         <p className="text-[10px] text-blue-500 mt-1">Google Calendar ↗</p>
       </TooltipContent>
     </Tooltip>
+  );
+}
+
+/**
+ * Tira dos dias da semana, para o celular.
+ *
+ * No telefone as sete colunas não cabem: ficavam com ~140px cada, cortadas na
+ * borda da tela, ilegíveis e impossíveis de arrastar com o polegar. Aqui a
+ * semana vira esta tira e só o dia escolhido aparece por inteiro embaixo.
+ *
+ * Cada chip também é alvo de soltura, com id prefixado `dia:` para não colidir
+ * com o droppable da coluna do dia visível — assim continua sendo possível
+ * mover uma tarefa para outro dia sem enxergar os dois ao mesmo tempo.
+ */
+function ChipDeDia({
+  data,
+  selecionado,
+  hoje,
+  quantidade,
+  locale,
+  aoSelecionar,
+}: {
+  data: Date;
+  selecionado: boolean;
+  hoje: boolean;
+  quantidade: number;
+  locale: Locale;
+  aoSelecionar: (d: Date) => void;
+}) {
+  const { isOver, setNodeRef } = useDroppable({ id: `dia:${format(data, 'yyyy-MM-dd')}` });
+
+  return (
+    <button
+      ref={setNodeRef}
+      type="button"
+      onClick={() => aoSelecionar(data)}
+      aria-current={selecionado ? 'date' : undefined}
+      className={`flex min-w-11 flex-1 flex-col items-center gap-0.5 rounded-lg border px-1 py-1.5 transition-colors ${
+        selecionado
+          ? 'border-primary bg-primary/10 text-primary'
+          : isOver
+            ? 'border-quadrant-schedule bg-quadrant-schedule-bg'
+            : 'border-border bg-card/50 text-muted-foreground'
+      }`}
+    >
+      <span className="text-[10px] font-medium uppercase leading-none">
+        {format(data, 'EEEEE', { locale })}
+      </span>
+      <span className={`text-sm font-bold leading-none ${hoje && !selecionado ? 'text-primary' : ''}`}>
+        {format(data, 'd')}
+      </span>
+      <span className="flex h-1.5 items-center">
+        {quantidade > 0 && <span className="h-1.5 w-1.5 rounded-full bg-primary" />}
+      </span>
+    </button>
   );
 }
 
@@ -272,10 +333,14 @@ export default function WeeklyPlanner() {
     useSensor(TouchSensor, { activationConstraint: { delay: 250, tolerance: 5 } })
   );
 
+  const isMobile = useIsMobile();
+
   // Weekly state
   const [currentWeekStart, setCurrentWeekStart] = useState(() =>
     startOfWeek(new Date(), { weekStartsOn: 1 })
   );
+  // No celular a semana é vista um dia por vez; este é o dia à mostra.
+  const [diaSelecionado, setDiaSelecionado] = useState(() => new Date());
   // Monthly state
   const [currentMonth, setCurrentMonth] = useState(() => new Date());
 
@@ -352,7 +417,9 @@ export default function WeeklyPlanner() {
     const { active, over } = event;
     if (!over) return;
     const taskId = active.id as string;
-    const targetId = over.id as string;
+    // Os chips da tira de dias usam o prefixo `dia:` para não colidir com o
+    // droppable da coluna visível, que já ocupa o id da data.
+    const targetId = (over.id as string).replace(/^dia:/, '');
     if (targetId === 'unscheduled') {
       updateTask.mutate({ id: taskId, due_date: null as any, started_at: null as any });
     } else {
@@ -371,13 +438,27 @@ export default function WeeklyPlanner() {
     else setCurrentMonth(addMonths(currentMonth, 1));
   };
   const navToday = () => {
-    if (viewMode === 'weekly') setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
-    else setCurrentMonth(new Date());
+    if (viewMode === 'weekly') {
+      setCurrentWeekStart(startOfWeek(new Date(), { weekStartsOn: 1 }));
+      setDiaSelecionado(new Date());
+    } else setCurrentMonth(new Date());
   };
 
-  const headerLabel = viewMode === 'weekly'
-    ? `${format(weekDays[0], 'dd MMM', { locale })} — ${format(weekDays[weekDays.length - 1], 'dd MMM yyyy', { locale })}`
-    : format(currentMonth, 'MMMM yyyy', { locale });
+  /** No celular as setas andam de dia em dia (e trocam de semana ao virar). */
+  const irParaDia = (novo: Date) => {
+    setDiaSelecionado(novo);
+    setCurrentWeekStart(startOfWeek(novo, { weekStartsOn: 1 }));
+  };
+  const semanaNoCelular = isMobile && viewMode === 'weekly';
+  const diaAnterior = () => irParaDia(addDays(diaSelecionado, -1));
+  const diaSeguinte = () => irParaDia(addDays(diaSelecionado, 1));
+  const deslizar = useDeslizar({ aoDeslizarEsquerda: diaSeguinte, aoDeslizarDireita: diaAnterior });
+
+  const headerLabel = viewMode === 'monthly'
+    ? format(currentMonth, 'MMMM yyyy', { locale })
+    : isMobile
+      ? format(diaSelecionado, "EEE, d 'de' MMM", { locale })
+      : `${format(weekDays[0], 'dd MMM', { locale })} — ${format(weekDays[weekDays.length - 1], 'dd MMM yyyy', { locale })}`;
 
   const colCount = showWeekends ? 7 : 5;
   const dayHeaders = viewMode === 'monthly'
@@ -398,11 +479,11 @@ export default function WeeklyPlanner() {
             {viewMode === 'weekly' ? t('weeklyPlanning') : t('monthly')}
           </h1>
           <div className="flex items-center gap-1 sm:gap-2">
-            <Button variant="ghost" size="icon" onClick={navPrev}>
+            <Button variant="ghost" size="icon" onClick={semanaNoCelular ? diaAnterior : navPrev} aria-label={semanaNoCelular ? 'Dia anterior' : 'Anterior'}>
               <ChevronLeft className="h-4 w-4" />
             </Button>
-            <span className="text-xs sm:text-sm font-medium min-w-[140px] sm:min-w-[180px] text-center capitalize">{headerLabel}</span>
-            <Button variant="ghost" size="icon" onClick={navNext}>
+            <span className="flex-1 text-xs sm:text-sm font-medium min-w-[140px] sm:min-w-[180px] text-center capitalize">{headerLabel}</span>
+            <Button variant="ghost" size="icon" onClick={semanaNoCelular ? diaSeguinte : navNext} aria-label={semanaNoCelular ? 'Próximo dia' : 'Próximo'}>
               <ChevronRight className="h-4 w-4" />
             </Button>
             <Button variant="outline" size="sm" onClick={navToday}>
@@ -427,6 +508,35 @@ export default function WeeklyPlanner() {
             </details>
 
             {viewMode === 'weekly' ? (
+              isMobile ? (
+                <div className="flex-1 flex flex-col gap-2 min-h-0" {...deslizar}>
+                  <div className="flex gap-1">
+                    {weekDays.map((day) => (
+                      <ChipDeDia
+                        key={format(day, 'yyyy-MM-dd')}
+                        data={day}
+                        selecionado={isSameDay(day, diaSelecionado)}
+                        hoje={isSameDay(day, new Date())}
+                        quantidade={getTasksForDay(day).length + getGoogleEventsForDay(day).length}
+                        locale={locale}
+                        aoSelecionar={irParaDia}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex-1 min-h-0">
+                    <DayColumn
+                      key={format(diaSelecionado, 'yyyy-MM-dd')}
+                      date={diaSelecionado}
+                      tasks={getTasksForDay(diaSelecionado)}
+                      googleEvents={getGoogleEventsForDay(diaSelecionado)}
+                      isToday={isSameDay(diaSelecionado, new Date())}
+                      locale={locale}
+                      onTaskClick={setSelectedTask}
+                      eventsLoading={googleEventsLoading}
+                    />
+                  </div>
+                </div>
+              ) : (
               <div className={`flex-1 grid gap-2 overflow-x-auto`} style={{ gridTemplateColumns: `repeat(${colCount}, minmax(140px, 1fr))` }}>
                 {weekDays.map((day) => (
                   <DayColumn
@@ -441,6 +551,7 @@ export default function WeeklyPlanner() {
                   />
                 ))}
               </div>
+              )
             ) : (
               <div className="flex-1 flex flex-col overflow-auto">
                 {/* Day headers */}
