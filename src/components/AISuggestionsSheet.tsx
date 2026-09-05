@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Sparkles, Check, X, Loader2, ArrowRight } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { invoke } from '@/integrations/supabase/functions';
 import { useToast } from '@/hooks/use-toast';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { QUADRANT_CONFIG } from '@/types/task';
@@ -76,8 +77,7 @@ export function AISuggestionsSheet() {
   const reevaluate = async () => {
     setRunning(true);
     try {
-      const { data, error } = await supabase.functions.invoke('reevaluate-deadlines', { body: {} });
-      if (error) throw error;
+      const data = await invoke<{ suggestionsCreated?: number; urgencyApplied?: number }>('reevaluate-deadlines', {});
       toast({
         title: t('Reavaliação concluída', 'Reevaluation done'),
         description: t(

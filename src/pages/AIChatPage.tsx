@@ -12,6 +12,7 @@ import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { invoke } from '@/integrations/supabase/functions';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import {
@@ -370,26 +371,26 @@ export default function AIChatPage() {
         projects: [],
       };
 
-      const { data, error } = await supabase.functions.invoke('ai-task-chat', {
-        body: { messages: apiMessages, context, images: imageUrls },
-      });
-
-      if (error) throw error;
-      if (data.error) throw new Error(data.error);
+      const data = await invoke<{
+        type?: string;
+        tasks?: Omit<TaskSuggestion, 'selected'>[];
+        summary?: string;
+        message?: string;
+      }>('ai-task-chat', { messages: apiMessages, context, images: imageUrls });
 
       if (data.type === 'tasks') {
-        const tasks: TaskSuggestion[] = data.tasks.map((t: any) => ({
+        const tasks: TaskSuggestion[] = (data.tasks ?? []).map((t) => ({
           ...t,
           selected: true,
         }));
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: data.summary, tasks },
+          { role: 'assistant', content: data.summary ?? '', tasks },
         ]);
       } else {
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: data.message },
+          { role: 'assistant', content: data.message ?? '' },
         ]);
       }
     } catch (err: any) {

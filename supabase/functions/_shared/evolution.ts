@@ -83,11 +83,27 @@ export interface ConnectOpts {
   phone?: string;
 }
 
+/**
+ * O token da instância é ESCOLHIDO PELO CLIENTE, não sorteado pelo servidor:
+ * `POST /instance/create` só com `{name}` responde `{"error":"token is required"}`.
+ * Como esse token é a credencial de tudo o que a instância faz (QR, status,
+ * envio), ele precisa ser imprevisível — daí crypto.getRandomValues, e não
+ * Math.random.
+ */
+function novoToken(): string {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, '0')).join('');
+}
+
 export const evolution = {
   // ------------------------------------------------------------ administrativo
   /** Guarde os DOIS: id para deletar, token para tudo o mais. */
-  createInstance: (name: string, token?: string): Promise<InstanciaCriada> =>
-    adminCall('POST', '/instance/create', { name, ...(token ? { token } : {}) }),
+  createInstance: async (name: string, token = novoToken()): Promise<InstanciaCriada> => {
+    const r: InstanciaCriada = await adminCall('POST', '/instance/create', { name, token });
+    // O servidor devolve o token que mandamos; se algum build omitir, o nosso vale.
+    return { ...r, token: r?.token || token };
+  },
   listInstances: (): Promise<InstanciaListada[]> => adminCall('GET', '/instance/all'),
   /** Deletar exige o UUID da instância (não o nome) e a chave global. */
   deleteInstance: (instanceId: string): Promise<Json> => adminCall('DELETE', `/instance/delete/${instanceId}`),

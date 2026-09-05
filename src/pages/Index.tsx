@@ -19,6 +19,7 @@ import { Skeleton } from '@/components/ui/skeleton';
 import { Play, RefreshCw } from 'lucide-react';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { supabase } from '@/integrations/supabase/client';
+import { invoke } from '@/integrations/supabase/functions';
 import { useToast } from '@/hooks/use-toast';
 import { QUADRANT_CONFIG } from '@/types/task';
 
@@ -97,11 +98,10 @@ export default function Index() {
 
   const classifyWithAI = async (title: string, description: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('classify-task', {
-        body: { title, description }
-      });
-      if (error) throw error;
-      return data as {quadrant: Quadrant;urgency: number;importance: number;};
+      return await invoke<{ quadrant: Quadrant; urgency: number; importance: number }>(
+        'classify-task',
+        { title, description },
+      );
     } catch (e: any) {
       toast({ title: 'AI Error', description: e.message, variant: 'destructive' });
       return null;

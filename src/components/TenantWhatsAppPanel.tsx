@@ -6,6 +6,7 @@ import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
 import { supabase } from '@/integrations/supabase/client';
+import { invoke } from '@/integrations/supabase/functions';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { Building2, QrCode, Smartphone, ShieldCheck, ShieldAlert, Trash2, RefreshCw } from 'lucide-react';
@@ -47,9 +48,7 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
 
   const connect = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('tenant-whatsapp-connect', { body: { tenant_id: tenantId } });
-      if (error) throw error;
-      return data;
+      return await invoke('tenant-whatsapp-connect', { tenant_id: tenantId });
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenant-wa', tenantId] }),
     onError: (e: Error) => toast({ title: 'Erro', description: e.message, variant: 'destructive' }),
@@ -77,11 +76,7 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
 
   const sendOtp = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('tenant-whatsapp-verify-phone', {
-        body: { action: 'send', tenant_id: tenantId, phone_number: phone },
-      });
-      if (error) throw error;
-      return data;
+      return await invoke('tenant-whatsapp-verify-phone', { action: 'send', tenant_id: tenantId, phone_number: phone });
     },
     onSuccess: () => {
       toast({ title: 'Código enviado', description: 'Cheque seu WhatsApp.' });
@@ -92,11 +87,7 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
 
   const verifyOtp = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('tenant-whatsapp-verify-phone', {
-        body: { action: 'verify', tenant_id: tenantId, code },
-      });
-      if (error) throw error;
-      return data;
+      return await invoke('tenant-whatsapp-verify-phone', { action: 'verify', tenant_id: tenantId, code });
     },
     onSuccess: () => {
       toast({ title: 'Verificado!' });

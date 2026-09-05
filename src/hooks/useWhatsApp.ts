@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invoke } from '@/integrations/supabase/functions';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
 import { useCallback, useEffect, useRef } from 'react';
@@ -47,9 +48,7 @@ export function useWhatsApp() {
 
   const connect = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('whatsapp-connect');
-      if (error) throw error;
-      return data;
+      return await invoke('whatsapp-connect');
     },
     onSuccess: async () => {
       // Auto-detect browser timezone on first connection
@@ -69,9 +68,7 @@ export function useWhatsApp() {
 
   const disconnect = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('whatsapp-disconnect');
-      if (error) throw error;
-      return data;
+      return await invoke('whatsapp-disconnect');
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['whatsapp-connection'] });
@@ -101,8 +98,8 @@ export function useWhatsApp() {
   // Poll for status changes when QR is pending - calls whatsapp-status to check Evolution API
   const checkStatus = useCallback(async () => {
     try {
-      const { data, error } = await supabase.functions.invoke('whatsapp-status');
-      if (!error && data?.status === 'connected') {
+      const data = await invoke<{ status?: string }>('whatsapp-status');
+      if (data?.status === 'connected') {
         queryClient.invalidateQueries({ queryKey: ['whatsapp-connection'] });
       }
     } catch (e) {
@@ -135,9 +132,7 @@ export function useWhatsApp() {
 
   const reregisterWebhook = useMutation({
     mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('whatsapp-status');
-      if (error) throw error;
-      return data;
+      return await invoke<{ webhook_reregistered?: boolean }>('whatsapp-status');
     },
     onSuccess: (data) => {
       if (data?.webhook_reregistered) {

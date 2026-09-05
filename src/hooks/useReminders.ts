@@ -3,6 +3,7 @@ import { useTasks } from './useTasks';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useToast } from './use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { invoke } from '@/integrations/supabase/functions';
 
 export interface Reminder {
   id: string;
@@ -61,12 +62,10 @@ export function useReminders() {
       
       if (!conn || conn.status !== 'connected' || !conn.reminders_enabled || !conn.phone_number) return;
 
-      await supabase.functions.invoke('whatsapp-send', {
-        body: {
-          instance_name: conn.instance_name,
-          phone_number: conn.phone_number,
-          message: `⏰ *${label}*\n${taskTitle}`,
-        },
+      await invoke('whatsapp-send', {
+        instance_name: conn.instance_name,
+        phone_number: conn.phone_number,
+        message: `⏰ *${label}*\n${taskTitle}`,
       });
     } catch {
       // Silent fail - WhatsApp is optional

@@ -195,6 +195,18 @@ const REGRAS: Regra[] = [
     enDescricao: 'Remove or unlink the dependent items before deleting this one.',
   },
   {
+    // Rede de segurança: mensagens cruas do supabase-js sobre Edge Functions.
+    // O certo é chamar as functions por integrations/supabase/functions.ts, que
+    // extrai o erro real do corpo — isto aqui pega quem escapar disso.
+    quando: (t) => t.includes('edge function returned a non-2xx') || t.includes('failed to send a request to the edge function'),
+    ptTitulo: 'O servidor recusou a operação',
+    ptDescricao:
+      'A automação respondeu com erro e não disse o motivo. Tente de novo; se repetir, o administrador consegue ver a causa no log da função.',
+    enTitulo: 'The server refused the operation',
+    enDescricao:
+      'The function returned an error without a reason. Retry; if it persists, the administrator can see the cause in the function log.',
+  },
+  {
     quando: (t, c) => c === '500' || c === '502' || c === '503' || t.includes('internal server error') || t.includes('bad gateway'),
     ptTitulo: 'O servidor respondeu com erro',
     ptDescricao:

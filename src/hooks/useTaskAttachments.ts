@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { invoke } from '@/integrations/supabase/functions';
 import { useAuth } from '@/hooks/useAuth';
 
 export interface TaskAttachment {
@@ -105,12 +106,10 @@ export function useTaskAttachments(taskId: string | null) {
 
   const analyze = useMutation({
     mutationFn: async (attachment_id: string) => {
-      const { data, error } = await supabase.functions.invoke('analyze-task-image', {
-        body: { attachment_id },
-      });
-      if (error) throw error;
-      if (data?.error) throw new Error(data.error);
-      return data as { ocr_text: string; description: string; suggested_subtasks: string[] };
+      return await invoke<{ ocr_text: string; description: string; suggested_subtasks: string[] }>(
+        'analyze-task-image',
+        { attachment_id },
+      );
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['task-attachments', taskId] }),
   });
