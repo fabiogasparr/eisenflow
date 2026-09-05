@@ -213,6 +213,9 @@ export function avisoDeErro(err: unknown, contexto?: string): Aviso {
 
   const regra = REGRAS.find((r) => r.quando(t, c));
   if (regra) {
+    // Quem reconhece a falha de rede avisa a faixa do topo — não importa se o
+    // erro passou pelo toast, pelo ErrorBoundary ou por uma chamada direta.
+    if (regra.falhaDeRede) registrarFalhaDeRede();
     const descricao = (pt ? regra.ptDescricao : regra.enDescricao).replace('{HOST}', hostDaApi());
     return {
       titulo: contexto ? `${contexto}: ${pt ? regra.ptTitulo : regra.enTitulo}` : pt ? regra.ptTitulo : regra.enTitulo,

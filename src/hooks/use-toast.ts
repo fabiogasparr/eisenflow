@@ -1,7 +1,7 @@
 import * as React from "react";
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
-import { avisoDeErro, ehFalhaDeRede, registrarFalhaDeRede } from "@/lib/erros";
+import { avisoDeErro } from "@/lib/erros";
 
 const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 1000000;
@@ -155,10 +155,9 @@ function humanizar(props: Toast): Toast {
     typeof props.title !== "string" ||
     TITULOS_GENERICOS.includes(props.title.trim().toLowerCase());
 
+  // avisoDeErro já avisa a faixa do topo quando reconhece falha de rede.
   const aviso = avisoDeErro(descricao);
   const reconhecido = aviso.descricao !== descricao;
-
-  if (ehFalhaDeRede(descricao)) registrarFalhaDeRede();
 
   // Nada reconhecido e título próprio: deixa como o autor escreveu.
   if (!reconhecido && !tituloGenerico) return props;
