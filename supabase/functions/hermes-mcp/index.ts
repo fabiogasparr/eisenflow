@@ -1,11 +1,42 @@
-// Hermes-compatible MCP HTTP endpoint
-// Contract:
-//   POST /mcp/tools/list  { tools?: string[] } -> { tools: [{name,description,inputSchema}] }
-//   POST /mcp/tools/call  { name, arguments }  -> { ok:true, name, result } | { ok:false, error, ... }
-//   GET  /mcp/health (no auth)
-// Auth: header `x-api-key: efk_<prefix>_<secret>` issued per tenant.
-
+/**
+ * hermes-mcp
+ * ──────────────────────────────────────────────────────────────────────
+ * Servidor MCP HTTP que expõe 15 tools de tarefas/projetos/membros/lembretes
+ * por tenant, para clientes externos (Hermes).
+ *
+ * Chamada ........... cliente MCP externo — verify_jwt = false
+ * Autenticação ...... header `x-api-key: efk_<prefix>_<secret>` (SHA-256 em
+ *                     tenant_api_keys.key_hash) + tenant_mcp_settings.enabled
+ * Rotas ............. GET  /mcp/health                       (sem auth)
+ *                     POST /mcp/tools/list { tools?: string[] }
+ *                     POST /mcp/tools/call { name, arguments }
+ * Saída ............. { tools: [...] } | { ok:true, name, result } | { ok:false, error, ... }
+ * Lê ................ tenant_api_keys, tenant_mcp_settings, tasks, subtasks,
+ *                     task_reminders, projects, tenant_members, profiles,
+ *                     ip_whitelist, suspicious_ips, rate_limit_buckets
+ * Escreve ........... tenant_api_keys (last_used), tenant_api_audit_log, tasks,
+ *                     task_reminders, rate_limit_buckets/events, ip_access_log,
+ *                     suspicious_ips
+ * Env ............... nenhuma além das do Supabase
+ *
+ * CONTRATO PRESERVADO: rotas, nomes das tools, inputSchema e envelope de
+ * resposta não mudaram. As rotas também atendem sem o prefixo `/mcp`.
+ *
+ * O QUE MUDOU EM RELAÇÃO À VERSÃO LOVABLE
+ *  - A whitelist de IP por tenant (ip_whitelist), o bloqueio por suspicious_ips
+ *    e o token bucket por chave de API (rate_limit_buckets) passaram a ser
+ *    APLICADOS aqui — as tabelas e as funções SQL existiam (migrations de
+ *    02/09) mas nenhuma function as consultava; os src/middleware/*.ts do
+ *    front são só cortesia de UI. Tudo é FAIL-OPEN: se a migration de
+ *    segurança não rodou (MIGRATION.md registra que talvez nunca tenha
+ *    rodado), a ausência da tabela/função não derruba o MCP.
+ *  - API key inválida conta ponto contra o IP (report_suspicious_ip); a partir
+ *    de 20 falhas o IP é bloqueado por 1h.
+ */
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { sha256Hex } from '../_shared/cripto.ts'
+import { clientIp } from '../_shared/http.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -29,12 +60,105 @@ function json(body: unknown, status = 200) {
 function err(status: number, code: string, extra: Record<string, unknown> = {}) {
   return json({ ok: false, error: code, ...extra }, status)
 }
-async function sha256Hex(input: string) {
-  const bytes = new TextEncoder().encode(input)
-  const buf = await crypto.subtle.digest('SHA-256', bytes)
-  return Array.from(new Uint8Array(buf))
-    .map((b) => b.toString(16).padStart(2, '0'))
-    .join('')
+
+// ---------- IP: whitelist / bloqueio ----------
+/**
+ * is_ip_allowed(tenant, ip) já cobre os dois casos: IP em suspicious_ips com
+ * is_blocked e a whitelist do tenant (sem entradas = tudo liberado).
+ * Fail open: função ausente ou IP não parseável como inet não bloqueia.
+ */
+async function ipPermitido(tenantId: string, ip: string | null): Promise<boolean> {
+  if (!ip) return true
+  try {
+    const { data, error } = await sb.rpc('is_ip_allowed', { p_tenant_id: tenantId, p_ip_address: ip })
+    if (error) return true
+    return data !== false
+  } catch {
+    return true
+  }
+}
+
+/** Bloqueio global por suspicious_ips, antes mesmo de autenticar. */
+async function ipBloqueado(ip: string | null): Promise<boolean> {
+  if (!ip) return false
+  try {
+    const { data } = await sb
+      .from('suspicious_ips')
+      .select('id, block_until, is_blocked')
+      .eq('ip_address', ip)
+      .eq('is_blocked', true)
+      .maybeSingle()
+    if (!data) return false
+    if (data.block_until && new Date(data.block_until) < new Date()) {
+      await sb.from('suspicious_ips').update({ is_blocked: false, block_until: null }).eq('id', data.id)
+      return false // bloqueio temporário venceu
+    }
+    return true
+  } catch {
+    return false
+  }
+}
+
+/** Só a negativa vira registro: um por request bem-sucedido não se paga. */
+async function logIpDenial(tenantId: string | null, ip: string | null, endpoint: string, method: string, reason: string, userAgent: string | null) {
+  try {
+    await sb.from('ip_access_log').insert({
+      tenant_id: tenantId,
+      ip_address: ip || '0.0.0.0',
+      endpoint, method, allowed: false, reason,
+      user_agent: (userAgent || '').slice(0, 500) || null,
+    })
+  } catch { /* log não pode derrubar a request */ }
+}
+
+/** Chave inválida conta ponto contra o IP; a partir de 20 falhas, bloqueia por 1h. */
+async function registrarFalhaDeAuth(ip: string | null) {
+  if (!ip) return
+  try {
+    await sb.rpc('report_suspicious_ip', { p_ip_address: ip, p_threat_level: 'low', p_reason: 'API key inválida no hermes-mcp' })
+    const { data } = await sb.from('suspicious_ips').select('id, failed_attempts').eq('ip_address', ip).maybeSingle()
+    if (!data) return
+    const tentativas = data.failed_attempts || 0
+    await sb.from('suspicious_ips').update({
+      threat_level: tentativas >= 20 ? 'high' : tentativas >= 5 ? 'medium' : 'low',
+      ...(tentativas >= 20 ? { is_blocked: true, block_until: new Date(Date.now() + 3600_000).toISOString() } : {}),
+    }).eq('id', data.id)
+  } catch { /* nunca impede a resposta 401 */ }
+}
+
+// ---------- rate limit ----------
+const BUCKET_CAPACIDADE = 120
+
+/**
+ * Token bucket por chave de API, via check_rate_limit() do Postgres (atômica,
+ * com FOR UPDATE). O balde é criado na primeira chamada. Fail open se a
+ * função/tabela não existir.
+ */
+async function consumirToken(keyHash: string, tenantId: string, ip: string | null): Promise<{ allowed: boolean; remaining: number; retryAfter?: number; status?: string }> {
+  try {
+    await sb.from('rate_limit_buckets').upsert({ api_key: keyHash, tenant_id: tenantId }, { onConflict: 'api_key', ignoreDuplicates: true })
+    const { data, error } = await sb.rpc('check_rate_limit', { p_api_key: keyHash, p_tokens_needed: 1, p_ip_address: ip })
+    if (error) return { allowed: true, remaining: BUCKET_CAPACIDADE }
+    const r = Array.isArray(data) ? data[0] : data
+    if (!r) return { allowed: true, remaining: BUCKET_CAPACIDADE }
+    return {
+      allowed: r.allowed !== false,
+      remaining: r.tokens_remaining ?? 0,
+      retryAfter: r.reset_after && r.reset_after > 0 ? r.reset_after : undefined,
+      status: r.status,
+    }
+  } catch {
+    return { allowed: true, remaining: BUCKET_CAPACIDADE }
+  }
+}
+
+async function registrarEventoRl(keyHash: string, endpoint: string, method: string, ip: string | null, status: string, remaining: number, userAgent: string | null) {
+  try {
+    await sb.rpc('log_rate_limit_event', {
+      p_api_key: keyHash, p_endpoint: endpoint, p_method: method, p_status: status,
+      p_tokens_remaining: remaining, p_ip_address: ip, p_user_agent: (userAgent || '').slice(0, 500) || null,
+    })
+  } catch { /* auditoria não derruba a request */ }
 }
 
 // Minimal JSON-Schema validator matching Hermes' invalidInput.
@@ -77,6 +201,7 @@ function computeQuadrant(urg: number, imp: number): 'do' | 'schedule' | 'delegat
 // ---------- auth ----------
 type AuthCtx = {
   apiKeyId: string
+  keyHash: string
   tenantId: string
   scopes: string[]
   createdBy: string
@@ -113,6 +238,7 @@ async function authenticate(req: Request): Promise<{ ctx?: AuthCtx; reason?: str
   return {
     ctx: {
       apiKeyId: data.id,
+      keyHash: hash,
       tenantId: data.tenant_id,
       scopes: data.scopes ?? [],
       createdBy: data.created_by,
@@ -524,20 +650,63 @@ const TOOLS: Tool[] = [
 
 const toolMeta = (t: Tool) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema, scope: t.scope })
 
+/**
+ * Portões que valem para /tools/list e /tools/call: whitelist de IP do tenant e
+ * token bucket da chave. Devolve a resposta de recusa ou null para seguir.
+ */
+async function guard(req: Request, ctx: AuthCtx, endpoint: string, ip: string | null): Promise<Response | null> {
+  const ua = req.headers.get('user-agent')
+
+  if (!(await ipPermitido(ctx.tenantId, ip))) {
+    await logIpDenial(ctx.tenantId, ip, endpoint, req.method, 'fora da whitelist do tenant', ua)
+    await audit(ctx, null, 'error', 'ip_not_allowed')
+    return err(403, 'ip_not_allowed')
+  }
+
+  const rl = await consumirToken(ctx.keyHash, ctx.tenantId, ip)
+  if (!rl.allowed) {
+    await registrarEventoRl(ctx.keyHash, endpoint, req.method, ip, 'blocked', 0, ua)
+    await audit(ctx, null, 'error', 'rate_limited')
+    return err(429, 'rate_limited', rl.retryAfter ? { retry_after_seconds: rl.retryAfter } : {})
+  }
+  // Aviso a partir de 20% restantes — mesmo limiar do middleware do front.
+  if (rl.status === 'warning' || rl.remaining <= Math.ceil(BUCKET_CAPACIDADE * 0.2)) {
+    await registrarEventoRl(ctx.keyHash, endpoint, req.method, ip, 'warning', rl.remaining, ua)
+  }
+  return null
+}
+
 // ---------- handler ----------
-Deno.serve(async (req) => {
+serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   const url = new URL(req.url)
-  // Strip function name prefix
-  const path = url.pathname.replace(/^\/hermes-mcp/, '').replace(/\/$/, '') || '/'
+  // A URL pode chegar com ou sem o prefixo do nome da function e com ou sem /mcp:
+  // normaliza tudo para /mcp/<rota>.
+  const semPrefixo = url.pathname.replace(/^\/hermes-mcp/, '').replace(/\/+$/, '').replace(/^\/mcp(?=\/|$)/, '')
+  const path = semPrefixo ? `/mcp${semPrefixo}` : '/mcp'
+  const ip = clientIp(req)
 
   if (path === '/mcp/health' && req.method === 'GET') {
     return json({ ok: true, service: 'hermes-mcp', version: 1 })
   }
 
-  if (path === '/mcp/tools/list' && req.method === 'POST') {
+  if ((path !== '/mcp/tools/list' && path !== '/mcp/tools/call') || req.method !== 'POST') {
+    return err(404, 'not_found', { path: url.pathname })
+  }
+
+  if (await ipBloqueado(ip)) {
+    await logIpDenial(null, ip, path, req.method, 'IP bloqueado em suspicious_ips', req.headers.get('user-agent'))
+    return err(403, 'ip_blocked')
+  }
+
+  if (path === '/mcp/tools/list') {
     const auth = await authenticate(req)
-    if (!auth.ctx) return err(401, auth.reason || 'unauthorized')
+    if (!auth.ctx) {
+      if (auth.reason === 'unauthorized') await registrarFalhaDeAuth(ip)
+      return err(401, auth.reason || 'unauthorized')
+    }
+    const barrado = await guard(req, auth.ctx, path, ip)
+    if (barrado) return barrado
     let body: any = {}
     try { body = await req.json() } catch (_) { body = {} }
     const names = Array.isArray(body?.tools) ? body.tools.map(String) : []
@@ -548,10 +717,15 @@ Deno.serve(async (req) => {
     return json({ tools: items })
   }
 
-  if (path === '/mcp/tools/call' && req.method === 'POST') {
+  if (path === '/mcp/tools/call') {
     const auth = await authenticate(req)
-    if (!auth.ctx) return err(401, auth.reason || 'unauthorized')
+    if (!auth.ctx) {
+      if (auth.reason === 'unauthorized') await registrarFalhaDeAuth(ip)
+      return err(401, auth.reason || 'unauthorized')
+    }
     const ctx = auth.ctx
+    const barrado = await guard(req, ctx, path, ip)
+    if (barrado) return barrado
     let body: any = {}
     try { body = await req.json() } catch (_) { body = {} }
     const name = body?.name

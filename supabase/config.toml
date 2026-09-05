@@ -1,40 +1,85 @@
-project_id = "zmquepmvnelffcwvsuqv"
+# Supabase self-hosted (Coolify) — configuração das Edge Functions.
+#
+# `project_id` deixou de ser o projeto do Lovable (zmquepmvnelffcwvsuqv): o
+# backend agora é uma stack própria. No self-hosted este arquivo é lido pela CLI
+# para `supabase functions serve` local; em produção os arquivos de
+# supabase/functions são copiados para o volume `volumes/functions` do container
+# edge-runtime, e `verify_jwt` é aplicado por função conforme abaixo.
+#
+# REGRA: `verify_jwt = false` SÓ onde a chamada não vem do front autenticado:
+#   - whatsapp-webhook ........ o Evolution GO não tem JWT (segredo na query)
+#   - google-calendar-auth .... o callback é um redirect do Google (state HMAC);
+#                               as outras actions validam o JWT dentro da function
+#   - hermes-mcp .............. clientes MCP externos autenticam por x-api-key
+#   - crons ................... pg_cron/pg_net chamam com x-internal-secret ou a
+#                               service role; a function valida internamente
+# Todas as demais exigem JWT do usuário no gateway.
+project_id = "eisenflow"
 
-[functions.classify-task]
-verify_jwt = false
-
-[functions.ai-task-chat]
-verify_jwt = false
-
-[functions.generate-recurring-tasks]
-verify_jwt = false
-
-[functions.whatsapp-connect]
-verify_jwt = false
-
-[functions.whatsapp-disconnect]
-verify_jwt = false
-
-[functions.whatsapp-send]
-verify_jwt = false
-
+# ── webhooks / OAuth / MCP ──
 [functions.whatsapp-webhook]
-verify_jwt = false
-
-[functions.whatsapp-report]
-verify_jwt = false
-
-[functions.whatsapp-status]
-verify_jwt = false
-
-[functions.whatsapp-deadline-reminders]
 verify_jwt = false
 
 [functions.google-calendar-auth]
 verify_jwt = false
 
-[functions.google-calendar-sync]
+[functions.hermes-mcp]
 verify_jwt = false
 
-[functions.hermes-mcp]
+# ── crons (pg_cron) ──
+[functions.dispatch-reminders]
+verify_jwt = false
+
+[functions.process-recurring-schedules]
+verify_jwt = false
+
+[functions.whatsapp-deadline-reminders]
+verify_jwt = false
+
+[functions.whatsapp-report]
+verify_jwt = false
+
+[functions.generate-recurring-tasks]
+verify_jwt = false
+
+[functions.cleanup-reminders]
+verify_jwt = false
+
+# reevaluate-deadlines é cron E botão no front: sem JWT no gateway, a function
+# distingue internamente (service role/segredo -> todos; JWT -> só o usuário).
+[functions.reevaluate-deadlines]
+verify_jwt = false
+
+# ── chamadas do front (JWT obrigatório no gateway) ──
+[functions.ai-task-chat]
+verify_jwt = true
+
+[functions.analyze-task-image]
+verify_jwt = true
+
+[functions.classify-task]
+verify_jwt = true
+
+[functions.google-calendar-sync]
+verify_jwt = true
+
+[functions.tenant-whatsapp-connect]
+verify_jwt = true
+
+[functions.tenant-whatsapp-verify-phone]
+verify_jwt = true
+
+[functions.whatsapp-connect]
+verify_jwt = true
+
+[functions.whatsapp-disconnect]
+verify_jwt = true
+
+[functions.whatsapp-status]
+verify_jwt = true
+
+# whatsapp-send: chamada interna (x-internal-secret) OU usuário pela própria
+# conexão. Como o pg_net/outras functions não mandam JWT, o gateway não pode
+# exigi-lo; a function valida.
+[functions.whatsapp-send]
 verify_jwt = false

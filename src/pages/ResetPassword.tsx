@@ -1,11 +1,11 @@
-import { useState } from 'react';
-import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { useEffect, useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
-import { confirmPasswordReset } from '@/integrations/appwrite/auth';
+import { supabase } from '@/integrations/supabase/client';
 import { AlertTriangle, ArrowLeft, Zap } from 'lucide-react';
 
 const TAMANHO_MINIMO = 8;
@@ -13,15 +13,24 @@ const TAMANHO_MINIMO = 8;
 /**
  * Conclusão da recuperação de senha.
  *
- * O e-mail leva para /auth/recovery?userId=...&secret=... e aqui trocamos esse
- * par pela nova senha via `account.updateRecovery`. O link vale 1 hora e é de
- * uso único — depois disso o Appwrite responde 401.
+ * O link do e-mail abre /auth/recovery já carregando a sessão de recuperação
+ * (tokens no hash da URL no fluxo implícito, ou `?code=` no PKCE). O próprio
+ * supabase-js consome a URL ao iniciar (`detectSessionInUrl`), grava a sessão
+ * e dispara o evento `PASSWORD_RECOVERY` em `onAuthStateChange`. A partir daí
+ * basta `auth.updateUser({ password })`.
+ *
+ * Por que não confiamos SÓ no evento: o cliente é criado na importação do
+ * módulo e processa a URL antes de esta tela montar, então o evento pode já
+ * ter passado quando assinamos. `getSession()` espera a inicialização terminar
+ * e cobre esse caso; o evento fica como segunda via.
+ *
+ * Link expirado ou já usado: o GoTrue redireciona com `#error=...&error_code=
+ * otp_expired` em vez de tokens — sem sessão, mostramos a tela de link inválido.
  */
-export default function ResetPassword() {
-  const [params] = useSearchParams();
-  const userId = params.get('userId');
-  const secret = params.get('secret');
+type Estado = 'verificando' | 'pronto' | 'invalido';
 
+export default function ResetPassword() {
+  const [estado, setEstado] = useState<Estado>('verificando');
   const [senha, setSenha] = useState('');
   const [confirmacao, setConfirmacao] = useState('');
   const [loading, setLoading] = useState(false);
@@ -29,8 +38,38 @@ export default function ResetPassword() {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  // Link inválido ou aberto na mão, sem os parâmetros do e-mail.
-  if (!userId || !secret) {
+  useEffect(() => {
+    const hash = new URLSearchParams(window.location.hash.replace(/^#/, ''));
+    if (hash.get('error')) {
+      console.warn('Recuperação de senha recusada pelo GoTrue:', hash.get('error_description'));
+      setEstado('invalido');
+      return;
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'PASSWORD_RECOVERY' || (event === 'SIGNED_IN' && session)) {
+        setEstado('pronto');
+      }
+    });
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      // Sem sessão depois de o cliente ter lido a URL = link incompleto, expirado
+      // ou aberto na mão. Com sessão (de recuperação ou antiga), pode trocar.
+      setEstado(session ? 'pronto' : 'invalido');
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (estado === 'verificando') {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background p-4">
+        <p className="text-sm text-muted-foreground">...</p>
+      </div>
+    );
+  }
+
+  if (estado === 'invalido') {
     return (
       <div className="flex min-h-screen items-center justify-center bg-background p-4">
         <Card className="w-full max-w-md border-border/50 shadow-xl">
@@ -67,11 +106,16 @@ export default function ResetPassword() {
     if (!podeEnviar) return;
     setLoading(true);
     try {
-      await confirmPasswordReset(userId, secret, senha);
+      const { error } = await supabase.auth.updateUser({ password: senha });
+      if (error) throw error;
+      // A sessão de recuperação nasceu de um link de e-mail; encerramos e
+      // pedimos o login normal com a senha nova (é o que a mensagem promete).
+      await supabase.auth.signOut();
       toast({ title: t('passwordUpdated'), description: t('passwordUpdatedDesc') });
       navigate('/auth', { replace: true });
     } catch (err) {
-      // Aqui o erro é útil para o usuário: quase sempre é link expirado ou já usado.
+      // Aqui o erro é útil para o usuário: quase sempre é sessão expirada ou
+      // senha igual à anterior.
       const msg = err instanceof Error ? err.message : String(err);
       toast({ title: t('resetPassword'), description: msg, variant: 'destructive' });
     } finally {

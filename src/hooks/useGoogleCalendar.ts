@@ -1,45 +1,30 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { invoke, FunctionError } from '@/integrations/supabase/functions';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { useEffect, useCallback } from 'react';
-import { invoke } from '@/integrations/appwrite/functions';
-import { update } from '@/integrations/appwrite/database';
 import { useTenantContext } from '@/hooks/useTenantContext';
+import { useEffect, useCallback } from 'react';
 
 /**
- * Metadados da conexão com o Google Calendar.
- *
- * MUDANÇA DE SEGURANÇA DELIBERADA: no backend antigo o cliente lia
- * `google_calendar_tokens` direto (e portanto enxergava access_token e
- * refresh_token do usuário — isso era uma falha). No Appwrite a collection é
- * SERVER-ONLY: o cliente não lê nem escreve. Todo acesso passa pelas Functions
- * `google-calendar-auth` e `google-calendar-sync`, que devolvem apenas os
- * metadados não sensíveis descritos abaixo. Token nenhum chega ao navegador.
- *
  * MULTI-TENANT: existe um único app OAuth do EisenFlow no Google Cloud, mas cada
- * TENANT conecta a própria conta Google. Por isso toda chamada às Functions leva
- * `tenant_id` — sem ele elas respondem 400, e o servidor confere a associação
- * antes de qualquer coisa (só membro do tenant conecta).
+ * TENANT conecta a própria conta Google. A conexão em `google_calendar_tokens`
+ * é (user_id, tenant_id) — o mesmo usuário pode ter contas Google diferentes em
+ * organizações diferentes. Por isso toda chamada às Functions leva `tenant_id`
+ * (sem ele elas respondem 400 e conferem a associação antes de qualquer coisa),
+ * e a leitura da tabela filtra pelo tenant ativo.
+ *
+ * O que o front lê da tabela são só metadados (calendar_id, sync_enabled,
+ * is_revoked...). Os tokens em si ficam cifrados e nunca são usados no
+ * navegador: quem fala com a API do Google são as Functions.
  */
-export interface GoogleCalendarStatus {
-  connected: boolean;
-  google_email?: string | null;
-  calendar_id?: string | null;
-  sync_enabled?: boolean | null;
-  last_synced_at?: string | null;
-  /** true quando o usuário removeu o acesso do EisenFlow na Conta Google dele. */
-  is_revoked?: boolean | null;
-  revoked_reason?: string | null;
-}
 
 /** As Functions devolvem este code quando o refresh falha por invalid_grant. */
 const PRECISA_RECONECTAR = 'google_reconnect_required';
 
 function precisaReconectar(err: unknown): boolean {
-  // O FunctionError guarda o corpo cru em `raw`; é lá que vem o `code`.
-  const raw = (err as { raw?: string })?.raw ?? '';
-  return raw.includes(PRECISA_RECONECTAR)
-    || /reconecte sua conta google/i.test((err as Error)?.message ?? '');
+  if (err instanceof FunctionError && err.code === PRECISA_RECONECTAR) return true;
+  return /reconecte sua conta google/i.test((err as Error)?.message ?? '');
 }
 
 export function useGoogleCalendar() {
@@ -48,7 +33,7 @@ export function useGoogleCalendar() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  // Aviso do popup de OAuth quando a Function termina o callback
+  // Listen for popup callback
   useEffect(() => {
     const handler = (e: MessageEvent) => {
       if (e.data?.type === 'google-calendar-connected') {
@@ -61,24 +46,24 @@ export function useGoogleCalendar() {
   }, [queryClient, toast]);
 
   const tokenQuery = useQuery({
-    queryKey: ['google-calendar-token', user?.$id, activeTenantId],
-    queryFn: async (): Promise<GoogleCalendarStatus | null> => {
-      // Antes: SELECT em google_calendar_tokens. Agora a Function responde por
-      // ela — o cliente não tem permissão de leitura na collection.
-      const status = await invoke<GoogleCalendarStatus>('google-calendar-auth', {
-        action: 'status',
-        tenant_id: activeTenantId,
-      });
-      // Devolvemos também o estado revogado: o front precisa distinguir
-      // "nunca conectou" de "conectou e o acesso foi retirado no Google".
-      return status?.connected || status?.is_revoked ? status : null;
+    queryKey: ['google-calendar-token', user?.id, activeTenantId],
+    queryFn: async () => {
+      // Só metadados: nada de access_token/refresh_token no navegador.
+      const { data, error } = await supabase
+        .from('google_calendar_tokens')
+        .select('id, user_id, tenant_id, calendar_id, sync_enabled, last_synced_at, google_email, is_revoked, revoked_reason')
+        .eq('user_id', user!.id)
+        .eq('tenant_id', activeTenantId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
     },
     enabled: !!user && !!activeTenantId,
   });
 
   // Importa os eventos uma vez por sessão quando a sincronização está ligada
   useEffect(() => {
-    if (tokenQuery.data?.sync_enabled && activeTenantId
+    if (tokenQuery.data?.sync_enabled && !tokenQuery.data?.is_revoked && activeTenantId
         && sessionStorage.getItem(`gcal-auto-imported:${activeTenantId}`) !== 'true') {
       // A trava é por tenant: trocar de organização precisa importar de novo.
       sessionStorage.setItem(`gcal-auto-imported:${activeTenantId}`, 'true');
@@ -88,14 +73,17 @@ export function useGoogleCalendar() {
         })
         .catch(console.error);
     }
-  }, [tokenQuery.data?.sync_enabled, activeTenantId, queryClient]);
+  }, [tokenQuery.data?.sync_enabled, tokenQuery.data?.is_revoked, activeTenantId, queryClient]);
 
-  const isConnected = !!tokenQuery.data?.connected;
+  // Conectado = existe registro e o acesso não foi retirado na Conta Google.
+  // Distinguir "nunca conectou" de "conectou e foi revogado" é o que permite
+  // pedir reconexão em vez de tratar como conexão viva.
+  const isConnected = !!tokenQuery.data && !tokenQuery.data.is_revoked;
 
   // Lista os calendários da conta conectada para o tenant escolher qual usar
   // (grava depois em calendar_id via updateSettings).
   const calendarsQuery = useQuery({
-    queryKey: ['google-calendars', user?.$id, activeTenantId],
+    queryKey: ['google-calendars', user?.id, activeTenantId],
     queryFn: async () => {
       const data = await invoke<{
         calendars?: Array<{ id: string; summary: string; primary: boolean; backgroundColor: string }>;
@@ -108,14 +96,22 @@ export function useGoogleCalendar() {
   const connect = useCallback(async () => {
     if (!user) return;
     if (!activeTenantId) {
-      toast({ title: 'Selecione uma organização antes de conectar', variant: 'destructive' });
+      // Sem organização ativa não há onde amarrar a conta Google. Normalmente
+      // não acontece: o trigger handle_new_user_tenant cria o tenant pessoal
+      // no primeiro login — mas a lista ainda pode estar carregando.
+      toast({
+        title: 'Selecione uma organização antes de conectar',
+        description: 'O Google Calendar é conectado por organização. Aguarde a lista carregar ou escolha uma no menu.',
+        variant: 'destructive',
+      });
       return;
     }
     try {
       // Antes a URL da function era montada no cliente com o access_token da
       // sessão na querystring (`state=<access_token>`) — token de sessão
       // viajando em URL. Agora a própria Function monta a URL de consent do
-      // Google e a devolve; a sessão do Appwrite viaja no cabeçalho.
+      // Google (com state assinado por HMAC) e a devolve; a sessão viaja no
+      // cabeçalho Authorization, como em qualquer outra chamada.
       const { url } = await invoke<{ url: string }>('google-calendar-auth', {
         action: 'authorize',
         tenant_id: activeTenantId,
@@ -123,8 +119,8 @@ export function useGoogleCalendar() {
       window.open(url, 'google-calendar-auth', 'width=500,height=700');
     } catch (err) {
       toast({
-        title: 'Erro ao conectar',
-        description: (err as Error).message,
+        title: 'Não foi possível iniciar a conexão',
+        description: err instanceof Error ? err.message : String(err),
         variant: 'destructive',
       });
     }
@@ -195,21 +191,17 @@ export function useGoogleCalendar() {
 
   const updateSettings = useMutation({
     mutationFn: async (updates: { sync_enabled?: boolean; calendar_id?: string }) => {
-      // Antes: UPDATE em google_calendar_tokens. A collection é server-only,
-      // então quem grava é a Function — mesmo para campos inofensivos, porque a
-      // permissão é do documento inteiro. A Function aceita só sync_enabled e
-      // calendar_id.
-      await invoke('google-calendar-auth', {
-        action: 'update-settings',
-        tenant_id: activeTenantId,
-        ...updates,
-      });
+      // Só sync_enabled e calendar_id são graváveis pelo cliente; o filtro por
+      // tenant evita alterar a conexão de outra organização do mesmo usuário.
+      const { error } = await supabase
+        .from('google_calendar_tokens')
+        .update(updates)
+        .eq('user_id', user!.id)
+        .eq('tenant_id', activeTenantId!);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['google-calendar-token'] });
-    },
-    onError: (err: Error) => {
-      toast({ title: 'Erro', description: err.message, variant: 'destructive' });
     },
   });
 
@@ -223,7 +215,7 @@ export function useGoogleCalendar() {
       status?: string | null;
       google_event_id?: string | null;
     }) => {
-      if (!tokenQuery.data?.sync_enabled || !activeTenantId) return;
+      if (!tokenQuery.data?.sync_enabled || tokenQuery.data?.is_revoked || !activeTenantId) return;
 
       try {
         const startDateTime = task.due_date || task.created_at || new Date().toISOString();
@@ -247,10 +239,11 @@ export function useGoogleCalendar() {
 
         const data = await invoke<{ event?: { id?: string } }>('google-calendar-sync', body);
 
-        // `tasks` continua sendo escrita pelo cliente: guardar o id do evento não
-        // muda a titularidade do documento, então as permissões seguem as mesmas.
         if (!task.google_event_id && data?.event?.id) {
-          await update('tasks', task.id, { google_event_id: data.event.id });
+          await supabase
+            .from('tasks')
+            .update({ google_event_id: data.event.id })
+            .eq('id', task.id);
         }
       } catch (err) {
         // invalid_grant: o acesso foi removido do lado do Google. Avisa uma vez

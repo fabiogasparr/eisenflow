@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useAuth } from '@/hooks/useAuth';
 import { useEffect, useState } from 'react';
-import { findOne, Query } from '@/integrations/appwrite/database';
+import { supabase } from '@/integrations/supabase/client';
 import { useTenantContext } from '@/hooks/useTenantContext';
 import {
   Sidebar,
@@ -30,17 +30,13 @@ export function AppSidebar() {
 
   useEffect(() => {
     if (!user) return;
-    let cancelado = false;
-    // `user_roles` é server-doc: o cliente só LÊ, e só enxerga a linha cujo
-    // documento lhe deu Permission.read — a checagem de papel continua sendo
-    // do servidor, aqui é apenas leitura para decidir se mostra o item Admin.
-    findOne('user_roles', [
-      Query.equal('user_id', user.$id),
-      Query.equal('role', 'super_admin'),
-    ])
-      .then((doc) => { if (!cancelado) setIsSuperAdmin(!!doc); })
-      .catch(() => { if (!cancelado) setIsSuperAdmin(false); });
-    return () => { cancelado = true; };
+    supabase
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .eq('role', 'super_admin')
+      .maybeSingle()
+      .then(({ data }) => setIsSuperAdmin(!!data));
   }, [user]);
 
   const items = [

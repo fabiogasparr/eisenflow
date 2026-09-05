@@ -12,7 +12,7 @@ import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, A
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from '@/components/ui/dropdown-menu';
 import { ArrowLeft, Users, CheckCircle2, Clock, Zap, Trash2, Circle, Plus, MoreVertical, Pencil, Archive, ArchiveRestore } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { update, remove, getById, listAll, findOne, Query } from '@/integrations/appwrite/database';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useTasks } from '@/hooks/useTasks';
 import { useTeams } from '@/hooks/useTeams';
@@ -77,14 +77,13 @@ export default function ProjectDetail() {
     queryKey: ['project', id],
     queryFn: async () => {
       if (!id) return null;
-      // `.eq('id', id).single()` vira getById (o `id` do documento é o $id).
-      const doc = await getById('projects', id);
-      // O join `teams(name)` do PostgREST não existe: uma segunda leitura
-      // preenche a chave `teams` que a UI já consome.
-      const time = doc.team_id
-        ? await findOne('teams', [Query.equal('$id', doc.team_id)])
-        : null;
-      return { ...doc, teams: time };
+      const { data, error } = await supabase
+        .from('projects')
+        .select('*, teams(name)')
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return data;
     },
     enabled: !!id && !!user,
   });
@@ -92,10 +91,8 @@ export default function ProjectDetail() {
   const updateProject = useMutation({
     mutationFn: async (updates: { name?: string; color?: string; team_id?: string | null; archived?: boolean }) => {
       if (!id) throw new Error('No project id');
-      // Nem renomear, nem trocar de time interno, nem arquivar mudam o dono ou
-      // o tenant do projeto — as permissões gravadas no documento continuam
-      // corretas, então não passamos o terceiro argumento de update().
-      await update('projects', id, updates);
+      const { error } = await supabase.from('projects').update(updates).eq('id', id);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['project', id] });
@@ -109,20 +106,11 @@ export default function ProjectDetail() {
   const deleteProject = useMutation({
     mutationFn: async () => {
       if (!id) throw new Error('No project id');
-      // Sem CASCADE no Appwrite. O texto do diálogo promete que as tarefas
-      // sobrevivem "sem projeto associado" — no Postgres quem fazia isso era o
-      // ON DELETE SET NULL do FK. Aqui desanexamos na mão ANTES de remover,
-      // senão as tarefas ficariam com project_id apontando para nada.
-      const tarefas = await listAll('tasks', [Query.equal('project_id', id)]);
-      await Promise.all(
-        tarefas.map((t) => update('tasks', t.id, { project_id: null }).catch(() => undefined)),
-      );
-      await remove('projects', id);
+      const { error } = await supabase.from('projects').delete().eq('id', id);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['projects'] });
-      // As tarefas desanexadas mudaram: a lista da matriz precisa recarregar.
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       navigate('/projects');
       toast({ title: language === 'pt-BR' ? 'Projeto excluído' : 'Project deleted' });
     },
@@ -134,10 +122,8 @@ export default function ProjectDetail() {
   const openEditDialog = () => {
     if (!project) return;
     setEditName(project.name);
-    // No Appwrite os campos opcionais chegam como null; o estado do formulário
-    // continua exigindo string / string|null.
-    setEditColor(project.color ?? '#6366f1');
-    setEditTeamId(project.team_id ?? null);
+    setEditColor(project.color);
+    setEditTeamId(project.team_id);
     setEditOpen(true);
   };
 

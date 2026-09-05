@@ -1,162 +1,116 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+/**
+ * whatsapp-status
+ * ──────────────────────────────────────────────────────────────────────
+ * Consulta o estado da conexão pessoal no Evolution GO e sincroniza a linha.
+ *
+ * Chamada ........... front, polling de 4s enquanto o QR está pendente (JWT)
+ * Entrada ........... nenhuma
+ * Saída ............. { status, connected, logged_in, phone_number, qr_code,
+ *                       webhook_reregistered? }
+ * Lê/Escreve ........ whatsapp_connections
+ * Env ............... EVOLUTION_API_URL, EVOLUTION_API_KEY,
+ *                     EVOLUTION_WEBHOOK_SECRET, PUBLIC_FUNCTIONS_URL
+ *
+ * O QUE MUDOU EM RELAÇÃO À VERSÃO LOVABLE
+ *   1. `GET /instance/connectionState/{nome}` não existe. É `GET /instance/status`
+ *      autenticado com o TOKEN da instância, e a resposta vem em PascalCase:
+ *      { Connected, LoggedIn, Name }. A tradução para os três valores que o
+ *      schema e o front conhecem está em `traduzirStatus()`.
+ *   2. O bloco que tentava cinco formatos de `POST /webhook/set/{nome}` sumiu:
+ *      re-registrar webhook aqui é chamar `connect()` de novo.
+ *   3. O telefone não vem no status. Ele está no campo `jid` do modelo da
+ *      instância, exposto só na listagem administrativa — por isso a busca por
+ *      `/instance/all` acontece apenas na virada para 'connected'.
+ *
+ * REFRESCO DO QR: como o front repola esta function a cada 4s enquanto está em
+ * 'qr_pending', é aqui que o QR é renovado e regravado — sem isso o usuário
+ * ficaria olhando um código morto. O evento `QRCode` do webhook faz o mesmo
+ * caminho por conta própria; os dois são redundantes de propósito.
+ */
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { admin, requireUser } from '../_shared/supabase.ts';
+import { evolution, soDigitos, webhookUrl, type StatusInstancia } from '../_shared/evolution.ts';
+import { erro, json, preflight, respostaErro } from '../_shared/http.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+/** { Connected, LoggedIn } (Go) -> o `status` string que o schema e o front usam. */
+function traduzirStatus(estado: StatusInstancia | null, statusAtual: string): string {
+  if (estado?.Connected && estado?.LoggedIn) return 'connected';
+  // Pareado mas com o socket caído: não é 'connected' e também não pede QR novo.
+  if (estado?.LoggedIn) return 'disconnected';
+  // Sem pareamento: continua no fluxo de QR se era isso que estava acontecendo.
+  return statusAtual === 'qr_pending' ? 'qr_pending' : 'disconnected';
 }
 
-async function registerWebhook(evolutionUrl: string, apiKey: string, instanceName: string, supabaseUrl: string) {
-  const webhookUrl = `${supabaseUrl}/functions/v1/whatsapp-webhook`
-  const events = ['MESSAGES_UPSERT', 'CONNECTION_UPDATE']
-
-  const formats = [
-    { webhook: { enabled: true, url: webhookUrl, webhook_by_events: true, webhook_base64: false, events } },
-    { webhook: { enabled: true, url: webhookUrl, events } },
-    { instance: { webhook: { enabled: true, url: webhookUrl, webhook_by_events: true, webhook_base64: false, events } } },
-    { webhook: { url: webhookUrl, webhook_by_events: true, webhook_base64: false, events } },
-    { url: webhookUrl, webhook_by_events: true, webhook_base64: false, events },
-  ]
-
-  const results: { format: number; status: number; body: string }[] = []
-
-  for (const [i, payload] of formats.entries()) {
-    console.log(`[webhook-register] Trying format ${i + 1}:`, JSON.stringify(payload).substring(0, 240))
-    try {
-      const res = await fetch(`${evolutionUrl}/webhook/set/${instanceName}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: apiKey },
-        body: JSON.stringify(payload),
-      })
-      const resText = await res.text()
-      console.log(`[webhook-register] Format ${i + 1} response [${res.status}]:`, resText.substring(0, 320))
-      results.push({ format: i + 1, status: res.status, body: resText.substring(0, 220) })
-      if (res.ok) {
-        console.log(`[webhook-register] SUCCESS with format ${i + 1}`)
-        return { success: true, results }
-      }
-    } catch (e) {
-      console.error(`[webhook-register] Format ${i + 1} error:`, e)
-      results.push({ format: i + 1, status: 0, body: String(e) })
-    }
-  }
-
-  console.error('[webhook-register] All formats failed')
-  return { success: false, results }
+/** O telefone da conta pareada mora no `jid` da instância (rota administrativa). */
+async function buscarTelefone(instanceId: string | null, nome: string): Promise<string | null> {
+  const todas = await evolution.listInstances().catch(() => []);
+  const inst = (Array.isArray(todas) ? todas : []).find((i) => (instanceId && i?.id === instanceId) || i?.name === nome);
+  return inst?.jid ? soDigitos(inst.jid) : null;
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return preflight();
 
   try {
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
+    const user = await requireUser(req);
+    const db = admin();
+
+    const { data: conn } = await db.from('whatsapp_connections').select('*').eq('user_id', user.id).maybeSingle();
+    if (!conn) return json({ status: 'disconnected' });
+
+    if (!conn.instance_token) {
+      // Conexão criada antes do porte para o Evolution GO: sem o token não há
+      // como falar com a instância. Reconectar recria/recupera o token.
+      throw erro('Conexão sem token de instância (criada antes da migração). Clique em conectar para refazer o pareamento.', 409);
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    )
+    const estado = await evolution.status(conn.instance_token);
+    const status = traduzirStatus(estado, conn.status);
+    // deno-lint-ignore no-explicit-any
+    const patch: Record<string, any> = {};
+    let webhookReregistrado: boolean | undefined;
 
-    const token = authHeader.replace('Bearer ', '')
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token)
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
-    }
-    const userId = claimsData.claims.sub
-
-    const { data: conn } = await (supabase as any)
-      .from('whatsapp_connections')
-      .select('*')
-      .eq('user_id', userId)
-      .maybeSingle()
-
-    if (!conn) {
-      return new Response(JSON.stringify({ status: 'disconnected' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')!
-    const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')!
-
-    // For already-connected instances, re-register webhook with multi-format
-    if (conn.status === 'connected') {
-      console.log('[whatsapp-status] Instance connected, re-registering webhook for:', conn.instance_name)
-      const { success, results } = await registerWebhook(EVOLUTION_API_URL, EVOLUTION_API_KEY, conn.instance_name, Deno.env.get('SUPABASE_URL')!)
-      return new Response(JSON.stringify({ status: 'connected', webhook_reregistered: success, webhook_results: results }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (conn.status !== 'qr_pending') {
-      return new Response(JSON.stringify({ status: conn.status }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Check instance state on Evolution API
-    const stateRes = await fetch(`${EVOLUTION_API_URL}/instance/connectionState/${conn.instance_name}`, {
-      headers: { apikey: EVOLUTION_API_KEY },
-    })
-
-    if (!stateRes.ok) {
-      console.error('Failed to check state:', await stateRes.text())
-      return new Response(JSON.stringify({ status: 'qr_pending' }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const stateData = await stateRes.json()
-    console.log('Instance state:', JSON.stringify(stateData))
-    const instanceState = stateData?.instance?.state || stateData?.state
-
-    if (instanceState === 'open' || instanceState === 'connected') {
-      // Register webhook with multi-format fallback
-      const { success: webhookOk, results: webhookResults } = await registerWebhook(EVOLUTION_API_URL, EVOLUTION_API_KEY, conn.instance_name, Deno.env.get('SUPABASE_URL')!)
-
-      // Get phone number
-      let phoneNumber: string | null = null
+    if (status === 'connected') {
+      // O original re-registrava o webhook sempre que encontrava a instância
+      // conectada — é a proteção contra o webhook ter sido perdido no servidor.
+      // Aqui isso é `connect()`. Falhar não invalida o status.
       try {
-        const infoRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${conn.instance_name}`, {
-          headers: { apikey: EVOLUTION_API_KEY },
-        })
-        if (infoRes.ok) {
-          const infoData = await infoRes.json()
-          const instance = Array.isArray(infoData) ? infoData[0] : infoData
-          phoneNumber = instance?.instance?.ownerJid || instance?.ownerJid || instance?.instance?.owner || instance?.owner || null
-          if (phoneNumber) phoneNumber = phoneNumber.replace(/@.*$/, '')
-        }
+        await evolution.connect(conn.instance_token, { webhookUrl: webhookUrl(), immediate: true });
+        webhookReregistrado = true;
       } catch (e) {
-        console.error('Failed to fetch instance info:', e)
+        webhookReregistrado = false;
+        console.log(`whatsapp-status: falha ao re-registrar webhook (${(e as Error).message})`);
       }
-
-      const supabaseAdmin = createClient(
-        Deno.env.get('SUPABASE_URL')!,
-        Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-      )
-
-      await supabaseAdmin
-        .from('whatsapp_connections')
-        .update({ status: 'connected', qr_code: null, phone_number: phoneNumber })
-        .eq('user_id', userId)
-
-      return new Response(JSON.stringify({ status: 'connected', phone_number: phoneNumber, webhook_registered: webhookOk, webhook_results: webhookResults }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
+      if (!conn.phone_number) {
+        patch.phone_number = await buscarTelefone(conn.instance_id, conn.instance_name);
+      }
+      if (conn.qr_code) patch.qr_code = null; // pareado: o QR não serve mais
+    } else if (status === 'qr_pending') {
+      // Busca o QR corrente — o anterior provavelmente já expirou.
+      try {
+        const qr = await evolution.qr(conn.instance_token);
+        if (qr?.Qrcode && qr.Qrcode !== conn.qr_code) patch.qr_code = qr.Qrcode;
+      } catch (e) {
+        console.log(`whatsapp-status: QR indisponível (${(e as Error).message})`);
+      }
     }
 
-    return new Response(JSON.stringify({ status: 'qr_pending' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  } catch (error) {
-    console.error('whatsapp-status error:', error)
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    if (status !== conn.status) patch.status = status;
+    if (Object.keys(patch).length) {
+      const { error } = await db.from('whatsapp_connections').update(patch).eq('id', conn.id);
+      if (error) throw error;
+    }
+
+    return json({
+      status,
+      connected: !!estado?.Connected,
+      logged_in: !!estado?.LoggedIn,
+      phone_number: patch.phone_number ?? conn.phone_number ?? null,
+      qr_code: patch.qr_code ?? (status === 'qr_pending' ? conn.qr_code : null),
+      ...(webhookReregistrado === undefined ? {} : { webhook_reregistered: webhookReregistrado }),
+    });
+  } catch (e) {
+    console.error('whatsapp-status:', e);
+    return respostaErro(e);
   }
-})
+});

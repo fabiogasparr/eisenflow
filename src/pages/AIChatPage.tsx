@@ -11,8 +11,7 @@ import { useTasks } from '@/hooks/useTasks';
 import { useTeams, useTeamMembers } from '@/hooks/useTeams';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useToast } from '@/hooks/use-toast';
-import { invoke } from '@/integrations/appwrite/functions';
-import { uploadFile, fileViewUrl, fileOwnerPermissions } from '@/integrations/appwrite/files';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { cn } from '@/lib/utils';
 import {
@@ -40,11 +39,6 @@ interface ChatMessage {
   role: MessageRole;
   content: string;
   imageUrls?: string[];
-  /**
-   * No Supabase guardava o caminho no bucket (`{uid}/arquivo.png`). No Appwrite
-   * o identificador de um arquivo é o `$id`, então aqui viajam fileIds. O nome
-   * do campo foi mantido para não mexer no resto do componente.
-   */
   imagePaths?: string[];
   tasks?: TaskSuggestion[];
   tasksCreated?: boolean;
@@ -55,7 +49,6 @@ interface PendingImage {
   file?: File;
   previewUrl: string;
   reused?: boolean;
-  /** fileId do Appwrite (era o caminho do objeto no Storage do Supabase). */
   reusedPath?: string;
 }
 
@@ -258,15 +251,15 @@ export default function AIChatPage() {
     const slice = lastUserImages.paths.slice(0, remaining);
     const items: PendingImage[] = [];
     for (let i = 0; i < slice.length; i++) {
-      const fileId = slice[i];
-      // O Appwrite não tem URL assinada com expiração: fileViewUrl devolve uma
-      // URL fixa que só abre para quem tem permissão de leitura no arquivo.
-      // Como é síncrono, o await do createSignedUrl desapareceu.
+      const path = slice[i];
+      const { data } = await supabase.storage
+        .from('chat-attachments')
+        .createSignedUrl(path, 3600);
       items.push({
         id: crypto.randomUUID(),
-        previewUrl: fileViewUrl('chat-attachments', fileId) || lastUserImages.urls[i] || '',
+        previewUrl: data?.signedUrl ?? lastUserImages.urls[i] ?? '',
         reused: true,
-        reusedPath: fileId,
+        reusedPath: path,
       });
     }
     setPending((prev) => [...prev, ...items]);
@@ -314,16 +307,23 @@ export default function AIChatPage() {
     const result: { url: string; path: string }[] = [];
     for (const p of pending) {
       if (p.reused && p.reusedPath) {
-        // Reaproveitando um arquivo já enviado: só remonta a URL de exibição.
-        result.push({ url: fileViewUrl('chat-attachments', p.reusedPath), path: p.reusedPath });
+        const { data } = await supabase.storage
+          .from('chat-attachments')
+          .createSignedUrl(p.reusedPath, 60 * 60);
+        if (data?.signedUrl) result.push({ url: data.signedUrl, path: p.reusedPath });
         continue;
       }
       if (!p.file) continue;
-      // O caminho `${uid}/${uuid}.${ext}` sumiu: o Appwrite gera o fileId. A
-      // separação por usuário que a policy do bucket fazia pelo prefixo do
-      // caminho agora é permissão gravada NO ARQUIVO — só quem enviou lê.
-      const file = await uploadFile('chat-attachments', p.file, fileOwnerPermissions(user.$id));
-      result.push({ url: fileViewUrl('chat-attachments', file.$id), path: file.$id });
+      const ext = p.file.name.split('.').pop() || 'png';
+      const path = `${user.id}/${crypto.randomUUID()}.${ext}`;
+      const { error: upErr } = await supabase.storage
+        .from('chat-attachments')
+        .upload(path, p.file, { contentType: p.file.type, upsert: false });
+      if (upErr) throw upErr;
+      const { data: signed } = await supabase.storage
+        .from('chat-attachments')
+        .createSignedUrl(path, 60 * 60);
+      if (signed?.signedUrl) result.push({ url: signed.signedUrl, path });
     }
     return result;
   };
@@ -370,36 +370,26 @@ export default function AIChatPage() {
         projects: [],
       };
 
-      // TODO(migração): `images` continua indo como lista de URLs, mas a URL do
-      // Appwrite Storage exige sessão do usuário — a Function `ai-task-chat`,
-      // rodando no servidor com API key, não consegue baixá-la como fazia com a
-      // signed URL do Supabase. O correto é a Function receber os fileIds
-      // (`imagePaths`) e ler o arquivo pelo SDK server-side.
-      const data = await invoke<{
-        error?: string;
-        type?: string;
-        summary?: string;
-        message?: string;
-        tasks?: any[];
-      }>('ai-task-chat', { messages: apiMessages, context, images: imageUrls });
+      const { data, error } = await supabase.functions.invoke('ai-task-chat', {
+        body: { messages: apiMessages, context, images: imageUrls },
+      });
 
-      // `invoke` já lança em HTTP >= 400; este `error` é o erro de negócio que a
-      // própria function devolve com status 200.
+      if (error) throw error;
       if (data.error) throw new Error(data.error);
 
       if (data.type === 'tasks') {
-        const tasks: TaskSuggestion[] = (data.tasks ?? []).map((t: any) => ({
+        const tasks: TaskSuggestion[] = data.tasks.map((t: any) => ({
           ...t,
           selected: true,
         }));
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: data.summary ?? '', tasks },
+          { role: 'assistant', content: data.summary, tasks },
         ]);
       } else {
         setMessages((prev) => [
           ...prev,
-          { role: 'assistant', content: data.message ?? '' },
+          { role: 'assistant', content: data.message },
         ]);
       }
     } catch (err: any) {

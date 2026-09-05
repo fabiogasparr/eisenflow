@@ -1,66 +1,78 @@
-// tenant-whatsapp-connect: creates Evolution API instance for a tenant and returns QR
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+/**
+ * tenant-whatsapp-connect
+ * ──────────────────────────────────────────────────────────────────────
+ * Cria (ou reaproveita) a instância do WhatsApp corporativo do tenant no
+ * Evolution GO, declara o webhook e devolve o QR code.
+ *
+ * Chamada ........... front (JWT) + papel owner/admin no tenant
+ * Entrada ........... { tenant_id }
+ * Saída ............. { ok, instance_name, qr_code, status }
+ * Lê ................ tenant_members
+ * Lê/Escreve ........ tenant_whatsapp_connections
+ * Env ............... EVOLUTION_API_URL, EVOLUTION_API_KEY,
+ *                     EVOLUTION_WEBHOOK_SECRET, PUBLIC_FUNCTIONS_URL
+ *
+ * É o gêmeo de `whatsapp-connect` no nível do tenant; valem as mesmas três
+ * mudanças do Evolution GO (webhook declarado no connect, instância identificada
+ * pelo token, QR rotativo). O painel do workspace repola a LINHA a cada 4s —
+ * quem mantém `qr_code` fresco é o evento `QRCode` do `whatsapp-webhook`; a
+ * resposta desta chamada é só o primeiro código.
+ *
+ * SEGURANÇA: o original chamava a RPC `get_tenant_role`; aqui é
+ * `requireTenantAdmin()`, que barra membro comum antes de tocar na Evolution.
+ */
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { admin, requireTenantAdmin, requireUser } from '../_shared/supabase.ts';
+import { evolution, garantirInstancia, webhookUrl } from '../_shared/evolution.ts';
+import { erro, json, lerCorpo, preflight, respostaErro } from '../_shared/http.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-}
+/** Mesmo formato do original — 16 chars do uuid bastam para não colidir. */
+const nomeDaInstancia = (tenantId: string) => `tenant_${tenantId.replace(/-/g, '').slice(0, 16)}`;
 
-const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')!
-const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')!
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return preflight();
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
   try {
-    const authHeader = req.headers.get('Authorization') ?? ''
-    const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: authHeader } },
-    })
-    const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-    const { data: { user } } = await sb.auth.getUser()
-    if (!user) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: corsHeaders })
+    const user = await requireUser(req);
+    const { tenant_id: tenantId } = await lerCorpo(req);
+    if (!tenantId) throw erro('tenant_id é obrigatório', 400);
 
-    const { tenant_id } = await req.json()
-    if (!tenant_id) return new Response(JSON.stringify({ error: 'tenant_id required' }), { status: 400, headers: corsHeaders })
+    await requireTenantAdmin(tenantId, user.id);
+    const db = admin();
 
-    // Permission check
-    const { data: role } = await admin.rpc('get_tenant_role', { _user_id: user.id, _tenant_id: tenant_id })
-    if (!['owner', 'admin'].includes(role as string)) {
-      return new Response(JSON.stringify({ error: 'forbidden' }), { status: 403, headers: corsHeaders })
+    const { data: conn } = await db.from('tenant_whatsapp_connections').select('*').eq('tenant_id', tenantId).maybeSingle();
+    const nome: string = conn?.instance_name || nomeDaInstancia(tenantId);
+    const { token, id } = await garantirInstancia(nome, conn, 'tenant-whatsapp-connect');
+
+    await evolution.connect(token, { webhookUrl: webhookUrl(), immediate: true });
+
+    const estado = await evolution.status(token).catch(() => null);
+    let qrCode: string | null = null;
+    if (!estado?.LoggedIn) {
+      try {
+        const qr = await evolution.qr(token);
+        qrCode = qr?.Qrcode || null;
+      } catch (e) {
+        console.log(`tenant-whatsapp-connect: QR indisponível no momento (${(e as Error).message})`);
+      }
     }
 
-    const instance_name = `tenant_${tenant_id.replace(/-/g, '').slice(0, 16)}`
+    const status = estado?.LoggedIn && estado?.Connected ? 'connected' : (qrCode ? 'qr_pending' : 'disconnected');
+    const { error } = await db.from('tenant_whatsapp_connections').upsert({
+      tenant_id: tenantId,
+      created_by: conn?.created_by || user.id,
+      instance_name: nome,
+      instance_token: token,
+      instance_id: id,
+      status,
+      qr_code: qrCode,
+    }, { onConflict: 'tenant_id' });
+    if (error) throw error;
 
-    // Create instance (idempotent: ignore "already exists")
-    const createRes = await fetch(`${EVOLUTION_API_URL}/instance/create`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-      body: JSON.stringify({ instanceName: instance_name, integration: 'WHATSAPP-BAILEYS', qrcode: true }),
-    })
-    const createData = await createRes.json().catch(() => ({}))
-
-    // Fetch QR
-    const qrRes = await fetch(`${EVOLUTION_API_URL}/instance/connect/${instance_name}`, {
-      headers: { apikey: EVOLUTION_API_KEY },
-    })
-    const qrData = await qrRes.json().catch(() => ({}))
-    const qr_code = qrData.base64 || qrData.qrcode?.base64 || createData?.qrcode?.base64 || null
-
-    // Upsert connection row
-    await admin.from('tenant_whatsapp_connections').upsert({
-      tenant_id,
-      instance_name,
-      status: 'qr_pending',
-      qr_code,
-      created_by: user.id,
-    }, { onConflict: 'tenant_id' })
-
-    return new Response(JSON.stringify({ ok: true, instance_name, qr_code }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    console.log(`tenant-whatsapp-connect: ${nome} -> ${status}`);
+    return json({ ok: true, instance_name: nome, qr_code: qrCode, status });
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    console.error('tenant-whatsapp-connect:', e);
+    return respostaErro(e);
   }
-})
+});

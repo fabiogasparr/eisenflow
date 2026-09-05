@@ -1,19 +1,19 @@
 /**
- * Hook de fuso horário
+ * Timezone Hook
  *
- * Detecta e gerencia o fuso do usuário, sincronizando com user_preferences.
+ * Detects and manages user's timezone for all date/time operations.
+ * Automatically syncs with server preferences.
  *
- * DUAS CORREÇÕES FEITAS NA MIGRAÇÃO — este arquivo nunca compilou:
+ * DUAS CORREÇÕES — este arquivo nunca compilou no estado original:
  *  1. Tinha JSX (TimezoneProvider) dentro de um `.ts`, o que é erro de sintaxe.
  *     Renomeado para `.tsx`.
  *  2. Importava `@supabase/auth-helpers-react`, um pacote que nunca esteve no
- *     package.json. Agora usa o `useAuth` do próprio app.
+ *     package.json. Agora usa o `useAuth` do próprio app e o client do projeto.
  */
 
 import { useEffect, useState, useCallback } from "react";
 import { useAuth } from "@/hooks/useAuth";
-import { findOne, create, update, Query } from "@/integrations/appwrite/database";
-import { ownerOnly } from "@/integrations/appwrite/permissions";
+import { supabase } from "@/integrations/supabase/client";
 
 /**
  * Get browser's detected timezone (Intl API)
@@ -112,7 +112,7 @@ export function useTimezone() {
   const { user } = useAuth();
 
   const [timezone, setTimezoneState] = useState<string>(() =>
-    typeof window !== "undefined" ? detectBrowserTimezone() : "America/Sao_Paulo"
+    typeof window !== "undefined" ? detectBrowserTimezone() : "UTC"
   );
   const [preferences, setPreferences] = useState<UserTimezonePreference | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -129,11 +129,16 @@ export function useTimezone() {
       try {
         setIsLoading(true);
 
-        // findOne devolve null quando não existe — não precisa mais tratar o
-        // código PGRST116 do PostgREST.
-        const data = await findOne("user_preferences", [
-          Query.equal("user_id", user.$id),
-        ]);
+        const { data, error } = await supabase
+          .from("user_preferences")
+          .select("timezone, language, date_format, time_format, week_starts_on")
+          .eq("id", user.id)
+          .single();
+
+        if (error && error.code !== "PGRST116") {
+          // PGRST116 = not found, which is okay for first-time users
+          throw error;
+        }
 
         if (data) {
           setPreferences({
@@ -149,26 +154,24 @@ export function useTimezone() {
           const detectedTz = detectBrowserTimezone();
           const newPrefs: UserTimezonePreference = {
             timezone: detectedTz,
-            language: "pt-BR",
+            language: "en",
             dateFormat: "YYYY-MM-DD",
             timeFormat: "24h",
             weekStartsOn: 0,
           };
 
-          // Primeiro acesso: grava a preferência já com a permissão do dono —
-          // no Postgres isso vinha da policy "view/update own" sobre user_preferences.
-          await create(
-            "user_preferences",
-            {
-              user_id: user.$id,
+          await supabase
+            .from("user_preferences")
+            .insert({
+              id: user.id,
               timezone: detectedTz,
-              language: "pt-BR",
+              language: "en",
               date_format: "YYYY-MM-DD",
               time_format: "24h",
               week_starts_on: 0,
-            } as never,
-            ownerOnly(user.$id),
-          );
+            })
+            .select()
+            .single();
 
           setPreferences(newPrefs);
           setTimezoneState(detectedTz);
@@ -202,12 +205,13 @@ export function useTimezone() {
           throw new Error(`Invalid timezone: ${newTimezone}`);
         }
 
-        // Sem UPDATE por filtro no Appwrite: acha o documento, depois atualiza.
-        const atual = await findOne("user_preferences", [
-          Query.equal("user_id", user.$id),
-        ]);
-        if (!atual) throw new Error("Preferências do usuário não encontradas");
-        await update("user_preferences", atual.id, { timezone: newTimezone } as never);
+        // Update in database
+        const { error } = await supabase
+          .from("user_preferences")
+          .update({ timezone: newTimezone })
+          .eq("id", user.id);
+
+        if (error) throw error;
 
         // Update local state
         setTimezoneState(newTimezone);

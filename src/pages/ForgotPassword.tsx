@@ -4,34 +4,37 @@ import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { requestPasswordReset } from '@/integrations/appwrite/auth';
+import { supabase } from '@/integrations/supabase/client';
 import { ArrowLeft, MailCheck, Zap } from 'lucide-react';
 
 /**
  * Pedido de recuperação de senha.
  *
- * `account.createRecovery(email, url)` manda um e-mail com um link para `url`
- * carregando `userId` e `secret` na querystring. Quem consome isso é
- * /auth/recovery (ResetPassword.tsx). O link vale 1 hora.
+ * `supabase.auth.resetPasswordForEmail(email, { redirectTo })` faz o GoTrue
+ * mandar um e-mail com um link que abre `redirectTo` já com uma sessão de
+ * recuperação (tokens no hash da URL, ou `?code=` no fluxo PKCE). Quem consome
+ * isso é /auth/recovery (ResetPassword.tsx). O link vale 1 hora e é de uso único.
  *
- * DOIS PRÉ-REQUISITOS no console do Appwrite, senão isto falha em produção:
- *  1. SMTP configurado (Settings → SMTP) — sem isso o e-mail não sai.
- *  2. O host da `url` precisa estar registrado como plataforma Web
- *     (Settings → Platforms). Hoje só eisenflow.jornadaconectada.com está.
+ * DOIS PRÉ-REQUISITOS no Supabase self-hosted, senão isto falha em produção:
+ *  1. SMTP configurado no GoTrue (GOTRUE_SMTP_*) — sem isso o e-mail não sai.
+ *  2. A URL de `redirectTo` precisa constar em GOTRUE_URI_ALLOW_LIST (ou ser o
+ *     SITE_URL); caso contrário o GoTrue ignora e manda para o SITE_URL, onde
+ *     não existe a tela de nova senha.
  */
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [enviado, setEnviado] = useState(false);
-  const [erro, setErro] = useState<string | null>(null);
   const { t } = useLanguage();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setErro(null);
     try {
-      await requestPasswordReset(email);
+      const { error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/auth/recovery`,
+      });
+      if (error) throw error;
       setEnviado(true);
     } catch (err) {
       // Não revelamos se o e-mail existe ou não — dizer "essa conta não existe"
@@ -97,7 +100,6 @@ export default function ForgotPassword() {
               required
               autoFocus
             />
-            {erro && <p className="text-sm text-destructive">{erro}</p>}
           </CardContent>
           <CardFooter className="flex flex-col gap-3">
             <Button type="submit" className="w-full" disabled={loading || !email}>

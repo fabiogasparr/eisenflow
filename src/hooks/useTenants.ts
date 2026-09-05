@@ -1,8 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { create, update, remove, listDocs, findOne, Query, toRow } from '@/integrations/appwrite/database';
-import { invoke } from '@/integrations/appwrite/functions';
 
 export interface Tenant {
   id: string;
@@ -26,26 +25,21 @@ export interface TenantMember {
   };
 }
 
-/** Substitui o DEFAULT generate_invite_code() da tabela tenant_invites. */
-function generateInviteCode() {
-  const bytes = new Uint8Array(9);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 12).toUpperCase();
-}
-
 export function useTenants() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const tenantsQuery = useQuery({
-    queryKey: ['tenants', user?.$id],
+    queryKey: ['tenants', user?.id],
     queryFn: async (): Promise<Tenant[]> => {
       if (!user) return [];
-      // Sem `.eq(...)`: chegam só os tenants cuja permissão de documento inclui
-      // este usuário — substitui a policy "Tenant members can view their tenant".
-      const docs = await listDocs('tenants', [Query.orderDesc('created_at')]);
-      return docs as unknown as Tenant[];
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Tenant[];
     },
     enabled: !!user,
   });
@@ -53,18 +47,13 @@ export function useTenants() {
   const createTenant = useMutation({
     mutationFn: async (input: { name: string; slug: string; logo_url?: string }) => {
       if (!user) throw new Error('Not authenticated');
-
-      // Tudo acontece na Function `create-tenant`: Team nativo, adesão do
-      // criador, documento em `tenants` com leitura para o Team, e o registro
-      // em `tenant_members`. Só a API key faz as duas primeiras, e
-      // `tenant_members` é server-doc — deixar o cliente gravar o próprio papel
-      // seria deixar qualquer um virar owner. Antes o front tentava fazer isso
-      // direto e a segunda escrita falhava em silêncio: ninguém conseguia ter
-      // organização.
-      const r = await invoke<{ ok: boolean; tenant: Record<string, unknown>; created: boolean }>(
-        'create-tenant', input,
-      );
-      return toRow(r.tenant as never) as unknown as Tenant;
+      const { data, error } = await supabase
+        .from('tenants')
+        .insert({ ...input, created_by: user.id })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as Tenant;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
@@ -79,9 +68,8 @@ export function useTenants() {
 
   const updateTenant = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Tenant> & { id: string }) => {
-      // Nome, slug e logo não mexem em titularidade: as permissões gravadas na
-      // criação continuam valendo, então não passamos o terceiro argumento.
-      await update('tenants', id, updates as never);
+      const { error } = await supabase.from('tenants').update(updates).eq('id', id);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
@@ -92,10 +80,8 @@ export function useTenants() {
 
   const deleteTenant = useMutation({
     mutationFn: async (tenantId: string) => {
-      // TODO(migração): sem ON DELETE CASCADE. tenant_members, tenant_invites e
-      // as configurações de MCP do tenant são server-doc/server e continuam de
-      // pé; a limpeza (e a remoção do Team nativo) precisa de uma Function.
-      await remove('tenants', tenantId);
+      const { error } = await supabase.from('tenants').delete().eq('id', tenantId);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenants'] });
@@ -113,6 +99,7 @@ export function useTenants() {
 }
 
 export function useTenantMembers(tenantId: string | null) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -120,40 +107,39 @@ export function useTenantMembers(tenantId: string | null) {
     queryKey: ['tenant_members', tenantId],
     queryFn: async (): Promise<TenantMember[]> => {
       if (!tenantId) return [];
-      const members = await listDocs('tenant_members', [
-        Query.equal('tenant_id', tenantId),
-        Query.orderAsc('joined_at'),
-      ]);
+      const { data, error } = await supabase
+        .from('tenant_members')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .order('joined_at', { ascending: true });
+      if (error) throw error;
 
-      // Sem join embutido: perfis em segunda query, junção em memória.
-      // `profiles.user_id` não é o $id do documento, por isso Query.equal e
-      // não loadRelated().
-      const userIds = [...new Set(members.map((m) => m.user_id))];
-      const profiles = userIds.length
-        ? await listDocs('profiles', [Query.equal('user_id', userIds), Query.limit(100)])
-        : [];
-      const profileMap = new Map(profiles.map((p) => [p.user_id, p]));
+      const userIds = (data ?? []).map((m: any) => m.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', userIds);
 
-      return members.map((m) => ({
+      const profileMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
+
+      return (data ?? []).map((m: any) => ({
         ...m,
-        profile: profileMap.get(m.user_id) ?? null,
-      })) as unknown as TenantMember[];
+        profile: profileMap.get(m.user_id) || null,
+      })) as TenantMember[];
     },
     enabled: !!tenantId,
   });
 
   const addMember = useMutation({
     mutationFn: async (input: { tenantId: string; userId: string; role?: TenantMember['role'] }) => {
-      // TODO(migração): `tenant_members` é server-doc. Entrar um membro envolve
-      // duas coisas que o cliente não pode fazer: criar a linha e adicionar a
-      // pessoa ao Team nativo do Appwrite (é a membership do Team que faz o
-      // Role.team valer nas tarefas e projetos do tenant). Vira Function.
-      await create('tenant_members', {
-        tenant_id: input.tenantId,
-        user_id: input.userId,
-        role: input.role || 'member',
-        joined_at: new Date().toISOString(),
-      });
+      const { error } = await supabase
+        .from('tenant_members')
+        .insert({
+          tenant_id: input.tenantId,
+          user_id: input.userId,
+          role: input.role || 'member',
+        });
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant_members', tenantId] });
@@ -164,10 +150,11 @@ export function useTenantMembers(tenantId: string | null) {
 
   const updateMemberRole = useMutation({
     mutationFn: async ({ memberId, role }: { memberId: string; role: TenantMember['role'] }) => {
-      // TODO(migração): server-doc. E trocar o papel de um membro também muda o
-      // role dele DENTRO do Team nativo (owner/admin/member), o que altera quem
-      // pode editar e apagar via tenantPermissions() — só a Function faz os dois.
-      await update('tenant_members', memberId, { role });
+      const { error } = await supabase
+        .from('tenant_members')
+        .update({ role })
+        .eq('id', memberId);
+      if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenant_members', tenantId] }),
     onError: (err: Error) => toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
@@ -175,10 +162,8 @@ export function useTenantMembers(tenantId: string | null) {
 
   const removeMember = useMutation({
     mutationFn: async (memberId: string) => {
-      // TODO(migração): server-doc. Além da linha, a Function precisa tirar a
-      // pessoa do Team nativo — enquanto ela for membro do Team, continua lendo
-      // tudo que tem Permission.read(Role.team(...)).
-      await remove('tenant_members', memberId);
+      const { error } = await supabase.from('tenant_members').delete().eq('id', memberId);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant_members', tenantId] });
@@ -216,12 +201,14 @@ export function useTenantInvites(tenantId: string | null) {
     queryKey: ['tenant_invites', tenantId],
     queryFn: async (): Promise<TenantInvite[]> => {
       if (!tenantId) return [];
-      const docs = await listDocs('tenant_invites', [
-        Query.equal('tenant_id', tenantId),
-        Query.equal('status', 'pending'),
-        Query.orderDesc('created_at'),
-      ]);
-      return docs as unknown as TenantInvite[];
+      const { data, error } = await supabase
+        .from('tenant_invites')
+        .select('*')
+        .eq('tenant_id', tenantId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as TenantInvite[];
     },
     enabled: !!tenantId,
   });
@@ -229,20 +216,18 @@ export function useTenantInvites(tenantId: string | null) {
   const createInvite = useMutation({
     mutationFn: async (input: { tenantId: string; email: string; role?: TenantInvite['role'] }) => {
       if (!user) throw new Error('Not authenticated');
-      // TODO(migração): `tenant_invites` é server-doc — o create só passa por
-      // Function, que é também quem deve mandar o e-mail e gravar o documento
-      // com leitura para os admins do tenant.
-      const doc = await create('tenant_invites', {
-        tenant_id: input.tenantId,
-        invited_by: user.$id,
-        invited_email: input.email,
-        role: input.role || 'member',
-        // Defaults que eram do Postgres e agora nascem no cliente.
-        invite_code: generateInviteCode(),
-        status: 'pending',
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      });
-      return doc as unknown as TenantInvite;
+      const { data, error } = await supabase
+        .from('tenant_invites')
+        .insert({
+          tenant_id: input.tenantId,
+          invited_by: user.id,
+          invited_email: input.email,
+          role: input.role || 'member',
+        } as any)
+        .select()
+        .single();
+      if (error) throw error;
+      return data as TenantInvite;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['tenant_invites', tenantId] });
@@ -254,25 +239,28 @@ export function useTenantInvites(tenantId: string | null) {
   const acceptInvite = useMutation({
     mutationFn: async (inviteCode: string) => {
       if (!user) throw new Error('Not authenticated');
+      const { data: invite, error: findErr } = await supabase
+        .from('tenant_invites')
+        .select('*')
+        .eq('invite_code', inviteCode)
+        .eq('status', 'pending')
+        .single();
+      if (findErr || !invite) throw new Error('Convite inválido ou expirado');
 
-      const invite = await findOne('tenant_invites', [
-        Query.equal('invite_code', inviteCode),
-        Query.equal('status', 'pending'),
-      ]);
-      if (!invite) throw new Error('Convite inválido ou expirado');
+      const inv = invite as any;
+      const { error: memberErr } = await supabase
+        .from('tenant_members')
+        .insert({
+          tenant_id: inv.tenant_id,
+          user_id: user.id,
+          role: inv.role,
+        });
+      if (memberErr) throw memberErr;
 
-      // TODO(migração): mesmo caso do addMember — a linha em tenant_members e a
-      // entrada no Team nativo do Appwrite são escrita de servidor. Sem a
-      // Function ('accept-tenant-invite'), o convidado entra na tabela mas não
-      // no Team, e continua sem enxergar o que depende de Role.team(tenant).
-      await create('tenant_members', {
-        tenant_id: invite.tenant_id,
-        user_id: user.$id,
-        role: invite.role ?? 'member',
-        joined_at: new Date().toISOString(),
-      });
-
-      await update('tenant_invites', invite.id, { status: 'accepted' });
+      await supabase
+        .from('tenant_invites')
+        .update({ status: 'accepted' } as any)
+        .eq('id', inv.id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['my-tenants'] });
@@ -286,8 +274,11 @@ export function useTenantInvites(tenantId: string | null) {
 
   const cancelInvite = useMutation({
     mutationFn: async (inviteId: string) => {
-      // TODO(migração): server-doc — precisa da mesma Function do createInvite.
-      await update('tenant_invites', inviteId, { status: 'cancelled' });
+      const { error } = await supabase
+        .from('tenant_invites')
+        .update({ status: 'cancelled' } as any)
+        .eq('id', inviteId);
+      if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['tenant_invites', tenantId] }),
   });

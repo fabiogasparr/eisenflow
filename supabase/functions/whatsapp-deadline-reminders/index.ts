@@ -1,243 +1,179 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+/**
+ * whatsapp-deadline-reminders
+ * ──────────────────────────────────────────────────────────────────────
+ * Cron a cada 15 min: avisa por WhatsApp as tarefas vencendo agora, na
+ * próxima 1h e nas próximas 24h — respeitando o horário e o fuso de cada
+ * usuário, e sem repetir aviso já enviado.
+ *
+ * Chamada ........... pg_cron (x-internal-secret ou service role)
+ * Entrada ........... nenhuma
+ * Saída ............. { ok, sent }
+ * Lê ................ whatsapp_connections, tasks
+ * Lê/Escreve ........ whatsapp_sent_reminders (e limpa as antigas)
+ * Env ............... EVOLUTION_API_URL, INTERNAL_FUNCTION_SECRET
+ *
+ * O QUE IMPEDE O REENVIO: o índice único (user_id, task_id, reminder_type) de
+ * whatsapp_sent_reminders — `upsert(..., ignoreDuplicates)` deixa o Postgres
+ * decidir.
+ *
+ * MUDANÇAS EM RELAÇÃO À VERSÃO LOVABLE:
+ *  - O original convertia fuso com `new Date(now.toLocaleString('en-US', {timeZone}))`,
+ *    que depende do parser de data do runtime e erra em fusos com meia hora de
+ *    offset. Aqui a hora local vem de Intl.DateTimeFormat.
+ *  - O fallback "busca o telefone na Evolution" saiu: a Evolution GO não expõe o
+ *    dono da instância. Quem preenche phone_number é o whatsapp-webhook, na
+ *    primeira mensagem própria que chega, ou o whatsapp-status pelo `jid`.
+ *  - Envio por evolution.sendText(instance_token, ...) — a instância é o token.
+ *  - Passou a exigir chamada interna (era aberta).
+ */
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { admin, requireInternal } from '../_shared/supabase.ts';
+import { evolution } from '../_shared/evolution.ts';
+import { json, preflight, respostaErro } from '../_shared/http.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+const FUSO_PADRAO = 'America/Sao_Paulo';
+const TOLERANCIA_MIN = 30;
+
+// deno-lint-ignore no-explicit-any
+type Row = Record<string, any>;
+
+/** Minutos desde a meia-noite no fuso do usuário. */
+function minutosLocais(tz: string, agora: Date): number {
+  let fmt: Intl.DateTimeFormat;
+  try {
+    fmt = new Intl.DateTimeFormat('en-US', { timeZone: tz, hour: '2-digit', minute: '2-digit', hour12: false });
+  } catch {
+    fmt = new Intl.DateTimeFormat('en-US', { timeZone: FUSO_PADRAO, hour: '2-digit', minute: '2-digit', hour12: false });
+  }
+  const p = Object.fromEntries(fmt.formatToParts(agora).map((x) => [x.type, x.value]));
+  return (Number(p.hour) % 24) * 60 + Number(p.minute);
 }
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
+/** O usuário configura "08:00,12:00,18:00"; ±30 min é a janela do original. */
+function estaNaJanela(reminderTimes: string | null, minutosAgora: number): boolean {
+  const horarios = String(reminderTimes || '08:00,12:00,18:00').split(',').map((t) => t.trim()).filter(Boolean);
+  return horarios.some((t) => {
+    const [h, m] = t.split(':').map(Number);
+    if (Number.isNaN(h)) return false;
+    const alvo = h * 60 + (m || 0);
+    const diff = Math.abs(minutosAgora - alvo);
+    return diff <= TOLERANCIA_MIN || diff >= 24 * 60 - TOLERANCIA_MIN; // vira a meia-noite
+  });
+}
+
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return preflight();
 
   try {
-    const supabaseAdmin = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
-    )
-    const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')!
-    const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')!
+    requireInternal(req);
+    const db = admin();
 
-    console.log('Starting deadline reminders check...')
+    limparAntigos().catch((e) => console.error(`whatsapp-deadline-reminders: limpeza falhou: ${e.message}`));
 
-    // Cleanup: delete sent reminders older than 48h
-    await supabaseAdmin
-      .from('whatsapp_sent_reminders')
-      .delete()
-      .lt('sent_at', new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString())
-
-    // Get all connected users with reminders enabled
-    const { data: connections, error: connErr } = await supabaseAdmin
+    const { data: conexoes, error } = await db
       .from('whatsapp_connections')
-      .select('user_id, instance_name, phone_number, reminder_times, timezone')
+      .select('*')
       .eq('status', 'connected')
-      .eq('reminders_enabled', true)
+      .eq('reminders_enabled', true);
+    if (error) throw error;
+    console.log(`whatsapp-deadline-reminders: ${conexoes?.length ?? 0} conexões com lembretes ligados`);
 
-    if (connErr) {
-      console.error('Error fetching connections:', connErr)
-      throw connErr
-    }
+    const agora = new Date();
+    const em24h = new Date(agora.getTime() + 24 * 3600e3);
+    let enviados = 0;
 
-    console.log(`Found ${connections?.length ?? 0} connections with reminders enabled`)
-
-    if (!connections || connections.length === 0) {
-      return new Response(JSON.stringify({ ok: true, sent: 0 }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      })
-    }
-
-    const now = new Date()
-    const currentHour = now.getUTCHours()
-    const currentMinute = now.getUTCMinutes()
-    const in24h = new Date(now.getTime() + 24 * 60 * 60 * 1000)
-
-    let totalSent = 0
-
-    for (const conn of connections) {
-      // Convert UTC time to user's local timezone
-      const userTimezone = conn.timezone || 'America/Sao_Paulo'
-      const userNow = new Date(now.toLocaleString('en-US', { timeZone: userTimezone }))
-      const userHour = userNow.getHours()
-      const userMinute = userNow.getMinutes()
-
-      // Check if current local hour matches any of the user's reminder_times (±30 min tolerance)
-      const reminderTimes = (conn.reminder_times || '08:00,12:00,18:00').split(',').map((t: string) => t.trim())
-      const matchesTime = reminderTimes.some((time: string) => {
-        const [h, m] = time.split(':').map(Number)
-        const reminderMinutes = h * 60 + (m || 0)
-        const currentMinutes = userHour * 60 + userMinute
-        const diff = Math.abs(currentMinutes - reminderMinutes)
-        return diff <= 30 || diff >= (24 * 60 - 30) // handle midnight wrap
-      })
-
-      if (!matchesTime) {
-        console.log(`Skipping user ${conn.user_id}: local time ${userHour}:${userMinute} (${userTimezone}) doesn't match reminder_times ${conn.reminder_times}`)
-        continue
+    for (const conn of conexoes ?? []) {
+      const minutos = minutosLocais(conn.timezone || FUSO_PADRAO, agora);
+      if (!estaNaJanela(conn.reminder_times, minutos)) continue;
+      if (!conn.phone_number || !conn.instance_token) {
+        console.log(`whatsapp-deadline-reminders: conexão ${conn.id} sem número ou token, pulando`);
+        continue;
       }
-      console.log(`Processing user ${conn.user_id}, phone: ${conn.phone_number}, instance: ${conn.instance_name}`)
-
-      let phoneNumber = conn.phone_number
-
-      // If phone_number is missing, try to fetch it from Evolution API and persist
-      if (!phoneNumber) {
-        console.log(`Phone number missing for user ${conn.user_id}, fetching from Evolution API...`)
-        try {
-          const infoRes = await fetch(`${EVOLUTION_API_URL}/instance/fetchInstances?instanceName=${conn.instance_name}`, {
-            headers: { apikey: EVOLUTION_API_KEY },
-          })
-          if (infoRes.ok) {
-            const infoData = await infoRes.json()
-            const instance = Array.isArray(infoData) ? infoData[0] : infoData
-            const owner = instance?.ownerJid || instance?.instance?.owner || instance?.owner || instance?.instance?.wuid || null
-            if (owner) {
-              phoneNumber = owner.replace(/@.*$/, '')
-              console.log(`Found phone number from Evolution API: ${phoneNumber}`)
-              await supabaseAdmin
-                .from('whatsapp_connections')
-                .update({ phone_number: phoneNumber })
-                .eq('user_id', conn.user_id)
-            }
-          }
-        } catch (e) {
-          console.error(`Failed to fetch phone from Evolution API:`, e)
-        }
-      }
-
-      if (!phoneNumber) {
-        console.log(`Skipping user ${conn.user_id}: no phone number`)
-        continue
-      }
-
-      // Get tasks with upcoming deadlines for this user
-      const { data: tasks, error: tasksErr } = await supabaseAdmin
-        .from('tasks')
-        .select('id, title, due_date, status, quadrant')
-        .or(`created_by.eq.${conn.user_id},assigned_to.eq.${conn.user_id}`)
-        .in('status', ['pending', 'in_progress'])
-        .not('due_date', 'is', null)
-        .lte('due_date', in24h.toISOString())
-        .gte('due_date', now.toISOString())
-        .order('due_date', { ascending: true })
-
-      if (tasksErr) {
-        console.error(`Error fetching tasks for user ${conn.user_id}:`, tasksErr)
-        continue
-      }
-
-      if (!tasks || tasks.length === 0) continue
-
-      // Check which reminders were already sent
-      const taskIds = tasks.map(t => t.id)
-      const { data: alreadySent } = await supabaseAdmin
-        .from('whatsapp_sent_reminders')
-        .select('task_id, reminder_type')
-        .eq('user_id', conn.user_id)
-        .in('task_id', taskIds)
-
-      const sentSet = new Set((alreadySent || []).map(r => `${r.task_id}:${r.reminder_type}`))
-
-      // Classify and filter tasks
-      const dueNow: { title: string; id: string }[] = []
-      const due1h: { title: string; id: string }[] = []
-      const due24h: { title: string; id: string }[] = []
-
-      for (const task of tasks) {
-        const dueTime = new Date(task.due_date!).getTime()
-        const diff = dueTime - now.getTime()
-
-        let type: string
-        if (diff <= 0) {
-          type = 'now'
-        } else if (diff <= 60 * 60 * 1000) {
-          type = '1h'
-        } else {
-          type = '24h'
-        }
-
-        // Skip if already sent
-        if (sentSet.has(`${task.id}:${type}`)) continue
-
-        if (type === 'now') dueNow.push({ title: task.title, id: task.id })
-        else if (type === '1h') due1h.push({ title: task.title, id: task.id })
-        else due24h.push({ title: task.title, id: task.id })
-      }
-
-      const allPending = [...dueNow, ...due1h, ...due24h]
-      if (allPending.length === 0) {
-        console.log(`All reminders already sent for user ${conn.user_id}`)
-        continue
-      }
-
-      // Build message
-      const lines: string[] = ['⏰ *Lembretes de Prazo*\n']
-
-      if (dueNow.length > 0) {
-        lines.push('🔴 *Vencendo agora:*')
-        dueNow.forEach((t, i) => lines.push(`  ${i + 1}. ${t.title}`))
-        lines.push('')
-      }
-      if (due1h.length > 0) {
-        lines.push('🟡 *Próxima 1 hora:*')
-        due1h.forEach((t, i) => lines.push(`  ${i + 1}. ${t.title}`))
-        lines.push('')
-      }
-      if (due24h.length > 0) {
-        lines.push('🔵 *Próximas 24 horas:*')
-        due24h.forEach((t, i) => lines.push(`  ${i + 1}. ${t.title}`))
-        lines.push('')
-      }
-
-      lines.push('Use /listar para ver detalhes.')
-      const message = lines.join('\n')
-
-      console.log(`Sending reminder to ${phoneNumber}: ${allPending.length} new tasks`)
 
       try {
-        const sendRes = await fetch(`${EVOLUTION_API_URL}/message/sendText/${conn.instance_name}`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            apikey: EVOLUTION_API_KEY,
-          },
-          body: JSON.stringify({
-            number: phoneNumber,
-            text: message,
-          }),
-        })
-
-        if (!sendRes.ok) {
-          const errBody = await sendRes.text()
-          console.error(`Failed to send to ${conn.user_id}: ${sendRes.status} ${errBody}`)
-        } else {
-          totalSent++
-
-          // Record sent reminders to prevent duplicates
-          const records = [
-            ...dueNow.map(t => ({ user_id: conn.user_id, task_id: t.id, reminder_type: 'now' })),
-            ...due1h.map(t => ({ user_id: conn.user_id, task_id: t.id, reminder_type: '1h' })),
-            ...due24h.map(t => ({ user_id: conn.user_id, task_id: t.id, reminder_type: '24h' })),
-          ]
-
-          if (records.length > 0) {
-            await supabaseAdmin
-              .from('whatsapp_sent_reminders')
-              .upsert(records, { onConflict: 'user_id,task_id,reminder_type' })
-          }
-        }
-      } catch (sendErr) {
-        console.error(`Failed to send reminder to ${conn.user_id}:`, sendErr)
+        const enviou = await avisar(conn, agora, em24h);
+        if (enviou) enviados++;
+      } catch (e) {
+        console.error(`whatsapp-deadline-reminders: falhou para ${conn.user_id}: ${(e as Error).message}`);
       }
     }
 
-    console.log(`Deadline reminders sent: ${totalSent}`)
-    return new Response(JSON.stringify({ ok: true, sent: totalSent }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  } catch (error) {
-    console.error('whatsapp-deadline-reminders error:', error)
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    console.log(`whatsapp-deadline-reminders: ${enviados} avisos enviados`);
+    return json({ ok: true, sent: enviados });
+  } catch (e) {
+    console.error('whatsapp-deadline-reminders:', e);
+    return respostaErro(e);
   }
-})
+});
+
+async function avisar(conn: Row, agora: Date, em24h: Date): Promise<boolean> {
+  const db = admin();
+  // Tarefas do usuário (criadas por ele OU atribuídas a ele) vencendo até 24h.
+  const { data: tarefas, error } = await db
+    .from('tasks')
+    .select('id, title, due_date')
+    .or(`created_by.eq.${conn.user_id},assigned_to.eq.${conn.user_id}`)
+    .in('status', ['pending', 'in_progress'])
+    .not('due_date', 'is', null)
+    .gte('due_date', agora.toISOString())
+    .lte('due_date', em24h.toISOString())
+    .order('due_date', { ascending: true })
+    .limit(500);
+  if (error) throw error;
+  if (!tarefas?.length) return false;
+
+  // Quais já foram avisados — a consulta evita 1 escrita perdida por tarefa.
+  const { data: jaEnviados } = await db
+    .from('whatsapp_sent_reminders')
+    .select('task_id, reminder_type')
+    .eq('user_id', conn.user_id)
+    .in('task_id', tarefas.map((t: Row) => t.id));
+  const enviado = new Set((jaEnviados ?? []).map((r: Row) => `${r.task_id}:${r.reminder_type}`));
+
+  const grupos: Record<string, Row[]> = { now: [], '1h': [], '24h': [] };
+  for (const t of tarefas) {
+    const falta = new Date(t.due_date).getTime() - agora.getTime();
+    const tipo = falta <= 0 ? 'now' : falta <= 3600e3 ? '1h' : '24h';
+    if (enviado.has(`${t.id}:${tipo}`)) continue;
+    grupos[tipo].push(t);
+  }
+
+  const total = grupos.now.length + grupos['1h'].length + grupos['24h'].length;
+  if (!total) return false;
+
+  const linhas = ['⏰ *Lembretes de Prazo*\n'];
+  const bloco = (titulo: string, lista: Row[]) => {
+    if (!lista.length) return;
+    linhas.push(titulo);
+    lista.forEach((t, i) => linhas.push(`  ${i + 1}. ${t.title}`));
+    linhas.push('');
+  };
+  bloco('🔴 *Vencendo agora:*', grupos.now);
+  bloco('🟡 *Próxima 1 hora:*', grupos['1h']);
+  bloco('🔵 *Próximas 24 horas:*', grupos['24h']);
+  linhas.push('Use /listar para ver detalhes.');
+
+  await evolution.sendText(conn.instance_token, conn.phone_number, linhas.join('\n'));
+  console.log(`whatsapp-deadline-reminders: ${total} tarefas avisadas a ${conn.user_id}`);
+
+  // Só marca depois do envio dar certo: falhou o envio, o próximo ciclo tenta de novo.
+  const carimbo = new Date().toISOString();
+  const registros: Row[] = [];
+  for (const [tipo, lista] of Object.entries(grupos)) {
+    for (const t of lista) registros.push({ user_id: conn.user_id, task_id: t.id, reminder_type: tipo, sent_at: carimbo });
+  }
+  if (registros.length) {
+    // ignoreDuplicates: outro ciclo pode ter registrado no meio — não é erro.
+    const { error: e2 } = await db
+      .from('whatsapp_sent_reminders')
+      .upsert(registros, { onConflict: 'user_id,task_id,reminder_type', ignoreDuplicates: true });
+    if (e2) throw e2;
+  }
+  return true;
+}
+
+/** Registro de envio serve por 48h; depois é só peso morto na tabela. */
+async function limparAntigos(): Promise<void> {
+  const limite = new Date(Date.now() - 48 * 3600e3).toISOString();
+  await admin().from('whatsapp_sent_reminders').delete().lt('sent_at', limite);
+}

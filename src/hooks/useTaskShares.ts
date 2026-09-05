@@ -1,11 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import {
-  create, update, remove, listDocs, getById, loadRelated, Query,
-} from '@/integrations/appwrite/database';
-import { taskPermissions, ownerOnly } from '@/integrations/appwrite/permissions';
-import type { SharePermission } from '@/integrations/appwrite/types';
 
 export interface TaskShare {
   id: string;
@@ -17,48 +13,6 @@ export interface TaskShare {
   created_at: string;
 }
 
-/**
- * Recalcula as permissões da TAREFA a partir da lista atual de shares.
- *
- * No Postgres a policy "Users can view shared tasks" / "Users can update shared
- * tasks" chamava `is_task_shared_with(auth.uid(), t.id)` a cada SELECT/UPDATE —
- * bastava existir a linha em `task_shares` para o acesso valer.
- * No Appwrite não existe consulta no momento da leitura: quem pode ler a tarefa
- * está gravado nas permissões DELA. Logo, toda mudança na lista de shares
- * (criar, mudar view->edit, remover) precisa reescrever essas permissões do
- * zero — é exatamente o "recalcular permissões na mudança de titularidade" do
- * guia. Sem isso o compartilhamento não tem efeito nenhum.
- */
-async function sincronizarPermissoesDaTarefa(taskId: string) {
-  const task = await getById('tasks', taskId);
-  const shares = await listDocs('task_shares', [Query.equal('task_id', taskId)]);
-
-  // TODO(migração): um share por e-mail de alguém que ainda não tem conta fica
-  // SEM permissão de documento — o cliente não consegue traduzir e-mail em
-  // userId (a collection `profiles` não guarda e-mail e a Users API do Appwrite
-  // é server-side). Enquanto `shared_with_user_id` for null o convidado não
-  // enxerga a tarefa; quem precisa preencher esse campo (e rechamar esta
-  // sincronização) é uma Function no aceite do convite.
-  const comConta = shares
-    .filter((s) => !!s.shared_with_user_id)
-    .map((s) => ({
-      userId: s.shared_with_user_id as string,
-      permission: (s.permission ?? 'view') as SharePermission,
-    }));
-
-  await update(
-    'tasks',
-    taskId,
-    {},
-    taskPermissions({
-      createdBy: task.created_by,
-      assignedTo: task.assigned_to ?? null,
-      tenantTeamId: task.tenant_id ?? null,
-      shares: comConta,
-    }),
-  );
-}
-
 export function useTaskShares(taskId: string | null) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -68,8 +22,12 @@ export function useTaskShares(taskId: string | null) {
     queryKey: ['task-shares', taskId],
     queryFn: async (): Promise<TaskShare[]> => {
       if (!taskId) return [];
-      const docs = await listDocs('task_shares', [Query.equal('task_id', taskId)]);
-      return docs as unknown as TaskShare[];
+      const { data, error } = await supabase
+        .from('task_shares')
+        .select('*')
+        .eq('task_id', taskId);
+      if (error) throw error;
+      return (data ?? []) as TaskShare[];
     },
     enabled: !!taskId && !!user,
   });
@@ -77,31 +35,21 @@ export function useTaskShares(taskId: string | null) {
   const shareTask = useMutation({
     mutationFn: async ({ taskId, email, permission }: { taskId: string; email: string; permission: 'view' | 'edit' }) => {
       if (!user) throw new Error('Not authenticated');
-
-      // PERMISSÕES DO PRÓPRIO SHARE: substituem as policies
-      // "Users can view their shares" (shared_by OU shared_with_user_id OU
-      // e-mail do convidado) e "Task owners can create/update/delete shares".
-      // Quem compartilhou manda no registro; o convidado, quando já tem conta,
-      // só lê. O ramo "shared_with_email = meu e-mail" da policy antiga não tem
-      // como ser expresso aqui — ver o TODO em sincronizarPermissoesDaTarefa.
-      const doc = await create(
-        'task_shares',
-        {
+      const { data, error } = await supabase
+        .from('task_shares')
+        .insert({
           task_id: taskId,
-          shared_by: user.$id,
+          shared_by: user.id,
           shared_with_email: email.toLowerCase().trim(),
           permission,
-        },
-        ownerOnly(user.$id),
-      );
-
-      // O share só vira acesso de verdade depois deste passo.
-      await sincronizarPermissoesDaTarefa(taskId);
-      return doc as unknown as TaskShare;
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task-shares'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
       toast({ title: '✅', description: 'Tarefa compartilhada com sucesso!' });
     },
     onError: (err: Error) => {
@@ -111,15 +59,14 @@ export function useTaskShares(taskId: string | null) {
 
   const updatePermission = useMutation({
     mutationFn: async ({ shareId, permission }: { shareId: string; permission: 'view' | 'edit' }) => {
-      const share = await getById('task_shares', shareId);
-      await update('task_shares', shareId, { permission });
-      // view -> edit muda quem pode ESCREVER na tarefa: as permissões do
-      // documento tarefa precisam ser reescritas junto.
-      await sincronizarPermissoesDaTarefa(share.task_id);
+      const { error } = await supabase
+        .from('task_shares')
+        .update({ permission })
+        .eq('id', shareId);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task-shares'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
     onError: (err: Error) => {
       toast({ title: 'Erro', description: err.message, variant: 'destructive' });
@@ -128,15 +75,11 @@ export function useTaskShares(taskId: string | null) {
 
   const removeShare = useMutation({
     mutationFn: async (shareId: string) => {
-      const share = await getById('task_shares', shareId);
-      await remove('task_shares', shareId);
-      // Revogar o share tem que TIRAR a permissão da tarefa — apagar só a linha
-      // deixaria o ex-convidado enxergando tudo.
-      await sincronizarPermissoesDaTarefa(share.task_id);
+      const { error } = await supabase.from('task_shares').delete().eq('id', shareId);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['task-shares'] });
-      queryClient.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 
@@ -153,42 +96,40 @@ export function useSharedWithMe() {
   const { user } = useAuth();
 
   const sharedTasksQuery = useQuery({
-    queryKey: ['shared-with-me', user?.$id],
+    queryKey: ['shared-with-me', user?.id],
     queryFn: async () => {
       if (!user) return [];
+      // Get shares where I'm the recipient
+      const { data: shares, error: sharesError } = await supabase
+        .from('task_shares')
+        .select('*')
+        .or(`shared_with_user_id.eq.${user.id},shared_with_email.eq.${user.email}`);
+      if (sharesError) throw sharesError;
+      if (!shares || shares.length === 0) return [];
 
-      // Shares em que eu sou o destinatário. O `.or()` do PostgREST vira
-      // Query.or; o ramo por e-mail continua existindo porque o convite pode ter
-      // sido criado antes de a conta existir.
-      const email = (user.email ?? '').toLowerCase();
-      const shares = await listDocs('task_shares', [
-        email
-          ? Query.or([
-              Query.equal('shared_with_user_id', user.$id),
-              Query.equal('shared_with_email', email),
-            ])
-          : Query.equal('shared_with_user_id', user.$id),
-      ]);
-      if (shares.length === 0) return [];
+      const taskIds = shares.map((s: any) => s.task_id);
+      const { data: tasks, error: tasksError } = await supabase
+        .from('tasks')
+        .select('*')
+        .in('id', taskIds);
+      if (tasksError) throw tasksError;
 
-      // Sem join embutido: as tarefas vêm em uma query separada e a junção é
-      // feita em memória. loadRelated já quebra em lotes de 100.
-      const taskMap = await loadRelated('tasks', shares.map((s) => s.task_id));
+      // Get sharer profiles
+      const sharerIds = [...new Set(shares.map((s: any) => s.shared_by))];
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name')
+        .in('user_id', sharerIds);
 
-      // Idem para o nome de quem compartilhou.
-      const sharerIds = [...new Set(shares.map((s) => s.shared_by))];
-      const profiles = sharerIds.length
-        ? await listDocs('profiles', [Query.equal('user_id', sharerIds)])
-        : [];
-      const profileMap = new Map(profiles.map((p) => [p.user_id, p.display_name ?? null]));
+      const profileMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p.display_name]));
 
-      return [...taskMap.values()].map((task) => {
-        const share = shares.find((s) => s.task_id === task.id);
+      return (tasks ?? []).map((task: any) => {
+        const share = shares.find((s: any) => s.task_id === task.id);
         return {
           ...task,
           _share: {
             permission: share?.permission ?? 'view',
-            shared_by_name: (share && profileMap.get(share.shared_by)) ?? 'Unknown',
+            shared_by_name: profileMap.get(share?.shared_by) ?? 'Unknown',
           },
         };
       });

@@ -1,8 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useToast } from '@/hooks/use-toast';
-import { create, update, remove, listDocs, findOne, Query } from '@/integrations/appwrite/database';
-import { projectPermissions } from '@/integrations/appwrite/permissions';
 
 export interface Team {
   id: string;
@@ -38,29 +37,21 @@ export interface TeamInvite {
   expires_at: string;
 }
 
-/**
- * Substitui o DEFAULT generate_invite_code() da tabela team_invites.
- * O Appwrite não tem função de default no servidor: o código nasce no cliente.
- */
-function generateInviteCode() {
-  const bytes = new Uint8Array(9);
-  crypto.getRandomValues(bytes);
-  return Array.from(bytes).map((b) => b.toString(36).padStart(2, '0')).join('').slice(0, 12).toUpperCase();
-}
-
 export function useTeams() {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
   const teamsQuery = useQuery({
-    queryKey: ['teams', user?.$id],
+    queryKey: ['teams', user?.id],
     queryFn: async (): Promise<Team[]> => {
       if (!user) return [];
-      // Sem `.eq(...)`: só chegam os times cuja permissão de documento inclui
-      // este usuário — é o que substitui a policy "Users can view their teams".
-      const docs = await listDocs('teams', [Query.orderDesc('created_at')]);
-      return docs as unknown as Team[];
+      const { data, error } = await supabase
+        .from('teams')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as Team[];
     },
     enabled: !!user,
   });
@@ -68,24 +59,13 @@ export function useTeams() {
   const createTeam = useMutation({
     mutationFn: async (input: { name: string; description?: string; tenant_id?: string | null }) => {
       if (!user) throw new Error('Not authenticated');
-      return create(
-        'teams',
-        {
-          name: input.name,
-          description: input.description,
-          created_by: user.$id,
-          tenant_id: input.tenant_id ?? null,
-        },
-        // PERMISSÕES DO DOCUMENTO — no Postgres isto era a RLS de `teams`:
-        //   "Team creators can manage their team"  -> criador lê/edita/apaga (ownerOnly)
-        //   "Tenant members can view tenant teams" -> Role.team(tenant) lê
-        // projectPermissions faz exatamente esse par (dono + leitura do tenant).
-        // TODO(migração): a policy "Team members can view their team" (que lia
-        // team_members) não tem equivalente aqui — o membro só passará a enxergar
-        // o documento quando a Function que insere em `team_members` também
-        // acrescentar Permission.read(Role.user(<membro>)) neste documento.
-        projectPermissions({ ownerId: user.$id, tenantTeamId: input.tenant_id ?? null }),
-      );
+      const { data, error } = await supabase
+        .from('teams')
+        .insert({ name: input.name, description: input.description, created_by: user.id, tenant_id: input.tenant_id ?? null } as any)
+        .select()
+        .single();
+      if (error) throw error;
+      return data;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams'] });
@@ -98,9 +78,8 @@ export function useTeams() {
 
   const updateTeam = useMutation({
     mutationFn: async ({ id, ...updates }: Partial<Team> & { id: string }) => {
-      // Sem terceiro argumento: nada aqui muda a titularidade do documento,
-      // então as permissões gravadas na criação continuam valendo.
-      await update('teams', id, updates as never);
+      const { error } = await supabase.from('teams').update(updates).eq('id', id);
+      if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['teams'] }),
     onError: (err: Error) => toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
@@ -108,10 +87,8 @@ export function useTeams() {
 
   const deleteTeam = useMutation({
     mutationFn: async (teamId: string) => {
-      // TODO(migração): o Appwrite não tem ON DELETE CASCADE e `team_members` /
-      // `team_invites` são server-doc (o cliente não apaga). Os filhos precisam
-      // ser removidos por uma Function; aqui só sai o time.
-      await remove('teams', teamId);
+      const { error } = await supabase.from('teams').delete().eq('id', teamId);
+      if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['teams'] }),
   });
@@ -126,6 +103,7 @@ export function useTeams() {
 }
 
 export function useTeamMembers(teamId: string | null) {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
@@ -133,34 +111,37 @@ export function useTeamMembers(teamId: string | null) {
     queryKey: ['team_members', teamId],
     queryFn: async (): Promise<TeamMember[]> => {
       if (!teamId) return [];
-      const members = await listDocs('team_members', [
-        Query.equal('team_id', teamId),
-        Query.orderAsc('joined_at'),
-      ]);
+      const { data, error } = await supabase
+        .from('team_members')
+        .select('*')
+        .eq('team_id', teamId)
+        .order('joined_at', { ascending: true });
+      if (error) throw error;
 
-      // Sem join embutido do PostgREST: os perfis vêm em uma segunda query e a
-      // junção é feita em memória. `profiles.user_id` não é o $id do documento,
-      // então é Query.equal em vez de loadRelated().
-      const userIds = [...new Set(members.map((m) => m.user_id))];
-      const profiles = userIds.length
-        ? await listDocs('profiles', [Query.equal('user_id', userIds), Query.limit(100)])
-        : [];
-      const profileMap = new Map(profiles.map((p) => [p.user_id, p]));
+      // Fetch profiles for each member
+      const userIds = (data ?? []).map((m: any) => m.user_id);
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name, avatar_url')
+        .in('user_id', userIds);
 
-      return members.map((m) => ({
+      const profileMap = new Map((profiles ?? []).map((p: any) => [p.user_id, p]));
+
+      return (data ?? []).map((m: any) => ({
         ...m,
-        profile: profileMap.get(m.user_id) ?? null,
-      })) as unknown as TeamMember[];
+        profile: profileMap.get(m.user_id) || null,
+      })) as TeamMember[];
     },
     enabled: !!teamId,
   });
 
   const updateMemberRole = useMutation({
     mutationFn: async ({ memberId, role }: { memberId: string; role: TeamMember['role'] }) => {
-      // TODO(migração): `team_members` é server-doc — o servidor concede leitura
-      // por documento, não escrita. Esta chamada falha até existir uma Function
-      // que valide quem manda (o antigo `is_team_admin`) e faça o update.
-      await update('team_members', memberId, { role });
+      const { error } = await supabase
+        .from('team_members')
+        .update({ role })
+        .eq('id', memberId);
+      if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team_members', teamId] }),
     onError: (err: Error) => toast({ title: 'Erro', description: err.message, variant: 'destructive' }),
@@ -168,11 +149,8 @@ export function useTeamMembers(teamId: string | null) {
 
   const removeMember = useMutation({
     mutationFn: async (memberId: string) => {
-      // TODO(migração): mesma limitação do updateMemberRole — server-doc.
-      // Além do documento, a Function precisa REVOGAR as permissões que o
-      // membro tinha nos documentos do time (o Postgres não guardava isso:
-      // a RLS recalculava a cada query).
-      await remove('team_members', memberId);
+      const { error } = await supabase.from('team_members').delete().eq('id', memberId);
+      if (error) throw error;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team_members', teamId] });
@@ -197,12 +175,14 @@ export function useTeamInvites(teamId: string | null) {
     queryKey: ['team_invites', teamId],
     queryFn: async (): Promise<TeamInvite[]> => {
       if (!teamId) return [];
-      const docs = await listDocs('team_invites', [
-        Query.equal('team_id', teamId),
-        Query.equal('status', 'pending'),
-        Query.orderDesc('created_at'),
-      ]);
-      return docs as unknown as TeamInvite[];
+      const { data, error } = await supabase
+        .from('team_invites')
+        .select('*')
+        .eq('team_id', teamId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return (data ?? []) as TeamInvite[];
     },
     enabled: !!teamId,
   });
@@ -210,20 +190,18 @@ export function useTeamInvites(teamId: string | null) {
   const createInvite = useMutation({
     mutationFn: async (input: { teamId: string; email?: string; role?: TeamMember['role'] }) => {
       if (!user) throw new Error('Not authenticated');
-      // TODO(migração): `team_invites` é server-doc. Este create só passa quando
-      // virar uma Function — que também deve mandar o e-mail e gravar o convite
-      // com Permission.read para os admins do time.
-      const doc = await create('team_invites', {
-        team_id: input.teamId,
-        invited_by: user.$id,
-        invited_email: input.email || null,
-        role: input.role || 'member',
-        // Defaults que eram do Postgres e agora nascem no cliente.
-        invite_code: generateInviteCode(),
-        status: 'pending',
-        expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
-      });
-      return doc as unknown as TeamInvite;
+      const { data, error } = await supabase
+        .from('team_invites')
+        .insert({
+          team_id: input.teamId,
+          invited_by: user.id,
+          invited_email: input.email || null,
+          role: input.role || 'member',
+        })
+        .select()
+        .single();
+      if (error) throw error;
+      return data as TeamInvite;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['team_invites', teamId] });
@@ -235,27 +213,30 @@ export function useTeamInvites(teamId: string | null) {
   const acceptInvite = useMutation({
     mutationFn: async (inviteCode: string) => {
       if (!user) throw new Error('Not authenticated');
+      // Find the invite
+      const { data: invite, error: findErr } = await supabase
+        .from('team_invites')
+        .select('*')
+        .eq('invite_code', inviteCode)
+        .eq('status', 'pending')
+        .single();
+      if (findErr || !invite) throw new Error('Convite inválido ou expirado');
 
-      const invite = await findOne('team_invites', [
-        Query.equal('invite_code', inviteCode),
-        Query.equal('status', 'pending'),
-      ]);
-      if (!invite) throw new Error('Convite inválido ou expirado');
+      // Add user to team
+      const { error: memberErr } = await supabase
+        .from('team_members')
+        .insert({
+          team_id: (invite as any).team_id,
+          user_id: user.id,
+          role: (invite as any).role,
+        });
+      if (memberErr) throw memberErr;
 
-      // TODO(migração): aceitar convite é justamente o caso em que o cliente NÃO
-      // pode escrever — `team_members` é server-doc e, além da linha, é preciso
-      // acrescentar Permission.read(Role.user(<novo membro>)) no documento do
-      // time e nos documentos dele. Isso é trabalho de uma Function
-      // ('accept-team-invite'), que substitui a policy
-      // "Users can join teams via invite" + o trigger de aceite.
-      await create('team_members', {
-        team_id: invite.team_id,
-        user_id: user.$id,
-        role: invite.role ?? 'member',
-        joined_at: new Date().toISOString(),
-      });
-
-      await update('team_invites', invite.id, { status: 'accepted' });
+      // Mark invite as accepted
+      await supabase
+        .from('team_invites')
+        .update({ status: 'accepted' })
+        .eq('id', (invite as any).id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['teams'] });
@@ -267,8 +248,11 @@ export function useTeamInvites(teamId: string | null) {
 
   const cancelInvite = useMutation({
     mutationFn: async (inviteId: string) => {
-      // TODO(migração): server-doc — precisa da mesma Function do createInvite.
-      await update('team_invites', inviteId, { status: 'cancelled' });
+      const { error } = await supabase
+        .from('team_invites')
+        .update({ status: 'cancelled' })
+        .eq('id', inviteId);
+      if (error) throw error;
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['team_invites', teamId] }),
   });

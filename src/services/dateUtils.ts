@@ -1,153 +1,124 @@
 /**
- * Utilidades de data com suporte a fuso horário.
+ * Date Utilities with Timezone Support
  *
- * MIGRAÇÃO: as funções SQL `convert_to_user_timezone`, `convert_to_utc`,
- * `start_of_day_user_tz` e `end_of_day_user_tz` eram RPCs do Postgres e não
- * foram migradas — no Appwrite não existe `rpc()`. A conversão passa a ser
- * feita aqui com `Intl.DateTimeFormat`, que conhece a base de fusos do IANA
- * (inclusive horário de verão). O fuso do usuário continua vindo do banco, da
- * collection `user_preferences` (legível pelo próprio dono).
+ * Centralized utilities for handling dates across different timezones.
  */
 
-import { findOne, Query } from '@/integrations/appwrite/database';
+import { createClient, SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Formata uma data em ISO 8601
+ * Format a date using ISO 8601 format
  */
 export function toISOString(date: Date): string {
   return date.toISOString();
 }
 
 /**
- * Interpreta uma string ISO 8601
+ * Parse an ISO 8601 date string
  */
 export function parseISOString(dateString: string): Date {
   return new Date(dateString);
 }
 
-// ---------------------------------------------------------------- fuso horário
-
 /**
- * Deslocamento (em ms) do fuso `timeZone` em relação ao UTC no INSTANTE `date`.
- * É assim que se descobre o offset correto em fusos com horário de verão.
+ * Get user's timezone from database
  */
-function tzOffsetMs(date: Date, timeZone: string): number {
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone,
-    hour12: false,
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
-
-  const parts: Record<string, number> = {};
-  for (const p of dtf.formatToParts(date)) {
-    if (p.type !== 'literal') parts[p.type] = Number(p.value);
-  }
-
-  const asUtc = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour % 24, // algumas engines devolvem "24" para a meia-noite
-    parts.minute,
-    parts.second,
-  );
-
-  return asUtc - date.getTime();
-}
-
-/** Componentes de "hora de parede" (ano, mês, dia, hora...) sem fuso. */
-function wallParts(dateString: string): [number, number, number, number, number, number] {
-  const m = dateString.match(
-    /^(\d{4})-(\d{2})-(\d{2})(?:[T ](\d{2}):(\d{2})(?::(\d{2}))?)?/,
-  );
-  if (m) {
-    return [+m[1], +m[2], +m[3], +(m[4] ?? 0), +(m[5] ?? 0), +(m[6] ?? 0)];
-  }
-  // Sem formato reconhecível: cai para a leitura nativa, em hora local.
-  const d = new Date(dateString);
-  return [d.getFullYear(), d.getMonth() + 1, d.getDate(), d.getHours(), d.getMinutes(), d.getSeconds()];
-}
-
-/**
- * Converte uma hora de parede do fuso `timeZone` no instante real (UTC).
- * Equivale ao `timestamp AT TIME ZONE tz` do Postgres.
- * A segunda passada resolve as viradas de horário de verão.
- */
-function wallTimeToUtc(
-  [y, mo, d, h, mi, s]: [number, number, number, number, number, number],
-  timeZone: string,
-): Date {
-  const naive = Date.UTC(y, mo - 1, d, h, mi, s);
-  let ts = naive - tzOffsetMs(new Date(naive), timeZone);
-  ts = naive - tzOffsetMs(new Date(ts), timeZone);
-  return new Date(ts);
-}
-
-/**
- * Busca o fuso horário do usuário no banco.
- * Antes: SELECT timezone FROM user_preferences WHERE id = userId.
- */
-export async function getUserTimezone(userId: string): Promise<string> {
+export async function getUserTimezone(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<string> {
   try {
-    const prefs = await findOne('user_preferences', [Query.equal('user_id', userId)]);
-    return prefs?.timezone || 'UTC';
+    const { data, error } = await supabase
+      .from("user_preferences")
+      .select("timezone")
+      .eq("id", userId)
+      .single();
+
+    if (error || !data) {
+      return "UTC";
+    }
+
+    return data.timezone;
   } catch (err) {
-    console.error('Failed to get user timezone:', err);
-    return 'UTC';
+    console.error("Failed to get user timezone:", err);
+    return "UTC";
   }
 }
 
 /**
- * Converte um instante UTC para o fuso do usuário.
- *
- * ATENÇÃO ao que isso devolve: como o `Date` do JS não carrega fuso, o
- * resultado é um Date cujos componentes UTC (`getUTCHours()` etc.) representam
- * a hora de PAREDE no fuso do usuário — exatamente o que o
- * `convert_to_user_timezone` do Postgres entregava.
+ * Convert UTC timestamp to user's timezone (using Supabase function)
  */
 export async function convertToUserTimezone(
+  supabase: SupabaseClient,
   utcTimestamp: string,
-  userId: string,
+  userId: string
 ): Promise<Date> {
   try {
-    const tz = await getUserTimezone(userId);
-    const instante = new Date(utcTimestamp);
-    return new Date(instante.getTime() + tzOffsetMs(instante, tz));
+    const { data, error } = await supabase.rpc("convert_to_user_timezone", {
+      p_timestamp: utcTimestamp,
+      p_user_id: userId,
+    });
+
+    if (error || !data) {
+      throw error || new Error("Failed to convert timestamp");
+    }
+
+    return new Date(data);
   } catch (err) {
-    console.error('Failed to convert to user timezone:', err);
+    console.error("Failed to convert to user timezone:", err);
     return new Date(utcTimestamp);
   }
 }
 
 /**
- * Converte uma hora de parede do fuso do usuário para o instante UTC.
+ * Convert local time to UTC (using Supabase function)
  */
-export async function convertToUTC(localTimestamp: string, userId: string): Promise<Date> {
+export async function convertToUTC(
+  supabase: SupabaseClient,
+  localTimestamp: string,
+  userId: string
+): Promise<Date> {
   try {
-    const tz = await getUserTimezone(userId);
-    return wallTimeToUtc(wallParts(localTimestamp), tz);
+    const { data, error } = await supabase.rpc("convert_to_utc", {
+      p_timestamp: localTimestamp,
+      p_user_id: userId,
+    });
+
+    if (error || !data) {
+      throw error || new Error("Failed to convert timestamp");
+    }
+
+    return new Date(data);
   } catch (err) {
-    console.error('Failed to convert to UTC:', err);
+    console.error("Failed to convert to UTC:", err);
     return new Date(localTimestamp);
   }
 }
 
 /**
- * Início do dia (00:00:00) no fuso do usuário, como instante UTC.
+ * Get start of day in user's timezone (using Supabase function)
  */
-export async function getStartOfDayInUserTz(date: Date, userId: string): Promise<Date> {
+export async function getStartOfDayInUserTz(
+  supabase: SupabaseClient,
+  date: Date,
+  userId: string
+): Promise<Date> {
   try {
-    const tz = await getUserTimezone(userId);
-    const [y, mo, d] = date.toISOString().split('T')[0].split('-').map(Number);
-    return wallTimeToUtc([y, mo, d, 0, 0, 0], tz);
+    const dateString = date.toISOString().split("T")[0];
+
+    const { data, error } = await supabase.rpc("start_of_day_user_tz", {
+      p_date: dateString,
+      p_user_id: userId,
+    });
+
+    if (error || !data) {
+      throw error || new Error("Failed to get start of day");
+    }
+
+    return new Date(data);
   } catch (err) {
-    console.error('Failed to get start of day:', err);
-    // Fallback: meia-noite na hora local do navegador
+    console.error("Failed to get start of day:", err);
+    // Fallback: set local time to midnight
     const fallback = new Date(date);
     fallback.setHours(0, 0, 0, 0);
     return fallback;
@@ -155,17 +126,29 @@ export async function getStartOfDayInUserTz(date: Date, userId: string): Promise
 }
 
 /**
- * Fim do dia (23:59:59) no fuso do usuário, como instante UTC.
+ * Get end of day in user's timezone (using Supabase function)
  */
-export async function getEndOfDayInUserTz(date: Date, userId: string): Promise<Date> {
+export async function getEndOfDayInUserTz(
+  supabase: SupabaseClient,
+  date: Date,
+  userId: string
+): Promise<Date> {
   try {
-    const tz = await getUserTimezone(userId);
-    const [y, mo, d] = date.toISOString().split('T')[0].split('-').map(Number);
-    const fim = wallTimeToUtc([y, mo, d, 23, 59, 59], tz);
-    return new Date(fim.getTime() + 999);
+    const dateString = date.toISOString().split("T")[0];
+
+    const { data, error } = await supabase.rpc("end_of_day_user_tz", {
+      p_date: dateString,
+      p_user_id: userId,
+    });
+
+    if (error || !data) {
+      throw error || new Error("Failed to get end of day");
+    }
+
+    return new Date(data);
   } catch (err) {
-    console.error('Failed to get end of day:', err);
-    // Fallback: 23:59:59 na hora local do navegador
+    console.error("Failed to get end of day:", err);
+    // Fallback: set local time to 23:59:59
     const fallback = new Date(date);
     fallback.setHours(23, 59, 59, 999);
     return fallback;
@@ -173,7 +156,7 @@ export async function getEndOfDayInUserTz(date: Date, userId: string): Promise<D
 }
 
 /**
- * Soma dias a uma data
+ * Add days to a date
  */
 export function addDays(date: Date, days: number): Date {
   const result = new Date(date);
@@ -182,7 +165,7 @@ export function addDays(date: Date, days: number): Date {
 }
 
 /**
- * Soma horas a uma data
+ * Add hours to a date
  */
 export function addHours(date: Date, hours: number): Date {
   const result = new Date(date);
@@ -191,7 +174,7 @@ export function addHours(date: Date, hours: number): Date {
 }
 
 /**
- * Soma minutos a uma data
+ * Add minutes to a date
  */
 export function addMinutes(date: Date, minutes: number): Date {
   const result = new Date(date);
@@ -200,7 +183,7 @@ export function addMinutes(date: Date, minutes: number): Date {
 }
 
 /**
- * Diferença entre duas datas, em dias
+ * Get the difference between two dates in days
  */
 export function daysBetween(date1: Date, date2: Date): number {
   const oneDay = 24 * 60 * 60 * 1000;
@@ -208,21 +191,21 @@ export function daysBetween(date1: Date, date2: Date): number {
 }
 
 /**
- * Diferença entre duas datas, em horas
+ * Get the difference between two dates in hours
  */
 export function hoursBetween(date1: Date, date2: Date): number {
   return Math.round((date2.getTime() - date1.getTime()) / (60 * 60 * 1000));
 }
 
 /**
- * Diferença entre duas datas, em minutos
+ * Get the difference between two dates in minutes
  */
 export function minutesBetween(date1: Date, date2: Date): number {
   return Math.round((date2.getTime() - date1.getTime()) / (60 * 1000));
 }
 
 /**
- * A data é hoje?
+ * Check if a date is today
  */
 export function isToday(date: Date): boolean {
   const today = new Date();
@@ -230,21 +213,21 @@ export function isToday(date: Date): boolean {
 }
 
 /**
- * A data está no passado?
+ * Check if a date is in the past
  */
 export function isPast(date: Date): boolean {
   return date < new Date();
 }
 
 /**
- * A data está no futuro?
+ * Check if a date is in the future
  */
 export function isFuture(date: Date): boolean {
   return date > new Date();
 }
 
 /**
- * As duas datas caem no mesmo dia?
+ * Check if two dates are on the same day
  */
 export function isSameDay(date1: Date, date2: Date): boolean {
   return (
@@ -255,7 +238,7 @@ export function isSameDay(date1: Date, date2: Date): boolean {
 }
 
 /**
- * Semana do ano
+ * Get the week of the year
  */
 export function getWeekOfYear(date: Date): number {
   const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
@@ -264,14 +247,14 @@ export function getWeekOfYear(date: Date): number {
 }
 
 /**
- * Dias no mês
+ * Get days in a month
  */
 export function getDaysInMonth(date: Date): number {
   return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
 }
 
 /**
- * Início da semana da data informada
+ * Get the start of the week for a given date
  */
 export function getStartOfWeek(date: Date, weekStartsOn: 0 | 1 = 0): Date {
   const d = new Date(date);
@@ -281,7 +264,7 @@ export function getStartOfWeek(date: Date, weekStartsOn: 0 | 1 = 0): Date {
 }
 
 /**
- * Fim da semana da data informada
+ * Get the end of the week for a given date
  */
 export function getEndOfWeek(date: Date, weekStartsOn: 0 | 1 = 0): Date {
   const startOfWeek = getStartOfWeek(date, weekStartsOn);
@@ -292,14 +275,14 @@ export function getEndOfWeek(date: Date, weekStartsOn: 0 | 1 = 0): Date {
 }
 
 /**
- * Início do mês
+ * Get the start of the month
  */
 export function getStartOfMonth(date: Date): Date {
   return new Date(date.getFullYear(), date.getMonth(), 1);
 }
 
 /**
- * Fim do mês
+ * Get the end of the month
  */
 export function getEndOfMonth(date: Date): Date {
   const end = new Date(date.getFullYear(), date.getMonth() + 1, 0);
@@ -308,14 +291,14 @@ export function getEndOfMonth(date: Date): Date {
 }
 
 /**
- * Início do ano
+ * Get the start of the year
  */
 export function getStartOfYear(date: Date): Date {
   return new Date(date.getFullYear(), 0, 1);
 }
 
 /**
- * Fim do ano
+ * Get the end of the year
  */
 export function getEndOfYear(date: Date): Date {
   const end = new Date(date.getFullYear(), 11, 31);
@@ -324,7 +307,7 @@ export function getEndOfYear(date: Date): Date {
 }
 
 /**
- * Formata uma duração em milissegundos de forma legível
+ * Format a duration in milliseconds to human readable format
  */
 export function formatDuration(ms: number): string {
   const seconds = Math.floor(ms / 1000) % 60;
@@ -339,7 +322,7 @@ export function formatDuration(ms: number): string {
 }
 
 /**
- * A string é uma data válida?
+ * Check if a date string is valid
  */
 export function isValidDate(dateString: string): boolean {
   const date = new Date(dateString);
@@ -347,7 +330,7 @@ export function isValidDate(dateString: string): boolean {
 }
 
 /**
- * Tempo restante até um prazo, a partir de agora
+ * Get the time until a deadline from now
  */
 export function getTimeUntilDeadline(deadline: Date): {
   days: number;

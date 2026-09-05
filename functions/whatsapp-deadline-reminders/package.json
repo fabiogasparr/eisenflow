@@ -1,7 +1,0 @@
-{
-  "name": "eisenflow-whatsapp-deadline-reminders",
-  "version": "1.0.0",
-  "type": "module",
-  "main": "src/main.js",
-  "dependencies": {}
-}

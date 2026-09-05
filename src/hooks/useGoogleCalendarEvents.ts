@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
-import { invoke } from '@/integrations/appwrite/functions';
+import { invoke } from '@/integrations/supabase/functions';
 import { useGoogleCalendar } from '@/hooks/useGoogleCalendar';
 
 export interface GoogleEvent {

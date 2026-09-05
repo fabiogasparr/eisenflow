@@ -1,11 +1,8 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTasks } from './useTasks';
-import { useAuth } from '@/hooks/useAuth';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { useToast } from './use-toast';
-import type { Task } from '@/types/task';
-import { create, findOne, getById, Query } from '@/integrations/appwrite/database';
-import { inheritFrom, ownerOnly } from '@/integrations/appwrite/permissions';
+import { supabase } from '@/integrations/supabase/client';
 
 export interface Reminder {
   id: string;
@@ -22,13 +19,6 @@ const REMINDER_THRESHOLDS = [
   { type: 'at_deadline' as const, ms: 0 },
 ];
 
-/** Os tipos locais deste hook nos `kind` da collection task_reminders. */
-const KIND_BY_TYPE = {
-  '1d_before': 'due_d1',
-  '1h_before': 'due_1h',
-  at_deadline: 'due_now',
-} as const;
-
 function getReminderLabel(type: Reminder['type'], lang: string): string {
   const labels: Record<Reminder['type'], Record<string, string>> = {
     '1d_before': { 'pt-BR': 'Prazo amanhã', en: 'Due tomorrow' },
@@ -40,7 +30,6 @@ function getReminderLabel(type: Reminder['type'], lang: string): string {
 
 export function useReminders() {
   const { tasks } = useTasks();
-  const { user } = useAuth();
   const { language } = useLanguage();
   const { toast } = useToast();
   const [reminders, setReminders] = useState<Reminder[]>([]);
@@ -62,52 +51,27 @@ export function useReminders() {
     }
   }, []);
 
-  /**
-   * Antes o cliente chamava a function `whatsapp-send` direto. Isso deixou de
-   * existir: aquele endpoint agora é interno (exige INTERNAL_FUNCTION_SECRET) —
-   * era, aliás, a falha de segurança de qualquer um disparar mensagem por
-   * qualquer instância. O caminho suportado passa a ser a FILA: o cliente grava
-   * um `task_reminders`, o servidor materializa em `scheduled_reminders` e a
-   * Function `dispatch-reminders` (cron de 5 em 5 min) entrega no canal.
-   *
-   * TODO(migração): a entrega deixa de ser imediata (até ~5 min de atraso) e
-   * pode duplicar com a cron `whatsapp-deadline-reminders`, que já varre prazos
-   * no servidor. Se a duplicação aparecer, o certo é APAGAR este enfileiramento
-   * e deixar tudo com a cron — não dá para decidir isso do cliente.
-   */
-  const enqueueWhatsAppReminder = useCallback(async (task: Task, type: Reminder['type']) => {
-    if (!user) return;
+  const sendWhatsAppReminder = useCallback(async (label: string, taskTitle: string) => {
     try {
-      // whatsapp_connections é server-write: o cliente só lê para saber se o
-      // canal está ligado.
-      const conn = await findOne('whatsapp_connections', [Query.equal('user_id', user.$id)]);
+      // Check if user has WhatsApp connected with reminders enabled
+      const { data: conn } = await (supabase as any)
+        .from('whatsapp_connections')
+        .select('instance_name, phone_number, reminders_enabled, status')
+        .maybeSingle();
+      
       if (!conn || conn.status !== 'connected' || !conn.reminders_enabled || !conn.phone_number) return;
 
-      // PERMISSÕES: no Postgres a policy "task reminders insert/select" resolvia
-      // o acesso com um EXISTS na tarefa a cada query. Aqui a regra é gravada no
-      // documento: o lembrete herda as permissões da tarefa (para que
-      // responsável, tenant e compartilhados também o enxerguem) e quem criou
-      // ganha read/update/delete explícitos.
-      const parent = await getById('tasks', task.id);
-      await create(
-        'task_reminders',
-        {
-          task_id: task.id,
-          created_by: user.$id,
-          kind: KIND_BY_TYPE[type],
-          scheduled_at: new Date().toISOString(),
-          // Arrays não têm default no schema do Appwrite — o padrão vem daqui.
-          channels: ['whatsapp_personal'],
-          recipients: ['creator', 'assignee'],
-          enabled: true,
-          auto_generated: true,
+      await supabase.functions.invoke('whatsapp-send', {
+        body: {
+          instance_name: conn.instance_name,
+          phone_number: conn.phone_number,
+          message: `⏰ *${label}*\n${taskTitle}`,
         },
-        [...new Set([...inheritFrom(parent.$permissions), ...ownerOnly(user.$id)])],
-      );
+      });
     } catch {
       // Silent fail - WhatsApp is optional
     }
-  }, [user]);
+  }, []);
 
   const checkTasks = useCallback(() => {
     const now = Date.now();
@@ -149,12 +113,12 @@ export function useReminders() {
           // Browser notification
           sendBrowserNotification(label, task.title);
 
-          // WhatsApp: enfileira e esquece — quem entrega é o dispatch-reminders.
-          enqueueWhatsAppReminder(task, type);
+          // WhatsApp notification (fire and forget)
+          sendWhatsAppReminder(label, task.title);
         }
       });
     });
-  }, [tasks, language, toast, sendBrowserNotification, enqueueWhatsAppReminder]);
+  }, [tasks, language, toast, sendBrowserNotification, sendWhatsAppReminder]);
 
   useEffect(() => {
     requestPermission();

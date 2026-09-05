@@ -6,7 +6,7 @@ import { useGamification } from '@/hooks/useGamification';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from 'recharts';
 import { CheckCircle, Trash2, Users, Clock } from 'lucide-react';
-import { listDocs, Query } from '@/integrations/appwrite/database';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { useQuery } from '@tanstack/react-query';
 import { format, subDays } from 'date-fns';
@@ -19,23 +19,19 @@ export default function Metrics() {
   const { user } = useAuth();
 
   const { data: weeklyPomodoros = [] } = useQuery({
-    queryKey: ['weekly-pomodoros', user?.$id],
+    queryKey: ['weekly-pomodoros', user?.id],
     queryFn: async () => {
       if (!user) return [];
       const sevenDaysAgo = subDays(new Date(), 6).toISOString().split('T')[0];
-      // O Appwrite não tem projeção de colunas (`select('date, ...')`): vem o
-      // documento inteiro. `.gte` vira Query.greaterThanEqual. São no máximo 7
-      // linhas, então listDocs (teto de 100) basta — sem listAll.
-      const data = await listDocs('productivity_metrics', [
-        Query.equal('user_id', user.$id),
-        Query.greaterThanEqual('date', sevenDaysAgo),
-        Query.orderAsc('date'),
-        Query.limit(31),
-      ]);
+      const { data, error } = await supabase
+        .from('productivity_metrics')
+        .select('date, pomodoros_completed, tasks_completed')
+        .eq('user_id', user.id)
+        .gte('date', sevenDaysAgo)
+        .order('date', { ascending: true });
+      if (error) throw error;
 
-      // A série de 7 dias (com os dias sem registro zerados) já era montada em
-      // memória — nenhuma agregação dependia do SQL aqui.
-      const map = new Map(data.map(d => [d.date, d]));
+      const map = new Map((data ?? []).map(d => [d.date, d]));
       return Array.from({ length: 7 }, (_, i) => {
         const date = subDays(new Date(), 6 - i);
         const key = format(date, 'yyyy-MM-dd');

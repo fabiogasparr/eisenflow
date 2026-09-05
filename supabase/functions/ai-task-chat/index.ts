@@ -1,9 +1,31 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/**
+ * ai-task-chat
+ * ──────────────────────────────────────────────────────────────────────
+ * Chat de IA que cria tarefas estruturadas ou responde em linguagem natural,
+ * com texto e imagens.
+ *
+ * Chamada ........... front (JWT), AIChatPage.tsx
+ * Entrada ........... { messages[], context?: {teamMembers[], projects[]}, images?: string[] }
+ * Saída ............. { type:'tasks', tasks[], summary } | { type:'chat', message }
+ * Env ............... AI_API_KEY (+ AI_BASE_URL, AI_MODEL_CONVERSAR/VISAO opcionais)
+ *
+ * MUDANÇAS EM RELAÇÃO À VERSÃO LOVABLE:
+ *  - Era pública (qualquer um queimava crédito de IA). Agora exige sessão.
+ *  - Lovable AI Gateway -> chat() de _shared/ai.ts. Nada de nome de modelo fixo:
+ *    'visao' quando há imagem, 'conversar' quando é só texto.
+ *  - Os IDs devolvidos pela IA passam a ser VALIDADOS contra as listas do
+ *    contexto. O prompt original só pedia "não invente IDs" — e modelo inventa.
+ *    Aqui, ID que não está na lista é descartado em vez de virar referência
+ *    quebrada no banco.
+ *  - Quem grava as tarefas continua sendo o front (contrato preservado).
+ */
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { chat, imagePart, type Tool } from '../_shared/ai.ts';
+import { requireUser } from '../_shared/supabase.ts';
+import { erro, json, lerCorpo, preflight, respostaErro } from '../_shared/http.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
-};
+// deno-lint-ignore no-explicit-any
+type Json = any;
 
 const SYSTEM_PROMPT = `Você é um assistente de produtividade inteligente do EisenFlow, especializado na Matriz de Eisenhower.
 
@@ -35,180 +57,137 @@ IMPORTANTE: Os campos project_id e assigned_to_id DEVEM ser UUIDs válidos copia
 
 Responda sempre no idioma que o usuário usar.`;
 
+const TOOLS: Tool[] = [
+  {
+    type: 'function',
+    function: {
+      name: 'create_tasks',
+      description: "Create one or more tasks from the user's description or images. Use this whenever the user describes (or shows in an image) work to be done.",
+      parameters: {
+        type: 'object',
+        properties: {
+          tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string', description: 'Task title, concise and actionable' },
+                description: { type: 'string', description: 'Detailed description; include relevant text extracted from images' },
+                quadrant: { type: 'string', enum: ['do', 'schedule', 'delegate', 'eliminate'] },
+                urgency: { type: 'number', minimum: 1, maximum: 5 },
+                importance: { type: 'number', minimum: 1, maximum: 5 },
+                estimated_time: { type: 'number', description: 'Estimated time in minutes' },
+                assigned_to_id: { type: 'string' },
+                assigned_to_name: { type: 'string' },
+                project_id: { type: 'string' },
+              },
+              required: ['title', 'quadrant', 'urgency', 'importance'],
+              additionalProperties: false,
+            },
+          },
+          summary: { type: 'string', description: 'Brief summary of what was created and why; mention image content when applicable' },
+        },
+        required: ['tasks', 'summary'],
+        additionalProperties: false,
+      },
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'chat_response',
+      description: "Send a conversational response when no task creation is needed. Use this to summarize/describe an image when it isn't actionable.",
+      parameters: {
+        type: 'object',
+        properties: { message: { type: 'string' } },
+        required: ['message'],
+        additionalProperties: false,
+      },
+    },
+  },
+];
+
+const QUADRANTES = ['do', 'schedule', 'delegate', 'eliminate'];
+const clamp = (n: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(n) || 3)));
+
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return preflight();
 
   try {
-    const { messages, context, images } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    await requireUser(req);
+    const { messages, context, images } = await lerCorpo(req);
+    if (!Array.isArray(messages) || messages.length === 0) throw erro('messages é obrigatório', 400);
 
-    let contextInfo = "";
-    if (context?.teamMembers?.length) {
-      contextInfo += `\n\nMembros do time disponíveis para atribuição:\n${context.teamMembers.map((m: any) => `- ${m.name} (ID: ${m.id})`).join("\n")}`;
+    // Listas do contexto: servem ao prompt E à validação dos IDs devolvidos.
+    const membros: Json[] = Array.isArray(context?.teamMembers) ? context.teamMembers : [];
+    const projetos: Json[] = Array.isArray(context?.projects) ? context.projects : [];
+    const idsMembros = new Set(membros.map((m) => m.id));
+    const idsProjetos = new Set(projetos.map((p) => p.id));
+
+    let contexto = '';
+    if (membros.length) {
+      contexto += `\n\nMembros do time disponíveis para atribuição:\n${membros.map((m) => `- ${m.name} (ID: ${m.id})`).join('\n')}`;
     }
-    if (context?.projects?.length) {
-      contextInfo += `\n\nProjetos disponíveis:\n${context.projects.map((p: any) => `- ${p.name} (ID: ${p.id})`).join("\n")}`;
-    }
-
-    const tools = [
-      {
-        type: "function",
-        function: {
-          name: "create_tasks",
-          description: "Create one or more tasks from the user's description or images. Use this whenever the user describes (or shows in an image) work to be done.",
-          parameters: {
-            type: "object",
-            properties: {
-              tasks: {
-                type: "array",
-                items: {
-                  type: "object",
-                  properties: {
-                    title: { type: "string", description: "Task title, concise and actionable" },
-                    description: { type: "string", description: "Detailed description; include relevant text extracted from images" },
-                    quadrant: { type: "string", enum: ["do", "schedule", "delegate", "eliminate"] },
-                    urgency: { type: "number", minimum: 1, maximum: 5 },
-                    importance: { type: "number", minimum: 1, maximum: 5 },
-                    estimated_time: { type: "number", description: "Estimated time in minutes" },
-                    assigned_to_id: { type: "string" },
-                    assigned_to_name: { type: "string" },
-                    project_id: { type: "string" },
-                  },
-                  required: ["title", "quadrant", "urgency", "importance"],
-                  additionalProperties: false,
-                },
-              },
-              summary: { type: "string", description: "Brief summary of what was created and why; mention image content when applicable" },
-            },
-            required: ["tasks", "summary"],
-            additionalProperties: false,
-          },
-        },
-      },
-      {
-        type: "function",
-        function: {
-          name: "chat_response",
-          description: "Send a conversational response when no task creation is needed. Use this to summarize/describe an image when it isn't actionable.",
-          parameters: {
-            type: "object",
-            properties: {
-              message: { type: "string" },
-            },
-            required: ["message"],
-            additionalProperties: false,
-          },
-        },
-      },
-    ];
-
-    // If images were sent with the latest user message, transform that message into multimodal content.
-    const hasImages = Array.isArray(images) && images.length > 0;
-    const apiMessages = [...messages];
-    if (hasImages && apiMessages.length > 0) {
-      const lastIdx = apiMessages.length - 1;
-      const last = apiMessages[lastIdx];
-      if (last?.role === "user") {
-        const textPart = typeof last.content === "string" ? last.content : "";
-        apiMessages[lastIdx] = {
-          role: "user",
-          content: [
-            { type: "text", text: textPart || "Analise a(s) imagem(ns) anexada(s)." },
-            ...images.map((url: string) => ({
-              type: "image_url",
-              image_url: { url },
-            })),
-          ],
-        };
-      }
+    if (projetos.length) {
+      contexto += `\n\nProjetos disponíveis:\n${projetos.map((p) => `- ${p.name} (ID: ${p.id})`).join('\n')}`;
     }
 
-    // Use a vision-capable model when images are present.
-    const model = hasImages ? "google/gemini-2.5-pro" : "google/gemini-3-flash-preview";
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT + contextInfo },
-          ...apiMessages,
+    // Imagens entram como conteúdo multimodal da ÚLTIMA mensagem do usuário.
+    const temImagens = Array.isArray(images) && images.length > 0;
+    const apiMessages: Json[] = messages.map((m: Json) => ({ role: m.role, content: m.content }));
+    const ultima = apiMessages[apiMessages.length - 1];
+    if (temImagens && ultima?.role === 'user') {
+      const texto = typeof ultima.content === 'string' ? ultima.content : '';
+      apiMessages[apiMessages.length - 1] = {
+        role: 'user',
+        content: [
+          { type: 'text', text: texto || 'Analise a(s) imagem(ns) anexada(s).' },
+          ...images.map((url: string) => imagePart(url)),
         ],
-        tools,
-        tool_choice: "auto",
-      }),
+      };
+    }
+
+    const result = await chat({
+      // Com imagem a leitura é o gargalo -> modelo de visão. Sem imagem, o que
+      // importa é a qualidade da conversa.
+      proposito: temImagens ? 'visao' : 'conversar',
+      temperature: 0.3,
+      tools: TOOLS,
+      messages: [{ role: 'system', content: SYSTEM_PROMPT + contexto }, ...apiMessages],
     });
 
-    if (!response.ok) {
-      const status = response.status;
-      const text = await response.text();
-      console.error("AI gateway error:", status, text);
+    const call = result.toolCalls?.[0];
 
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Limite de requisições excedido. Tente novamente em alguns segundos." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes. Adicione créditos ao seu workspace." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      return new Response(JSON.stringify({ error: "Erro ao processar com IA" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    if (call?.name === 'chat_response') {
+      return json({ type: 'chat', message: call.arguments.message || '' });
     }
 
-    const data = await response.json();
-    const choice = data.choices?.[0];
+    if (call?.name === 'create_tasks') {
+      const brutas: Json[] = Array.isArray(call.arguments.tasks) ? call.arguments.tasks : [];
+      const tasks = brutas
+        .filter((t) => typeof t?.title === 'string' && t.title.trim())
+        .map((t) => ({
+          title: String(t.title).slice(0, 500),
+          description: t.description ? String(t.description).slice(0, 20000) : null,
+          quadrant: QUADRANTES.includes(t.quadrant) ? t.quadrant : 'schedule',
+          urgency: clamp(t.urgency, 1, 5),
+          importance: clamp(t.importance, 1, 5),
+          estimated_time: Number.isFinite(Number(t.estimated_time)) ? Math.max(0, Math.round(Number(t.estimated_time))) : null,
+          // ID que não veio da lista do contexto é alucinação: descarta.
+          assigned_to_id: idsMembros.has(t.assigned_to_id) ? t.assigned_to_id : null,
+          assigned_to_name: idsMembros.has(t.assigned_to_id) ? t.assigned_to_name || null : null,
+          project_id: idsProjetos.has(t.project_id) ? t.project_id : null,
+        }));
 
-    if (!choice) {
-      return new Response(JSON.stringify({ error: "No response from AI" }), {
-        status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+      if (!tasks.length) {
+        return json({ type: 'chat', message: call.arguments.summary || 'Não identifiquei tarefas acionáveis.' });
+      }
+      return json({ type: 'tasks', tasks, summary: call.arguments.summary || '' });
     }
 
-    if (choice.message?.tool_calls?.length) {
-      const toolCall = choice.message.tool_calls[0];
-      const args = JSON.parse(toolCall.function.arguments);
-
-      if (toolCall.function.name === "create_tasks") {
-        return new Response(JSON.stringify({
-          type: "tasks",
-          tasks: args.tasks,
-          summary: args.summary,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-
-      if (toolCall.function.name === "chat_response") {
-        return new Response(JSON.stringify({
-          type: "chat",
-          message: args.message,
-        }), {
-          headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
-
-    return new Response(JSON.stringify({
-      type: "chat",
-      message: choice.message?.content || "Não entendi. Pode reformular?",
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ type: 'chat', message: result.content || 'Não entendi. Pode reformular?' });
   } catch (e) {
-    console.error("ai-task-chat error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error('ai-task-chat:', e);
+    return respostaErro(e);
   }
 });

@@ -1,194 +1,132 @@
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/**
+ * analyze-task-image
+ * ──────────────────────────────────────────────────────────────────────
+ * OCR, descrição visual e sugestão de subtarefas sobre imagem anexada a uma tarefa.
+ *
+ * Chamada ........... front (JWT), useTaskAttachments.ts
+ * Entrada ........... { attachment_id, task_title?, task_description? }
+ * Saída ............. { ocr_text, description, suggested_subtasks[] }
+ * Lê ................ task_attachments, tasks, tenant_members, Storage task-attachments
+ * Escreve ........... task_attachments (ocr_text, ai_description, ai_analyzed_at)
+ * Env ............... AI_API_KEY (+ AI_MODEL_VISAO opcional)
+ *
+ * MUDANÇAS EM RELAÇÃO À VERSÃO LOVABLE:
+ *  - O original gerava uma signed URL do Storage e mandava ao provider de IA
+ *    buscá-la. No self-hosted o Storage pode não ser alcançável de fora (e o
+ *    OmniRoute é outro serviço). O arquivo é baixado aqui com a service role e
+ *    vai como data URL — nenhuma URL do anexo sai do servidor.
+ *  - Modelo fixo google/gemini-2.5-pro -> finalidade 'visao' em _shared/ai.ts.
+ */
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { chat, imagePart, type Tool } from '../_shared/ai.ts';
+import { admin, requireUser } from '../_shared/supabase.ts';
+import { bytesParaDataUrl } from '../_shared/bytes.ts';
+import { erro, json, lerCorpo, preflight, respostaErro } from '../_shared/http.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+const SYSTEM =
+  'Você analisa imagens anexadas a tarefas. Faça OCR completo, descreva o conteúdo visual ' +
+  'e sugira subtarefas acionáveis quando fizer sentido. Responda no idioma do usuário.';
+
+const TOOL: Tool = {
+  type: 'function',
+  function: {
+    name: 'analyze_image',
+    description: 'Returns OCR text, a visual description, and optional subtask suggestions',
+    parameters: {
+      type: 'object',
+      properties: {
+        ocr_text: { type: 'string', description: 'All readable text extracted from the image' },
+        description: { type: 'string', description: 'Concise description of what the image shows' },
+        suggested_subtasks: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional actionable subtasks inferred from the image content',
+        },
+      },
+      required: ['ocr_text', 'description', 'suggested_subtasks'],
+      additionalProperties: false,
+    },
+  },
 };
 
 serve(async (req) => {
-  if (req.method === "OPTIONS") {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return preflight();
 
   try {
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-    const SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    const user = await requireUser(req);
+    const { attachment_id, task_title, task_description } = await lerCorpo(req);
+    if (!attachment_id) throw erro('attachment_id é obrigatório', 400);
+    const db = admin();
 
-    const authHeader = req.headers.get("Authorization") || "";
-    const token = authHeader.replace("Bearer ", "");
-    if (!token) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const supabaseAuth = createClient(SUPABASE_URL, SERVICE_KEY);
-    const { data: claims, error: authErr } = await supabaseAuth.auth.getClaims(token);
-    if (authErr || !claims?.claims?.sub) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-    const userId = claims.claims.sub;
-
-    const { attachment_id, task_title, task_description } = await req.json();
-    if (!attachment_id) throw new Error("attachment_id required");
-
-    const supabase = createClient(SUPABASE_URL, SERVICE_KEY);
-
-    const { data: att, error: attErr } = await supabase
-      .from("task_attachments")
-      .select("id, task_id, storage_path, mime_type, uploaded_by")
-      .eq("id", attachment_id)
+    const { data: att } = await db
+      .from('task_attachments')
+      .select('id, task_id, storage_path, mime_type, uploaded_by')
+      .eq('id', attachment_id)
       .maybeSingle();
+    if (!att) throw erro('Anexo não encontrado', 404);
+    if (!/^image\//.test(att.mime_type || '')) throw erro(`Anexo não é imagem (${att.mime_type})`, 400);
 
-    if (attErr || !att) {
-      return new Response(JSON.stringify({ error: "Attachment not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    // Verify caller can access the parent task
-    const { data: task } = await supabase
-      .from("tasks")
-      .select("id, created_by, assigned_to, tenant_id, title, description")
-      .eq("id", att.task_id)
+    const { data: task } = await db
+      .from('tasks')
+      .select('id, created_by, assigned_to, tenant_id, title, description')
+      .eq('id', att.task_id)
       .maybeSingle();
+    if (!task) throw erro('Tarefa não encontrada', 404);
 
-    if (!task) {
-      return new Response(JSON.stringify({ error: "Task not found" }), {
-        status: 404, headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+    // Service role ignora RLS: a autorização é explícita — criador, responsável, ou membro do tenant.
+    let permitido = task.created_by === user.id || task.assigned_to === user.id;
+    if (!permitido && task.tenant_id) {
+      const { data: membro } = await db
+        .from('tenant_members').select('id')
+        .eq('tenant_id', task.tenant_id).eq('user_id', user.id).maybeSingle();
+      permitido = !!membro;
     }
+    if (!permitido) throw erro('Sem acesso a esta tarefa', 403);
 
-    const canAccess = task.created_by === userId || task.assigned_to === userId;
-    if (!canAccess) {
-      // Allow tenant member access
-      if (task.tenant_id) {
-        const { data: tm } = await supabase
-          .from("tenant_members")
-          .select("id")
-          .eq("tenant_id", task.tenant_id)
-          .eq("user_id", userId)
-          .maybeSingle();
-        if (!tm) {
-          return new Response(JSON.stringify({ error: "Forbidden" }), {
-            status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-          });
-        }
-      } else {
-        return new Response(JSON.stringify({ error: "Forbidden" }), {
-          status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-    }
+    const { data: arquivo, error: dlErr } = await db.storage.from('task-attachments').download(att.storage_path);
+    if (dlErr || !arquivo) throw erro(`Não foi possível baixar o anexo: ${dlErr?.message || 'vazio'}`, 500);
+    const dataUrl = bytesParaDataUrl(new Uint8Array(await arquivo.arrayBuffer()), att.mime_type || 'image/png');
 
-    // Sign URL
-    const { data: signed, error: signErr } = await supabase.storage
-      .from("task-attachments")
-      .createSignedUrl(att.storage_path, 60 * 60);
+    const contexto = `Tarefa pai: "${task_title || task.title}"\n${task_description || task.description || ''}`.trim();
 
-    if (signErr || !signed?.signedUrl) {
-      throw new Error("Could not sign URL");
-    }
-
-    const tools = [{
-      type: "function",
-      function: {
-        name: "analyze_image",
-        description: "Returns OCR text, a visual description, and optional subtask suggestions",
-        parameters: {
-          type: "object",
-          properties: {
-            ocr_text: { type: "string", description: "All readable text extracted from the image" },
-            description: { type: "string", description: "Concise description of what the image shows" },
-            suggested_subtasks: {
-              type: "array",
-              items: { type: "string" },
-              description: "Optional actionable subtasks inferred from the image content",
-            },
-          },
-          required: ["ocr_text", "description", "suggested_subtasks"],
-          additionalProperties: false,
+    const result = await chat({
+      // OCR de foto torta e mal iluminada: vale o melhor modelo de visão.
+      proposito: 'visao',
+      temperature: 0.1,
+      tools: [TOOL],
+      toolChoice: 'analyze_image',
+      messages: [
+        { role: 'system', content: SYSTEM },
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: `Analise a imagem anexada a esta tarefa.\n\n${contexto}` },
+            imagePart(dataUrl),
+          ],
         },
-      },
-    }];
-
-    const taskCtx = `Tarefa pai: "${task_title || task.title}"\n${task_description || task.description || ""}`.trim();
-
-    const aiRes = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        model: "google/gemini-2.5-pro",
-        messages: [
-          {
-            role: "system",
-            content: "Você analisa imagens anexadas a tarefas. Faça OCR completo, descreva o conteúdo visual e sugira subtarefas acionáveis quando fizer sentido. Responda no idioma do usuário.",
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: `Analise a imagem anexada a esta tarefa.\n\n${taskCtx}` },
-              { type: "image_url", image_url: { url: signed.signedUrl } },
-            ],
-          },
-        ],
-        tools,
-        tool_choice: { type: "function", function: { name: "analyze_image" } },
-      }),
+      ],
     });
 
-    if (!aiRes.ok) {
-      const status = aiRes.status;
-      const text = await aiRes.text();
-      console.error("AI gateway error:", status, text);
-      if (status === 429) {
-        return new Response(JSON.stringify({ error: "Limite excedido. Tente novamente em segundos." }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (status === 402) {
-        return new Response(JSON.stringify({ error: "Créditos insuficientes." }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      throw new Error("AI analysis failed");
-    }
+    const call = result.toolCalls.find((c) => c.name === 'analyze_image');
+    if (!call && !result.content) throw erro('A IA não devolveu análise', 502);
+    if (!call) console.log('analyze-task-image: sem tool call, usando o texto livre como descrição');
 
-    const data = await aiRes.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) throw new Error("No analysis result");
+    const ocr = String(call?.arguments?.ocr_text || '');
+    const descricao = String(call?.arguments?.description || result.content || '');
+    const subtarefas: string[] = Array.isArray(call?.arguments?.suggested_subtasks)
+      ? call!.arguments.suggested_subtasks.filter((s: unknown) => typeof s === 'string' && (s as string).trim()).map((s: string) => s.slice(0, 500))
+      : [];
 
-    const result = JSON.parse(toolCall.function.arguments);
+    await db.from('task_attachments').update({
+      ocr_text: ocr || null,
+      ai_description: descricao || null,
+      ai_analyzed_at: new Date().toISOString(),
+    }).eq('id', att.id);
 
-    // Persist OCR + description
-    await supabase
-      .from("task_attachments")
-      .update({
-        ocr_text: result.ocr_text || null,
-        ai_description: result.description || null,
-        ai_analyzed_at: new Date().toISOString(),
-      })
-      .eq("id", attachment_id);
-
-    return new Response(JSON.stringify({
-      ocr_text: result.ocr_text || "",
-      description: result.description || "",
-      suggested_subtasks: result.suggested_subtasks || [],
-    }), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.log(`analyze-task-image: anexo ${att.id} analisado (${ocr.length} chars de OCR, ${subtarefas.length} subtarefas)`);
+    return json({ ocr_text: ocr, description: descricao, suggested_subtasks: subtarefas });
   } catch (e) {
-    console.error("analyze-task-image error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error('analyze-task-image:', e);
+    return respostaErro(e);
   }
 });

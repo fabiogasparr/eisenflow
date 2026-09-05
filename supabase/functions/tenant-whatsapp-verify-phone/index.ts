@@ -1,74 +1,116 @@
-// tenant-whatsapp-verify-phone: send / verify OTP code to map a member phone to a tenant
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+/**
+ * tenant-whatsapp-verify-phone
+ * ──────────────────────────────────────────────────────────────────────
+ * Envia e confere o código de verificação que vincula o telefone de um membro
+ * ao tenant. O código vai por WhatsApp, pela instância do próprio tenant.
+ *
+ * Chamada ........... front (JWT) + ser MEMBRO do tenant
+ * Entrada ........... { action:'send'|'verify', tenant_id, phone_number?, code? }
+ * Saída ............. { ok:true } | { ok:true, verified:true }
+ * Lê ................ tenant_members, tenant_whatsapp_connections
+ * Lê/Escreve ........ tenant_member_phones
+ * Env ............... EVOLUTION_API_URL
+ *
+ * CORREÇÕES EM RELAÇÃO À VERSÃO LOVABLE
+ *   - AUTORIZAÇÃO: passa a exigir que o usuário seja membro do tenant. No
+ *     original, qualquer usuário autenticado registrava um telefone em qualquer
+ *     tenant (e recebia o OTP pela instância dele).
+ *   - OTP com `crypto.getRandomValues` (CSPRNG). O original usava `Math.random`,
+ *     que é previsível e não serve para código de verificação.
+ *   - Grava ANTES de enviar: se o WhatsApp falhar, o usuário reenvia; se a
+ *     gravação falhasse depois do envio, o código não validaria nunca.
+ *   - `instance_name` não serve mais para enviar: o Evolution GO autentica pelo
+ *     token da instância. Conexão sem `instance_token` gravado devolve 409.
+ *   - Envio direto por `evolution.sendText` em vez de passar por
+ *     `whatsapp-send`: a conexão (com token) já foi lida aqui, e o OTP não
+ *     precisa transitar por outra function.
+ */
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { admin, requireTenantMember, requireUser } from '../_shared/supabase.ts';
+import { evolution, normalize } from '../_shared/evolution.ts';
+import { erro, json, lerCorpo, preflight, respostaErro } from '../_shared/http.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
+const VALIDADE_MS = 10 * 60 * 1000;
+
+/** 6 dígitos de fonte criptográfica, com zeros à esquerda. */
+function gerarOtp(): string {
+  const n = crypto.getRandomValues(new Uint32Array(1))[0] % 1_000_000;
+  return String(n).padStart(6, '0');
 }
 
-const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')!
-const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')!
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return preflight();
 
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders })
   try {
-    const authHeader = req.headers.get('Authorization') ?? ''
-    const sb = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
-      global: { headers: { Authorization: authHeader } },
-    })
-    const admin = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!)
-    const { data: { user } } = await sb.auth.getUser()
-    if (!user) return new Response(JSON.stringify({ error: 'unauthorized' }), { status: 401, headers: corsHeaders })
+    const user = await requireUser(req);
+    const { action, tenant_id: tenantId, phone_number: telefone, code } = await lerCorpo(req);
+    if (!tenantId || !action) throw erro('tenant_id e action são obrigatórios', 400);
 
-    const body = await req.json()
-    const { action, tenant_id, phone_number, code } = body
-    if (!tenant_id || !action) return new Response(JSON.stringify({ error: 'missing params' }), { status: 400, headers: corsHeaders })
+    await requireTenantMember(tenantId, user.id);
+    const db = admin();
 
+    const { data: existente } = await db
+      .from('tenant_member_phones')
+      .select('*')
+      .eq('tenant_id', tenantId)
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    // ------------------------------------------------------------------ send
     if (action === 'send') {
-      if (!phone_number) return new Response(JSON.stringify({ error: 'phone_number required' }), { status: 400, headers: corsHeaders })
-      const otp = String(Math.floor(100000 + Math.random() * 900000))
-      const expires = new Date(Date.now() + 10 * 60 * 1000).toISOString()
-      await admin.from('tenant_member_phones').upsert({
-        tenant_id, user_id: user.id, phone_number,
-        verified: false, verification_code: otp, verification_expires_at: expires,
-      }, { onConflict: 'tenant_id,user_id' })
+      if (!telefone) throw erro('phone_number é obrigatório', 400);
 
-      // Send via tenant WA instance
-      const { data: tconn } = await admin.from('tenant_whatsapp_connections')
-        .select('instance_name, status').eq('tenant_id', tenant_id).maybeSingle()
-      if (!tconn || tconn.status !== 'connected') {
-        return new Response(JSON.stringify({ error: 'tenant_wa_not_connected' }), { status: 400, headers: corsHeaders })
+      const { data: conn } = await db
+        .from('tenant_whatsapp_connections')
+        .select('instance_token, status')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+      if (!conn || conn.status !== 'connected') throw erro('O WhatsApp do workspace não está conectado', 400);
+      if (!conn.instance_token) {
+        throw erro('Conexão do workspace sem token de instância (criada antes da migração). Um admin precisa reconectar o WhatsApp.', 409);
       }
-      const sendRes = await fetch(`${EVOLUTION_API_URL}/message/sendText/${tconn.instance_name}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-        body: JSON.stringify({ number: phone_number.replace(/\D/g, ''), text: `Seu código EisenFlow: *${otp}*\nVálido por 10 minutos.` }),
-      })
-      if (!sendRes.ok) return new Response(JSON.stringify({ error: `send_failed_${sendRes.status}` }), { status: 500, headers: corsHeaders })
 
-      return new Response(JSON.stringify({ ok: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+      const otp = gerarOtp();
+      const numero = normalize(telefone);
+      const { error } = await db.from('tenant_member_phones').upsert({
+        tenant_id: tenantId,
+        user_id: user.id,
+        phone_number: numero,
+        verified: false,
+        verification_code: otp,
+        verification_expires_at: new Date(Date.now() + VALIDADE_MS).toISOString(),
+      }, { onConflict: 'tenant_id,user_id' });
+      if (error) throw error;
+
+      await evolution.sendText(conn.instance_token, numero, `Seu código EisenFlow: *${otp}*\nVálido por 10 minutos.`);
+      console.log(`tenant-whatsapp-verify-phone: código enviado para ${numero.slice(0, 4)}****`);
+      return json({ ok: true });
     }
 
+    // ---------------------------------------------------------------- verify
     if (action === 'verify') {
-      const { data: row } = await admin.from('tenant_member_phones')
-        .select('*').eq('tenant_id', tenant_id).eq('user_id', user.id).maybeSingle()
-      if (!row) return new Response(JSON.stringify({ error: 'not_found' }), { status: 404, headers: corsHeaders })
-      if (!row.verification_code || row.verification_code !== code) {
-        return new Response(JSON.stringify({ error: 'invalid_code' }), { status: 400, headers: corsHeaders })
+      if (!existente) throw erro('Nenhum telefone pendente de verificação', 404);
+      if (!existente.verification_code || existente.verification_code !== String(code || '')) {
+        throw erro('Código inválido', 400);
       }
-      if (new Date(row.verification_expires_at).getTime() < Date.now()) {
-        return new Response(JSON.stringify({ error: 'expired' }), { status: 400, headers: corsHeaders })
+      if (!existente.verification_expires_at || new Date(existente.verification_expires_at).getTime() < Date.now()) {
+        throw erro('Código expirado', 400);
       }
-      await admin.from('tenant_member_phones').update({
-        verified: true, verification_code: null, verification_expires_at: null,
-      }).eq('id', row.id)
-      return new Response(JSON.stringify({ ok: true, verified: true }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } })
+
+      const { error } = await db.from('tenant_member_phones').update({
+        verified: true,
+        verification_code: null,
+        verification_expires_at: null,
+      }).eq('id', existente.id);
+      if (error) throw error;
+
+      console.log(`tenant-whatsapp-verify-phone: telefone verificado (tenant ${tenantId})`);
+      return json({ ok: true, verified: true });
     }
 
-    return new Response(JSON.stringify({ error: 'unknown_action' }), { status: 400, headers: corsHeaders })
+    throw erro(`Ação desconhecida: ${action}`, 400);
   } catch (e) {
-    return new Response(JSON.stringify({ error: (e as Error).message }), {
-      status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    console.error('tenant-whatsapp-verify-phone:', e);
+    return respostaErro(e);
   }
-})
+});

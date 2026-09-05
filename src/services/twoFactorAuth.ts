@@ -1,87 +1,68 @@
 /**
- * Autenticação de dois fatores (2FA / MFA).
- *
- * O QUE MUDOU NA MIGRAÇÃO
- * -----------------------
- * As tabelas `user_2fa` e `failed_2fa_attempts` NÃO foram migradas de propósito:
- * o Appwrite tem MFA nativo. Na prática isso troca uma implementação caseira —
- * que guardava o segredo TOTP em texto no banco e cujo `verifyTOTPCode()
- * retornava `true` sem verificar nada — pelo fluxo do servidor:
- *
- *   setupTotp()      -> cria o autenticador TOTP e devolve segredo + URI do QR
- *   confirmTotp(otp) -> o SERVIDOR valida o código e marca o fator como verificado
- *   enableMfa()      -> passa a exigir o segundo fator no login
- *   listMfaFactors() -> diz quais fatores estão ativos na conta
- *
- * Tudo isso vem de `@/integrations/appwrite/auth`. Contagem de tentativas
- * erradas e bloqueio também são do servidor (o Appwrite tem rate limit próprio
- * nos endpoints de auth), por isso as funções de "failed attempts" deixaram de
- * existir aqui.
- *
- * Os nomes exportados foram mantidos para não quebrar quem importa; o que não
- * tem equivalente client-side LANÇA erro em vez de devolver um `true` educado.
+ * Two-Factor Authentication Service
+ * Implements TOTP-based 2FA with backup codes
  */
 
-import { setupTotp, confirmTotp, enableMfa, listMfaFactors } from '@/integrations/appwrite/auth';
-
-/** Erro único para o que saiu do cliente. */
-function naoMigrado(funcao: string, detalhe: string): never {
-  throw new Error(`[twoFactorAuth] ${funcao}() não existe mais no cliente: ${detalhe}`);
-}
+import { SupabaseClient } from "@supabase/supabase-js";
 
 /**
- * Gerador de segredo base32.
- * Mantido por compatibilidade de assinatura, mas NÃO é mais usado no fluxo: o
- * segredo TOTP quem gera é o Appwrite, em `setupUserTwoFA()`.
+ * Generate a random TOTP secret (base32 encoded)
+ * In production, use a library like 'speakeasy' or 'otplib'
  */
 export function generateTOTPSecret(length: number = 32): string {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
-  const bytes = new Uint8Array(length);
-  crypto.getRandomValues(bytes);
-  let secret = '';
-  for (let i = 0; i < length; i++) secret += chars[bytes[i] % chars.length];
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
+  let secret = "";
+  for (let i = 0; i < length; i++) {
+    secret += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
   return secret;
 }
 
 /**
- * Gerador de códigos de backup.
- * Mantido por compatibilidade; os códigos de recuperação de verdade são os do
- * Appwrite (`account.createMfaRecoveryCodes()`) — ver TODO em setupUserTwoFA.
+ * Generate backup codes
+ * 10 codes of 8 alphanumeric characters each
  */
 export function generateBackupCodes(count: number = 10): string[] {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
   const codes: string[] = [];
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+
   for (let i = 0; i < count; i++) {
-    const bytes = new Uint8Array(8);
-    crypto.getRandomValues(bytes);
-    let code = '';
-    for (let j = 0; j < 8; j++) code += chars[bytes[j] % chars.length];
+    let code = "";
+    for (let j = 0; j < 8; j++) {
+      code += chars.charAt(Math.floor(Math.random() * chars.length));
+    }
     codes.push(code);
   }
+
   return codes;
 }
 
 /**
- * Antes: um placeholder que devolvia `true` para qualquer código de 6 dígitos —
- * ou seja, 2FA que não verificava nada. Agora quem confere o código é o
- * servidor do Appwrite (`confirmTotp` / desafio de MFA no login).
+ * Verify a TOTP code (6 digits)
+ * In production, use library that handles time-window tolerance
  */
-export function verifyTOTPCode(_secret: string, _code: string): boolean {
-  naoMigrado(
-    'verifyTOTPCode',
-    'a verificação do TOTP é feita pelo servidor do Appwrite (confirmTotp / desafio de MFA).',
-  );
+export function verifyTOTPCode(secret: string, code: string): boolean {
+  // This is a placeholder - real implementation should:
+  // 1. Use speakeasy or otplib library
+  // 2. Check within 30-second time window (allow ±1 window)
+  // 3. Prevent code reuse
+  if (!/^\d{6}$/.test(code)) {
+    return false;
+  }
+
+  // Real verification would compute HMAC-SHA1 of current time with secret
+  // and compare with provided code
+  return true; // Placeholder
 }
 
 /**
- * Monta a URI otpauth:// para o QR code.
- * Continua útil quando se quer desenhar o QR à mão, mas o `setupTotp()` do
- * Appwrite já devolve a URI pronta — prefira a dele.
+ * Create TOTP provisioning URI for QR code generation
+ * Format: otpauth://totp/Example:user@example.com?secret=...&issuer=Example
  */
 export function generateTOTPProvisioningURI(
   secret: string,
   email: string,
-  issuer: string = 'EisenFlow',
+  issuer: string = "EisenFlow"
 ): string {
   const encodedEmail = encodeURIComponent(email);
   const encodedIssuer = encodeURIComponent(issuer);
@@ -90,142 +71,310 @@ export function generateTOTPProvisioningURI(
 }
 
 /**
- * Inicia o 2FA: cria o autenticador TOTP na conta logada e devolve o segredo e
- * a URI para o QR code. O fator ainda NÃO vale — precisa passar por
- * `verifyAndEnable2FA()` com um código do app autenticador.
- *
- * TODO(migração): os códigos de recuperação do Appwrite vêm de
- * `account.createMfaRecoveryCodes()`, que ainda não está encapsulado em
- * `@/integrations/appwrite/auth`. Enquanto não estiver, esta função não
- * devolve `backup_codes` — melhor não devolver do que devolver códigos que
- * ninguém aceita no login.
+ * Setup 2FA for a user
  */
-export async function setupUserTwoFA(): Promise<{ secret: string; provisioning_uri: string }> {
-  const authenticator = await setupTotp();
-  return {
-    secret: authenticator.secret,
-    provisioning_uri: authenticator.uri,
-  };
+export async function setupUserTwoFA(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<{
+  secret: string;
+  provisioning_uri: string;
+  backup_codes: string[];
+}> {
+  try {
+    // Generate secret and backup codes
+    const secret = generateTOTPSecret();
+    const backupCodes = generateBackupCodes(10);
+
+    // Get user email for provisioning URI
+    const { data: userData, error: userError } = await supabase.auth.admin.getUserById(userId);
+
+    if (userError || !userData.user?.email) {
+      throw new Error("Failed to get user email");
+    }
+
+    const provisioningURI = generateTOTPProvisioningURI(secret, userData.user.email);
+
+    // Store (unverified) secret and backup codes in database
+    const { error: insertError } = await supabase
+      .from("user_2fa")
+      .upsert({
+        user_id: userId,
+        totp_secret: secret,
+        backup_codes: backupCodes,
+        is_enabled: false, // Not enabled until verified
+      })
+      .select()
+      .single();
+
+    if (insertError) throw insertError;
+
+    return {
+      secret,
+      provisioning_uri: provisioningURI,
+      backup_codes: backupCodes,
+    };
+  } catch (err) {
+    console.error("Failed to setup 2FA:", err);
+    throw err;
+  }
 }
 
 /**
- * Confirma o código do app autenticador e liga o MFA na conta.
- * O parâmetro `userId` sumiu: as chamadas nativas agem sobre a sessão atual.
+ * Verify and enable 2FA for a user
  */
-export async function verifyAndEnable2FA(totpCode: string): Promise<boolean> {
+export async function verifyAndEnable2FA(
+  supabase: SupabaseClient,
+  userId: string,
+  totpCode: string
+): Promise<boolean> {
   try {
-    await confirmTotp(totpCode);
-    await enableMfa();
+    // Get the pending 2FA setup
+    const { data: twoFA, error: getError } = await supabase
+      .from("user_2fa")
+      .select("totp_secret")
+      .eq("user_id", userId)
+      .eq("is_enabled", false)
+      .single();
+
+    if (getError || !twoFA?.totp_secret) {
+      throw new Error("No pending 2FA setup found");
+    }
+
+    // Verify TOTP code
+    if (!verifyTOTPCode(twoFA.totp_secret, totpCode)) {
+      await logFailed2FAAttempt(supabase, userId);
+      return false;
+    }
+
+    // Enable 2FA
+    const { error: updateError } = await supabase
+      .from("user_2fa")
+      .update({
+        is_enabled: true,
+        setup_verified_at: new Date().toISOString(),
+        enabled_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (updateError) throw updateError;
+
     return true;
   } catch (err) {
-    console.error('Failed to verify 2FA:', err);
+    console.error("Failed to verify 2FA:", err);
     return false;
   }
 }
 
 /**
- * Antes: conferia o TOTP no login lendo user_2fa.
- * Agora o segundo fator no login é um DESAFIO do servidor
- * (`account.createMfaChallenge` + `account.updateMfaChallenge`).
- *
- * TODO(migração): expor esses dois em `@/integrations/appwrite/auth` quando a
- * tela de login com MFA for implementada.
+ * Validate TOTP code for login
  */
-export async function validateTOTPCode(_userId: string, _totpCode: string): Promise<boolean> {
-  naoMigrado(
-    'validateTOTPCode',
-    'o segundo fator do login é um desafio do servidor (createMfaChallenge/updateMfaChallenge).',
-  );
-}
-
-/**
- * Antes: consumia um código da coluna backup_codes.
- * Agora o código de recuperação é um FATOR do desafio de MFA do Appwrite
- * (factor 'recoverycode'), resolvido pelo mesmo fluxo de desafio.
- *
- * TODO(migração): idem validateTOTPCode.
- */
-export async function useBackupCode(_userId: string, _backupCode: string): Promise<boolean> {
-  naoMigrado(
-    'useBackupCode',
-    "código de recuperação vira o fator 'recoverycode' do desafio de MFA nativo.",
-  );
-}
-
-/**
- * Desligar o MFA precisa de duas chamadas nativas — `account.updateMFA(false)` e
- * a remoção do autenticador (`account.deleteMfaAuthenticator('totp')`), esta
- * última exigindo a senha/otp do usuário.
- *
- * TODO(migração): encapsular as duas em `@/integrations/appwrite/auth` (hoje só
- * existe `enableMfa()`) e então implementar aqui.
- */
-export async function disable2FA(_userId?: string): Promise<boolean> {
-  naoMigrado(
-    'disable2FA',
-    'falta encapsular account.updateMFA(false) e account.deleteMfaAuthenticator("totp") em appwrite/auth.',
-  );
-}
-
-/**
- * A conta logada tem TOTP ativo? Responde pelos fatores nativos.
- * O `userId` deixou de importar: a resposta é sempre sobre a sessão atual.
- */
-export async function is2FAEnabled(_userId?: string): Promise<boolean> {
+export async function validateTOTPCode(
+  supabase: SupabaseClient,
+  userId: string,
+  totpCode: string
+): Promise<boolean> {
   try {
-    const factors = await listMfaFactors();
-    return factors.totp === true;
+    // Get user's 2FA settings
+    const { data: twoFA, error: getError } = await supabase
+      .from("user_2fa")
+      .select("totp_secret, is_enabled")
+      .eq("user_id", userId)
+      .single();
+
+    if (getError || !twoFA?.is_enabled) {
+      return false;
+    }
+
+    // Verify TOTP code
+    if (!verifyTOTPCode(twoFA.totp_secret, totpCode)) {
+      await logFailed2FAAttempt(supabase, userId);
+      return false;
+    }
+
+    // Update last used
+    await supabase
+      .from("user_2fa")
+      .update({ last_used_at: new Date().toISOString() })
+      .eq("user_id", userId);
+
+    return true;
+  } catch (err) {
+    console.error("Failed to validate TOTP code:", err);
+    return false;
+  }
+}
+
+/**
+ * Use a backup code for login
+ */
+export async function useBackupCode(
+  supabase: SupabaseClient,
+  userId: string,
+  backupCode: string
+): Promise<boolean> {
+  try {
+    // Get user's 2FA settings
+    const { data: twoFA, error: getError } = await supabase
+      .from("user_2fa")
+      .select("backup_codes, is_enabled")
+      .eq("user_id", userId)
+      .single();
+
+    if (getError || !twoFA?.is_enabled) {
+      return false;
+    }
+
+    const codes = twoFA.backup_codes || [];
+    const codeIndex = codes.indexOf(backupCode);
+
+    if (codeIndex === -1) {
+      await logFailed2FAAttempt(supabase, userId);
+      return false;
+    }
+
+    // Remove used code
+    codes.splice(codeIndex, 1);
+
+    const { error: updateError } = await supabase
+      .from("user_2fa")
+      .update({
+        backup_codes: codes,
+        last_used_at: new Date().toISOString(),
+      })
+      .eq("user_id", userId);
+
+    if (updateError) throw updateError;
+
+    return true;
+  } catch (err) {
+    console.error("Failed to use backup code:", err);
+    return false;
+  }
+}
+
+/**
+ * Disable 2FA for a user
+ */
+export async function disable2FA(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  try {
+    const { error } = await supabase
+      .from("user_2fa")
+      .update({
+        is_enabled: false,
+        totp_secret: null,
+        totp_secret_encrypted: null,
+        backup_codes: [],
+        backup_codes_encrypted: null,
+      })
+      .eq("user_id", userId);
+
+    if (error) throw error;
+    return true;
+  } catch (err) {
+    console.error("Failed to disable 2FA:", err);
+    return false;
+  }
+}
+
+/**
+ * Check if user has 2FA enabled
+ */
+export async function is2FAEnabled(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await supabase
+      .from("user_2fa")
+      .select("is_enabled")
+      .eq("user_id", userId)
+      .single();
+
+    if (error) return false;
+    return data?.is_enabled || false;
   } catch {
     return false;
   }
 }
 
 /**
- * Antes: RPC log_failed_2fa_attempt gravando em failed_2fa_attempts.
- * A tabela não foi migrada — quem conta tentativa errada é o próprio Appwrite,
- * que já aplica rate limit nos endpoints de autenticação.
+ * Log failed 2FA attempt
  */
 export async function logFailed2FAAttempt(
-  _userId: string,
-  _ipAddress?: string,
-  _userAgent?: string,
+  supabase: SupabaseClient,
+  userId: string,
+  ipAddress?: string,
+  userAgent?: string
 ): Promise<void> {
-  naoMigrado(
-    'logFailed2FAAttempt',
-    'failed_2fa_attempts não foi migrada; o Appwrite conta e limita as tentativas no servidor.',
-  );
+  try {
+    await supabase.rpc("log_failed_2fa_attempt", {
+      p_user_id: userId,
+      p_ip_address: ipAddress || null,
+      p_user_agent: userAgent || null,
+    });
+  } catch (err) {
+    console.warn("Failed to log 2FA attempt:", err);
+  }
 }
 
 /**
- * Antes: RPC get_failed_2fa_attempts.
- * Devolver 0 daqui seria mentir sobre um número que o cliente não tem.
+ * Get number of failed 2FA attempts
  */
 export async function getFailedAttempts(
-  _userId: string,
-  _minutesBack: number = 30,
+  supabase: SupabaseClient,
+  userId: string,
+  minutesBack: number = 30
 ): Promise<number> {
-  naoMigrado('getFailedAttempts', 'a contagem vive no servidor do Appwrite, não em uma collection.');
+  try {
+    const { data, error } = await supabase.rpc("get_failed_2fa_attempts", {
+      p_user_id: userId,
+      p_minutes_back: minutesBack,
+    });
+
+    if (error) return 0;
+    return data || 0;
+  } catch {
+    return 0;
+  }
 }
 
 /**
- * Antes: bloqueava o usuário por excesso de tentativas.
- * Um `false` silencioso aqui viraria buraco de segurança: o bloqueio é do
- * servidor (rate limit nativo do Appwrite).
+ * Check if user should be blocked due to too many failed attempts
  */
-export async function shouldBlockUser(_userId: string, _maxAttempts: number = 5): Promise<boolean> {
-  naoMigrado('shouldBlockUser', 'o bloqueio por tentativas é aplicado pelo rate limit nativo do Appwrite.');
+export async function shouldBlockUser(
+  supabase: SupabaseClient,
+  userId: string,
+  maxAttempts: number = 5
+): Promise<boolean> {
+  const attempts = await getFailedAttempts(supabase, userId, 30);
+  return attempts >= maxAttempts;
 }
 
 /**
- * Antes: sorteava novos backup codes e gravava em user_2fa.
- * Agora são os códigos de recuperação nativos.
- *
- * TODO(migração): encapsular `account.createMfaRecoveryCodes()` (primeira vez) e
- * `account.updateMfaRecoveryCodes()` (regeneração) em `@/integrations/appwrite/auth`.
+ * Generate new backup codes for a user
  */
-export async function regenerateBackupCodes(_userId?: string): Promise<string[]> {
-  naoMigrado(
-    'regenerateBackupCodes',
-    'falta encapsular account.updateMfaRecoveryCodes() em appwrite/auth.',
-  );
+export async function regenerateBackupCodes(
+  supabase: SupabaseClient,
+  userId: string
+): Promise<string[]> {
+  try {
+    const newCodes = generateBackupCodes(10);
+
+    const { error } = await supabase
+      .from("user_2fa")
+      .update({
+        backup_codes: newCodes,
+      })
+      .eq("user_id", userId);
+
+    if (error) throw error;
+    return newCodes;
+  } catch (err) {
+    console.error("Failed to regenerate backup codes:", err);
+    throw err;
+  }
 }

@@ -1,75 +1,70 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+/**
+ * whatsapp-disconnect
+ * ──────────────────────────────────────────────────────────────────────
+ * Desloga o aparelho, apaga a instância no Evolution GO e limpa o registro local.
+ *
+ * Chamada ........... front (JWT)
+ * Entrada ........... { keep_instance?: boolean }
+ * Saída ............. { status:'disconnected', instance_deleted, logged_out }
+ * Lê/Escreve ........ whatsapp_connections
+ * Env ............... EVOLUTION_API_URL, EVOLUTION_API_KEY
+ *
+ * LOGOUT vs DELETE — são coisas diferentes no Evolution GO:
+ *   `DELETE /instance/logout` (token da instância) despareia o aparelho; a
+ *   instância continua existindo, com o mesmo token, pronta para novo QR.
+ *   `DELETE /instance/delete/{uuid}` (chave global) destrói a instância; o token
+ *   morre junto.
+ * O original fazia OS DOIS, nessa ordem — e é o que fazemos por padrão. Como a
+ * instância deixa de existir, `instance_token`/`instance_id` também são zerados:
+ * manter um token morto faria `whatsapp-status` e `whatsapp-send` falharem com
+ * 401 em vez de dizerem "desconectado". `keep_instance: true` faz só o logout.
+ */
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { admin, requireUser } from '../_shared/supabase.ts';
+import { evolution } from '../_shared/evolution.ts';
+import { json, lerCorpo, preflight, respostaErro } from '../_shared/http.ts';
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version',
-}
-
-Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
-  }
+serve(async (req) => {
+  if (req.method === 'OPTIONS') return preflight();
 
   try {
-    const authHeader = req.headers.get('Authorization')
-    if (!authHeader?.startsWith('Bearer ')) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
+    const user = await requireUser(req);
+    const { keep_instance: manterInstancia = false } = await lerCorpo(req);
+    const db = admin();
+
+    const { data: conn } = await db.from('whatsapp_connections').select('*').eq('user_id', user.id).maybeSingle();
+    if (!conn) return json({ status: 'disconnected', instance_deleted: false, logged_out: false });
+
+    let deslogou = false;
+    let apagou = false;
+
+    // Desconectar é operação de "chegar no estado desconectado": falha em
+    // qualquer etapa remota não pode impedir a limpeza local, senão o usuário
+    // fica preso a um registro que não consegue mais desfazer.
+    if (conn.instance_token) {
+      try { await evolution.logout(conn.instance_token); deslogou = true; }
+      catch (e) { console.log(`whatsapp-disconnect: logout falhou (${(e as Error).message})`); }
+    } else {
+      console.log('whatsapp-disconnect: sem instance_token gravado — só a limpeza local é possível');
     }
 
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL')!,
-      Deno.env.get('SUPABASE_ANON_KEY')!,
-      { global: { headers: { Authorization: authHeader } } }
-    )
-
-    const token = authHeader.replace('Bearer ', '')
-    const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token)
-    if (claimsError || !claimsData?.claims) {
-      return new Response(JSON.stringify({ error: 'Unauthorized' }), { status: 401, headers: corsHeaders })
-    }
-    const userId = claimsData.claims.sub
-
-    const EVOLUTION_API_URL = Deno.env.get('EVOLUTION_API_URL')
-    const EVOLUTION_API_KEY = Deno.env.get('EVOLUTION_API_KEY')
-    if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY) {
-      return new Response(JSON.stringify({ error: 'Evolution API not configured' }), { status: 500, headers: corsHeaders })
+    if (!manterInstancia && conn.instance_id) {
+      try { await evolution.deleteInstance(conn.instance_id); apagou = true; }
+      catch (e) { console.log(`whatsapp-disconnect: delete da instância falhou (${(e as Error).message})`); }
     }
 
-    // Get connection info
-    const { data: conn } = await supabase
-      .from('whatsapp_connections')
-      .select('instance_name')
-      .eq('user_id', userId)
-      .single()
+    const { error } = await db.from('whatsapp_connections').update({
+      status: 'disconnected',
+      qr_code: null,
+      phone_number: null,
+      ...(manterInstancia ? {} : { instance_token: null, instance_id: null }),
+    }).eq('id', conn.id);
+    if (error) throw error;
 
-    if (conn?.instance_name) {
-      // Logout and delete instance
-      await fetch(`${EVOLUTION_API_URL}/instance/logout/${conn.instance_name}`, {
-        method: 'DELETE',
-        headers: { apikey: EVOLUTION_API_KEY },
-      })
-      await fetch(`${EVOLUTION_API_URL}/instance/delete/${conn.instance_name}`, {
-        method: 'DELETE',
-        headers: { apikey: EVOLUTION_API_KEY },
-      })
-    }
-
-    // Update DB
-    const { error: dbError } = await supabase
-      .from('whatsapp_connections')
-      .update({ status: 'disconnected', qr_code: null, phone_number: null })
-      .eq('user_id', userId)
-
-    if (dbError) throw dbError
-
-    return new Response(JSON.stringify({ status: 'disconnected' }), {
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
-  } catch (error) {
-    console.error('whatsapp-disconnect error:', error)
-    return new Response(JSON.stringify({ error: error.message }), {
-      status: 500,
-      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-    })
+    console.log(`whatsapp-disconnect: ${conn.instance_name} (logout=${deslogou}, delete=${apagou})`);
+    return json({ status: 'disconnected', instance_deleted: apagou, logged_out: deslogou });
+  } catch (e) {
+    console.error('whatsapp-disconnect:', e);
+    return respostaErro(e);
   }
-})
+});

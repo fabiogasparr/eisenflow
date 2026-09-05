@@ -10,8 +10,8 @@ import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { useTaskShares } from '@/hooks/useTaskShares';
 import { useQuery } from '@tanstack/react-query';
-import { listDocs, Query } from '@/integrations/appwrite/database';
-import { Share2, X, Eye, Pencil, UserPlus, CheckCircle2, Clock, Send, Loader2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Share2, X, Mail, Eye, Pencil, UserPlus, CheckCircle2, Clock, Send, Loader2 } from 'lucide-react';
 
 interface ShareTaskDialogProps {
   open: boolean;
@@ -27,27 +27,26 @@ export function ShareTaskDialog({ open, onOpenChange, taskId, taskTitle }: Share
   const [email, setEmail] = useState('');
   const [permission, setPermission] = useState<'view' | 'edit'>('view');
 
-  // Nome de exibição e status de cadastro de cada pessoa com quem a tarefa está
-  // compartilhada. `profiles` se liga por `user_id` (o $id da conta), não pelo
-  // $id do documento — por isso é Query.equal('user_id', ...) e não loadRelated.
+  // Fetch profiles for shared users to get display names and check registration status
   const { data: profilesMap } = useQuery({
     queryKey: ['share-profiles', shares.map(s => s.shared_with_email).join(',')],
     queryFn: async () => {
+      if (shares.length === 0) return new Map<string, { display_name: string | null; registered: boolean }>();
+      const emails = shares.map(s => s.shared_with_email);
+      // Check which emails have registered accounts via profiles
+      const { data: profiles } = await supabase
+        .from('profiles')
+        .select('user_id, display_name');
+      
+      // We can't query by email directly on profiles, so check via user_ids on shares
+      const userIds = shares.filter(s => s.shared_with_user_id).map(s => s.shared_with_user_id!);
+      const { data: matchedProfiles } = userIds.length > 0
+        ? await supabase.from('profiles').select('user_id, display_name').in('user_id', userIds)
+        : { data: [] };
+
       const map = new Map<string, { display_name: string | null; registered: boolean }>();
-      if (shares.length === 0) return map;
-
-      // TODO(migração): não dá para descobrir pelo cliente se um e-mail SEM
-      // `shared_with_user_id` já tem conta — `profiles` não guarda e-mail e a
-      // Users API do Appwrite é server-side. O convidado só aparece como
-      // "cadastrado" depois que uma Function preencher `shared_with_user_id`
-      // no aceite do convite (mesmo TODO de useTaskShares).
-      const userIds = [...new Set(shares.map(s => s.shared_with_user_id).filter(Boolean) as string[])];
-      const matchedProfiles = userIds.length > 0
-        ? await listDocs('profiles', [Query.equal('user_id', userIds), Query.limit(100)])
-        : [];
-
       for (const share of shares) {
-        const profile = matchedProfiles.find((p) => p.user_id === share.shared_with_user_id);
+        const profile = (matchedProfiles ?? []).find((p: any) => p.user_id === share.shared_with_user_id);
         map.set(share.shared_with_email, {
           display_name: profile?.display_name ?? null,
           registered: !!share.shared_with_user_id || !!profile,
@@ -58,11 +57,6 @@ export function ShareTaskDialog({ open, onOpenChange, taskId, taskTitle }: Share
     enabled: shares.length > 0,
   });
 
-  // Compartilhar não é só gravar a linha em `task_shares`: as permissões do
-  // DOCUMENTO tarefa precisam ser reescritas para incluir o convidado, senão o
-  // compartilhamento não tem efeito nenhum. Quem faz isso é o próprio
-  // useTaskShares (sincronizarPermissoesDaTarefa roda dentro de shareTask,
-  // updatePermission e removeShare) — este componente só dispara as mutations.
   const handleShare = async () => {
     if (!email.trim()) return;
     await shareTask.mutateAsync({ taskId, email, permission });

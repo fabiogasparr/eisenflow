@@ -49,9 +49,10 @@ const AppRoutes = () => (
   <Routes>
     <Route path="/auth" element={<PublicRoute><Auth /></PublicRoute>} />
     <Route path="/auth/forgot" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
-    {/* Destino do link do e-mail de recuperação: /auth/recovery?userId=...&secret=...
-        Fica FORA do PublicRoute porque quem esqueceu a senha pode ter uma sessão
-        antiga ainda válida no navegador, e o PublicRoute o mandaria para a home. */}
+    {/* Destino do link do e-mail de recuperação (redirectTo de resetPasswordForEmail).
+        Fica FORA do PublicRoute de propósito: ao abrir o link, o GoTrue cria uma
+        sessão de recuperação — o usuário passa a estar "logado" — e o PublicRoute
+        o mandaria para a home antes de ele conseguir digitar a nova senha. */}
     <Route path="/auth/recovery" element={<ResetPassword />} />
     <Route path="/invite/:code" element={<JoinTeamPage />} />
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />

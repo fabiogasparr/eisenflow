@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/hooks/useAuth';
-import { sendVerificationEmail } from '@/integrations/appwrite/auth';
 import { useLanguage } from '@/i18n/LanguageContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -27,12 +26,9 @@ export default function Auth() {
         await signIn(email, password);
       } else {
         await signUp(email, password, displayName);
-        // O toast antigo prometia um e-mail de confirmação que nunca era
-        // enviado. Agora enviamos de fato — e sem bloquear o cadastro: se o
-        // SMTP estiver fora do ar, a conta continua criada e o usuário entra.
-        sendVerificationEmail().catch((err) =>
-          console.warn('Não foi possível enviar o e-mail de verificação:', err),
-        );
+        // No Supabase o próprio signUp dispara o e-mail de confirmação (GoTrue),
+        // então não há chamada extra aqui — só a mensagem, que antes vinha
+        // fixa em inglês e agora passa pelo i18n.
         toast({
           title: t('signup'),
           description: t('signupSuccess'),

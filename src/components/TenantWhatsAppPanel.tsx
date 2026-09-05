@@ -5,35 +5,22 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Badge } from '@/components/ui/badge';
-import { findOne, listDocs, Query } from '@/integrations/appwrite/database';
-import { invoke } from '@/integrations/appwrite/functions';
-import { getCurrentUser } from '@/integrations/appwrite/auth';
+import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useToast } from '@/hooks/use-toast';
 import { Building2, QrCode, Smartphone, ShieldCheck, ShieldAlert, Trash2, RefreshCw } from 'lucide-react';
 
 interface Props { tenantId: string; }
 
-/**
- * `tenant_whatsapp_connections` e `tenant_member_phones` são server-doc: quem
- * cria e atualiza esses documentos é sempre uma Function
- * (tenant-whatsapp-connect / tenant-whatsapp-verify-phone), que concede leitura
- * a quem é do tenant. Por isso aqui só há LEITURA direta das collections; toda
- * escrita vira chamada de Function.
- */
 export function TenantWhatsAppPanel({ tenantId }: Props) {
   const roleQ = useQuery({
     queryKey: ['tenant-role', tenantId],
     queryFn: async () => {
-      // O RPC get_tenant_role não existe mais. `tenant_members` é server-doc,
-      // mas o cliente LÊ a própria linha — e é só disso que a UI precisa.
-      const user = await getCurrentUser();
-      if (!user) return null;
-      const doc = await findOne('tenant_members', [
-        Query.equal('tenant_id', tenantId),
-        Query.equal('user_id', user.$id),
-      ]);
-      return doc?.role ?? null;
+      const { data: u } = await supabase.auth.getUser();
+      if (!u.user) return null;
+      const { data } = await (supabase as any).from('tenant_members')
+        .select('role').eq('tenant_id', tenantId).eq('user_id', u.user.id).maybeSingle();
+      return data?.role ?? null;
     },
   });
   const isAdmin = roleQ.data === 'owner' || roleQ.data === 'admin';
@@ -42,23 +29,28 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
 
   const connQ = useQuery({
     queryKey: ['tenant-wa', tenantId],
-    queryFn: async () => findOne('tenant_whatsapp_connections', [Query.equal('tenant_id', tenantId)]),
+    queryFn: async () => {
+      const { data } = await (supabase as any).from('tenant_whatsapp_connections')
+        .select('*').eq('tenant_id', tenantId).maybeSingle();
+      return data;
+    },
   });
 
   const phonesQ = useQuery({
     queryKey: ['tenant-wa-phones', tenantId],
-    queryFn: async () => listDocs('tenant_member_phones', [
-      Query.equal('tenant_id', tenantId),
-      Query.limit(100),
-    ]),
+    queryFn: async () => {
+      const { data } = await (supabase as any).from('tenant_member_phones')
+        .select('*').eq('tenant_id', tenantId);
+      return data ?? [];
+    },
   });
 
   const connect = useMutation({
-    // invoke() lança em erro — não devolve `{ data, error }`.
-    mutationFn: async () => invoke<{ ok?: boolean; instance_name?: string; qr_code?: string }>(
-      'tenant-whatsapp-connect',
-      { tenant_id: tenantId },
-    ),
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('tenant-whatsapp-connect', { body: { tenant_id: tenantId } });
+      if (error) throw error;
+      return data;
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenant-wa', tenantId] }),
     onError: (e: Error) => toast({ title: 'Erro', description: e.message, variant: 'destructive' }),
   });
@@ -71,21 +63,12 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
   }, [connQ.data?.status, tenantId, qc]);
 
   const updateSettings = useMutation({
-    mutationFn: async (patch: Record<string, unknown>) => {
-      // TODO(migração): `tenant_whatsapp_connections` é server-doc — o cliente
-      // não escreve. Das Functions previstas, tenant-whatsapp-connect só cria a
-      // instância e devolve o QR; nenhuma expõe edição de preferências do
-      // workspace. Falta uma Function (ex.: `tenant-whatsapp-settings`) que
-      // valide o papel de admin no tenant e grave só estes campos.
-      // Até lá a chamada falha alto em vez de fingir que salvou.
-      throw new Error(
-        'Preferências do WhatsApp do workspace ainda não migradas: ' +
-          'tenant_whatsapp_connections é server-doc e falta a Function que grava ' +
-          `estas configurações. Campos pedidos: ${Object.keys(patch).join(', ') || '(nenhum)'}.`,
-      );
+    mutationFn: async (patch: any) => {
+      const { error } = await (supabase as any).from('tenant_whatsapp_connections')
+        .update(patch).eq('tenant_id', tenantId);
+      if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenant-wa', tenantId] }),
-    onError: (e: Error) => toast({ title: 'Erro', description: e.message, variant: 'destructive' }),
   });
 
   // Member phone management
@@ -93,11 +76,13 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
   const [code, setCode] = useState('');
 
   const sendOtp = useMutation({
-    mutationFn: async () => invoke<{ ok?: boolean }>('tenant-whatsapp-verify-phone', {
-      action: 'send',
-      tenant_id: tenantId,
-      phone_number: phone,
-    }),
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('tenant-whatsapp-verify-phone', {
+        body: { action: 'send', tenant_id: tenantId, phone_number: phone },
+      });
+      if (error) throw error;
+      return data;
+    },
     onSuccess: () => {
       toast({ title: 'Código enviado', description: 'Cheque seu WhatsApp.' });
       qc.invalidateQueries({ queryKey: ['tenant-wa-phones', tenantId] });
@@ -106,11 +91,13 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
   });
 
   const verifyOtp = useMutation({
-    mutationFn: async () => invoke<{ ok?: boolean; verified?: boolean }>('tenant-whatsapp-verify-phone', {
-      action: 'verify',
-      tenant_id: tenantId,
-      code,
-    }),
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('tenant-whatsapp-verify-phone', {
+        body: { action: 'verify', tenant_id: tenantId, code },
+      });
+      if (error) throw error;
+      return data;
+    },
     onSuccess: () => {
       toast({ title: 'Verificado!' });
       setCode('');
@@ -121,17 +108,10 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
 
   const removePhone = useMutation({
     mutationFn: async (id: string) => {
-      // TODO(migração): `tenant_member_phones` é server-doc — o cliente não
-      // apaga. tenant-whatsapp-verify-phone só trata as ações 'send' e 'verify';
-      // falta uma ação 'remove' (ou uma Function própria) que confira se quem
-      // pede é o dono do telefone ou admin do tenant antes de excluir.
-      throw new Error(
-        `Remoção de telefone ainda não migrada: tenant_member_phones é server-doc e falta a ` +
-          `Function que apaga o registro ${id}.`,
-      );
+      const { error } = await (supabase as any).from('tenant_member_phones').delete().eq('id', id);
+      if (error) throw error;
     },
     onSuccess: () => qc.invalidateQueries({ queryKey: ['tenant-wa-phones', tenantId] }),
-    onError: (e: Error) => toast({ title: 'Erro', description: e.message, variant: 'destructive' }),
   });
 
   const conn = connQ.data;
@@ -172,7 +152,7 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
                 <div className="flex items-center justify-between rounded-md border border-border p-3">
                   <Label className="text-sm">Enviar lembretes pelo WhatsApp do workspace</Label>
                   <Switch
-                    checked={!!conn.reminders_enabled}
+                    checked={conn.reminders_enabled}
                     onCheckedChange={(v) => updateSettings.mutate({ reminders_enabled: v })}
                   />
                 </div>
@@ -212,7 +192,7 @@ export function TenantWhatsAppPanel({ tenantId }: Props) {
             {isAdmin && phonesQ.data && phonesQ.data.length > 0 && (
               <div className="space-y-1 pt-2">
                 <Label className="text-xs">Telefones dos membros</Label>
-                {phonesQ.data.map((p) => (
+                {phonesQ.data.map((p: any) => (
                   <div key={p.id} className="flex items-center justify-between rounded-md border border-border p-2 text-sm">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-xs">{p.phone_number}</span>

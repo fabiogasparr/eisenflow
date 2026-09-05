@@ -1,7 +1,6 @@
-import { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { listDocs, Query } from '@/integrations/appwrite/database';
-import { invoke } from '@/integrations/appwrite/functions';
+import { createContext, useContext, useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 
 interface Tenant {
@@ -40,52 +39,34 @@ export function TenantProvider({ children }: { children: React.ReactNode }) {
   });
 
   const tenantsQuery = useQuery({
-    queryKey: ['my-tenants', user?.$id],
+    queryKey: ['my-tenants', user?.id],
     queryFn: async (): Promise<Tenant[]> => {
       if (!user) return [];
-      // Só chegam os tenants cuja permissão de documento inclui este usuário —
-      // é o que substitui a policy "Tenant members can view their tenant".
-      const docs = await listDocs('tenants', [Query.orderAsc('created_at')]);
-      return docs as unknown as Tenant[];
+      const { data, error } = await supabase
+        .from('tenants')
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data ?? []) as Tenant[];
     },
     enabled: !!user,
   });
 
   const membershipsQuery = useQuery({
-    queryKey: ['my-tenant-memberships', user?.$id],
+    queryKey: ['my-tenant-memberships', user?.id],
     queryFn: async (): Promise<TenantMember[]> => {
       if (!user) return [];
-      const docs = await listDocs('tenant_members', [Query.equal('user_id', user.$id)]);
-      return docs as unknown as TenantMember[];
+      const { data, error } = await supabase
+        .from('tenant_members')
+        .select('*')
+        .eq('user_id', user.id);
+      if (error) throw error;
+      return (data ?? []) as TenantMember[];
     },
     enabled: !!user,
   });
 
   const tenants = tenantsQuery.data ?? [];
-  const queryClient = useQueryClient();
-
-  // Substitui o trigger handle_new_user_tenant: todo usuário nasce com um
-  // tenant pessoal. Sem ele, nada que é por organização (Google Calendar,
-  // WhatsApp corporativo, MCP) tem contexto para funcionar. A Function é
-  // idempotente — se o usuário já pertence a algum tenant, não cria nada —
-  // e o ref evita disparar duas vezes no mesmo ciclo de render.
-  const criandoPessoal = useRef(false);
-  const semTenant = !tenantsQuery.isLoading && !membershipsQuery.isLoading
-    && tenants.length === 0 && (membershipsQuery.data?.length ?? 0) === 0;
-  useEffect(() => {
-    if (!user || !semTenant || criandoPessoal.current) return;
-    criandoPessoal.current = true;
-    invoke('create-tenant', { personal: true })
-      .then(() => {
-        queryClient.invalidateQueries({ queryKey: ['my-tenants'] });
-        queryClient.invalidateQueries({ queryKey: ['my-tenant-memberships'] });
-        queryClient.invalidateQueries({ queryKey: ['tenants'] });
-      })
-      // Se a Function ainda não foi implantada, o app segue sem tenant — a tela
-      // de Organização continua permitindo criar uma à mão quando ela subir.
-      .catch((e: Error) => console.warn('tenant pessoal não criado:', e?.message))
-      .finally(() => { criandoPessoal.current = false; });
-  }, [user, semTenant, queryClient]);
 
   // Auto-select first tenant if none selected
   useEffect(() => {

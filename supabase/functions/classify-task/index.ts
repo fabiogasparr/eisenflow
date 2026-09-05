@@ -1,92 +1,92 @@
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+/**
+ * classify-task
+ * ──────────────────────────────────────────────────────────────────────
+ * Classifica uma tarefa na Matriz de Eisenhower: quadrante, urgência (1-5)
+ * e importância (1-5).
+ *
+ * Chamada ........... front (JWT), `invoke('classify-task', { title, description })`
+ * Saída ............. { quadrant, urgency, importance }
+ * Env ............... AI_API_KEY (+ AI_BASE_URL, AI_MODEL_CLASSIFICAR opcionais)
+ *
+ * MUDANÇAS: o original era público (verify_jwt=false) e usava o Lovable AI
+ * Gateway. Aqui exige sessão do usuário e chama o OmniRoute por _shared/ai.ts,
+ * com o modelo de finalidade 'classificar' (rápido, com tool calling).
+ */
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { chat, type Tool } from '../_shared/ai.ts';
+import { requireUser } from '../_shared/supabase.ts';
+import { erro, json, lerCorpo, preflight, respostaErro } from '../_shared/http.ts';
 
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
+const SYSTEM = `Você classifica tarefas na Matriz de Eisenhower.
+Responda SEMPRE chamando a função classify_task, nunca em texto livre.
+
+urgency (1-5): o quanto exige ação imediata — prazo curto, bloqueio de terceiros, consequência iminente.
+importance (1-5): o quanto impacta objetivos de médio e longo prazo.
+
+quadrant deriva dos dois eixos (corte em 3):
+  urgency>=4 e importance>=4 -> "do"          (fazer agora)
+  urgency<=3 e importance>=4 -> "schedule"    (agendar)
+  urgency>=4 e importance<=3 -> "delegate"    (delegar)
+  urgency<=3 e importance<=3 -> "eliminate"   (eliminar)`;
+
+const TOOL: Tool = {
+  type: 'function',
+  function: {
+    name: 'classify_task',
+    description: 'Devolve a classificação da tarefa na Matriz de Eisenhower',
+    parameters: {
+      type: 'object',
+      properties: {
+        quadrant: { type: 'string', enum: ['do', 'schedule', 'delegate', 'eliminate'] },
+        urgency: { type: 'integer', minimum: 1, maximum: 5 },
+        importance: { type: 'integer', minimum: 1, maximum: 5 },
+      },
+      required: ['quadrant', 'urgency', 'importance'],
+    },
+  },
 };
 
+const clamp = (n: unknown, lo: number, hi: number) => Math.min(hi, Math.max(lo, Math.round(Number(n) || 3)));
+
+/** Rede de segurança: se a IA devolver quadrante inválido, deriva dos eixos. */
+function quadrantFrom(urgency: number, importance: number): string {
+  if (importance >= 4) return urgency >= 4 ? 'do' : 'schedule';
+  return urgency >= 4 ? 'delegate' : 'eliminate';
+}
+
 serve(async (req) => {
-  if (req.method === "OPTIONS") return new Response(null, { headers: corsHeaders });
+  if (req.method === 'OPTIONS') return preflight();
 
   try {
-    const { title, description } = await req.json();
-    const LOVABLE_API_KEY = Deno.env.get("LOVABLE_API_KEY");
-    if (!LOVABLE_API_KEY) throw new Error("LOVABLE_API_KEY is not configured");
+    await requireUser(req);
+    const { title, description } = await lerCorpo(req);
+    if (!title || typeof title !== 'string') throw erro('title é obrigatório', 400);
 
-    const prompt = `You are a task classification AI based on the Eisenhower Matrix. 
-Given a task title and description, classify it into one of four quadrants:
-- "do" = Urgent AND Important (crises, deadlines, immediate problems)
-- "schedule" = Important but NOT Urgent (planning, personal development, prevention)
-- "delegate" = Urgent but NOT Important (interruptions, some meetings, emails)
-- "eliminate" = NOT Urgent and NOT Important (distractions, trivial tasks)
-
-Also rate urgency (1-5) and importance (1-5).
-
-Task title: "${title}"
-Task description: "${description || 'No description'}"
-
-Respond using the classify_task function.`;
-
-    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${LOVABLE_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        messages: [{ role: "user", content: prompt }],
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "classify_task",
-              description: "Classify a task into an Eisenhower Matrix quadrant",
-              parameters: {
-                type: "object",
-                properties: {
-                  quadrant: { type: "string", enum: ["do", "schedule", "delegate", "eliminate"] },
-                  urgency: { type: "number", minimum: 1, maximum: 5 },
-                  importance: { type: "number", minimum: 1, maximum: 5 },
-                },
-                required: ["quadrant", "urgency", "importance"],
-                additionalProperties: false,
-              },
-            },
-          },
-        ],
-        tool_choice: { type: "function", function: { name: "classify_task" } },
-      }),
+    const result = await chat({
+      proposito: 'classificar',
+      temperature: 0,
+      tools: [TOOL],
+      toolChoice: 'classify_task',
+      messages: [
+        { role: 'system', content: SYSTEM },
+        { role: 'user', content: `Título: ${title}\nDescrição: ${description || '(sem descrição)'}` },
+      ],
     });
 
-    if (!response.ok) {
-      if (response.status === 429) {
-        return new Response(JSON.stringify({ error: "Rate limited, try again later" }), {
-          status: 429, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      if (response.status === 402) {
-        return new Response(JSON.stringify({ error: "Credits needed" }), {
-          status: 402, headers: { ...corsHeaders, "Content-Type": "application/json" },
-        });
-      }
-      const t = await response.text();
-      console.error("AI gateway error:", response.status, t);
-      throw new Error("AI classification failed");
+    const call = result.toolCalls.find((c) => c.name === 'classify_task');
+    if (!call) {
+      console.log('classify-task: modelo não chamou a tool, aplicando fallback neutro');
+      return json({ quadrant: 'schedule', urgency: 3, importance: 3, fallback: true });
     }
 
-    const data = await response.json();
-    const toolCall = data.choices?.[0]?.message?.tool_calls?.[0];
-    if (!toolCall) throw new Error("No classification result");
+    const urgency = clamp(call.arguments.urgency, 1, 5);
+    const importance = clamp(call.arguments.importance, 1, 5);
+    const valid = ['do', 'schedule', 'delegate', 'eliminate'];
+    const quadrant = valid.includes(call.arguments.quadrant) ? call.arguments.quadrant : quadrantFrom(urgency, importance);
 
-    const result = JSON.parse(toolCall.function.arguments);
-
-    return new Response(JSON.stringify(result), {
-      headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    return json({ quadrant, urgency, importance });
   } catch (e) {
-    console.error("classify-task error:", e);
-    return new Response(JSON.stringify({ error: e instanceof Error ? e.message : "Unknown error" }), {
-      status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" },
-    });
+    console.error('classify-task:', e);
+    return respostaErro(e);
   }
 });
