@@ -40,8 +40,10 @@ import { clientIp } from '../_shared/http.ts'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
+  'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+  'Access-Control-Allow-Headers':
+    'authorization, x-client-info, apikey, content-type, x-api-key, mcp-protocol-version, mcp-method, mcp-name, mcp-session-id, last-event-id, accept',
+  'Access-Control-Expose-Headers': 'mcp-protocol-version',
 }
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
@@ -207,8 +209,22 @@ type AuthCtx = {
   createdBy: string
 }
 
+/**
+ * A chave pode chegar em `x-api-key` (contrato antigo) ou em
+ * `Authorization: Bearer efk_...`. O segundo existe porque a maioria dos
+ * clientes MCP só oferece um campo de cabeçalho de autorização — sem isso,
+ * nenhum deles consegue autenticar aqui.
+ */
+function chaveDaRequisicao(req: Request): string {
+  const direta = req.headers.get('x-api-key')
+  if (direta) return direta.trim()
+  const auth = req.headers.get('authorization') || ''
+  const m = /^Bearer\s+(.+)$/i.exec(auth.trim())
+  return m ? m[1].trim() : ''
+}
+
 async function authenticate(req: Request): Promise<{ ctx?: AuthCtx; reason?: string }> {
-  const token = req.headers.get('x-api-key') || ''
+  const token = chaveDaRequisicao(req)
   if (!token) return { reason: 'unauthorized' }
   const hash = await sha256Hex(token)
   const { data, error } = await sb
@@ -677,6 +693,274 @@ async function guard(req: Request, ctx: AuthCtx, endpoint: string, ip: string | 
 }
 
 // ---------- handler ----------
+
+// ══════════════════════════════════════════════════════════════════════════
+// MCP de verdade — JSON-RPC 2.0 sobre Streamable HTTP
+// ──────────────────────────────────────────────────────────────────────────
+// O que existia aqui antes tinha o VOCABULÁRIO do MCP (tools/list, tools/call,
+// inputSchema) mas não o PROTOCOLO: era REST com corpo próprio e envelope
+// {ok,result}. Nenhum cliente MCP fala isso — nem o Claude, nem o n8n, nem um
+// agente que use um SDK oficial. Esta camada acrescenta o protocolo de fato,
+// no mesmo endpoint, sem tirar as rotas antigas de quem já as usa.
+//
+// Referência: modelcontextprotocol.io — transporte Streamable HTTP.
+// ══════════════════════════════════════════════════════════════════════════
+
+/** Da mais nova para a mais antiga; a primeira é a que anunciamos por padrão. */
+const VERSOES_MCP = ['2026-07-28', '2025-11-25', '2025-06-18', '2025-03-26'] as const
+/**
+ * Quando o cliente não diz a versão, assumimos a era do `initialize`, que é o
+ * que a esmagadora maioria dos clientes ainda fala. A revisão 2026-07-28
+ * aposentou o handshake e passou os metadados para `_meta` a cada requisição —
+ * atendemos as duas eras.
+ */
+const VERSAO_PADRAO = '2025-06-18'
+const VERSAO_SEM_HANDSHAKE = '2026-07-28'
+const SERVIDOR_MCP = { name: 'eisenflow', title: 'EisenFlow', version: '1.0.0' }
+
+const INSTRUCOES_MCP =
+  'Tarefas do EisenFlow organizadas pela Matriz de Eisenhower. Os quadrantes são ' +
+  '`do` (urgente e importante), `schedule` (importante, não urgente), `delegate` ' +
+  '(urgente, não importante) e `eliminate`. Urgência e importância vão de 1 a 5. ' +
+  'Cada chave de API enxerga um único workspace; não é preciso informá-lo.'
+
+// Códigos JSON-RPC: os padrão mais o -32020 que a especificação do MCP reserva.
+const RPC_PARSE = -32700
+const RPC_INVALIDO = -32600
+const RPC_SEM_METODO = -32601
+const RPC_PARAMS = -32602
+const RPC_INTERNO = -32603
+const RPC_CABECALHO = -32020
+
+type IdRpc = string | number | null
+
+function rpcOk(id: IdRpc, result: unknown, status = 200) {
+  return json({ jsonrpc: '2.0', id, result }, status)
+}
+function rpcErro(id: IdRpc, code: number, message: string, data?: unknown, status = 200) {
+  const erro: Record<string, unknown> = { code, message }
+  if (data !== undefined) erro.data = data
+  return json({ jsonrpc: '2.0', id, error: erro }, status)
+}
+
+/** `=?base64?...?=` é o formato que a especificação usa para valor não-ASCII. */
+function decodificarValorDeCabecalho(v: string | null): string | null {
+  if (!v) return v
+  const m = /^=\?base64\?(.*)\?=$/.exec(v)
+  if (!m) return v
+  try {
+    return new TextDecoder().decode(Uint8Array.from(atob(m[1]), (c) => c.charCodeAt(0)))
+  } catch {
+    return v
+  }
+}
+
+/** Anotações do MCP derivadas do escopo — é o que diz ao modelo o que a tool faz. */
+function anotacoesDaTool(t: Tool) {
+  const soLeitura = t.scope.endsWith(':read')
+  const destrutiva = t.name.startsWith('delete_') || t.name.startsWith('remove_')
+  return {
+    title: t.description.split('.')[0],
+    readOnlyHint: soLeitura,
+    destructiveHint: destrutiva,
+    idempotentHint: soLeitura || destrutiva,
+    openWorldHint: false,
+  }
+}
+
+function toolMcp(t: Tool) {
+  return {
+    name: t.name,
+    title: t.description.split('.')[0],
+    description: t.description,
+    inputSchema: t.inputSchema,
+    annotations: anotacoesDaTool(t),
+    // O escopo não faz parte do protocolo; vai em _meta para quem quiser ver.
+    _meta: { 'cloud.kz3.eisenflow/scope': t.scope },
+  }
+}
+
+/**
+ * Confere os cabeçalhos espelhados. Só vale para a revisão 2026-07-28, que os
+ * tornou obrigatórios; nas anteriores eles nem existiam, e exigir quebraria
+ * todo cliente atual.
+ */
+function conferirCabecalhos(req: Request, versao: string, metodo: string, params: any): string | null {
+  if (versao < VERSAO_SEM_HANDSHAKE) return null
+
+  const hMetodo = req.headers.get('mcp-method')
+  if (!hMetodo) return 'cabeçalho Mcp-Method ausente'
+  if (hMetodo !== metodo) return `Mcp-Method "${hMetodo}" não corresponde ao corpo "${metodo}"`
+
+  const precisaNome = metodo === 'tools/call' || metodo === 'resources/read' || metodo === 'prompts/get'
+  if (precisaNome) {
+    const esperado = params?.name ?? params?.uri
+    const hNome = decodificarValorDeCabecalho(req.headers.get('mcp-name'))
+    if (!hNome) return 'cabeçalho Mcp-Name ausente'
+    if (esperado !== undefined && hNome !== String(esperado)) {
+      return `Mcp-Name "${hNome}" não corresponde ao corpo "${esperado}"`
+    }
+  }
+  return null
+}
+
+/** Versão pedida: cabeçalho, `_meta` do corpo ou params.protocolVersion. */
+function versaoPedida(req: Request, msg: any): string {
+  const doMeta = msg?.params?._meta?.['io.modelcontextprotocol/protocolVersion']
+  const doInit = msg?.method === 'initialize' ? msg?.params?.protocolVersion : undefined
+  const doHeader = req.headers.get('mcp-protocol-version')
+  return String(doMeta || doInit || doHeader || VERSAO_PADRAO)
+}
+
+/** Um resultado de tool vira conteúdo do MCP; erro de execução é isError, não erro de protocolo. */
+function resultadoDeTool(valor: unknown) {
+  const texto = typeof valor === 'string' ? valor : JSON.stringify(valor, null, 2)
+  const conteudo = [{ type: 'text', text: texto }]
+  return valor !== null && typeof valor === 'object'
+    ? { content: conteudo, structuredContent: valor as Record<string, unknown> }
+    : { content: conteudo }
+}
+function erroDeTool(mensagem: string) {
+  return { content: [{ type: 'text', text: mensagem }], isError: true }
+}
+
+async function tratarMcp(req: Request, ip: string | null): Promise<Response> {
+  // GET e DELETE eram parte das revisões antigas (stream avulso e fim de
+  // sessão). Não implementamos sessão: 405, como a especificação manda.
+  if (req.method === 'GET' || req.method === 'DELETE') {
+    return new Response(JSON.stringify({ jsonrpc: '2.0', id: null, error: { code: RPC_SEM_METODO, message: 'Use POST' } }), {
+      status: 405,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json', Allow: 'POST, OPTIONS' },
+    })
+  }
+  if (req.method !== 'POST') return rpcErro(null, RPC_INVALIDO, 'Método HTTP não suportado', undefined, 405)
+
+  let msg: any
+  try {
+    msg = await req.json()
+  } catch {
+    return rpcErro(null, RPC_PARSE, 'JSON inválido', undefined, 400)
+  }
+  // Lote não é usado por nenhum cliente atual e foi removido da especificação.
+  if (Array.isArray(msg)) return rpcErro(null, RPC_INVALIDO, 'Lotes não são suportados', undefined, 400)
+  if (!msg || msg.jsonrpc !== '2.0' || typeof msg.method !== 'string') {
+    return rpcErro(msg?.id ?? null, RPC_INVALIDO, 'Requisição JSON-RPC inválida', undefined, 400)
+  }
+
+  const id: IdRpc = msg.id ?? null
+  const ehNotificacao = msg.id === undefined || msg.id === null
+  const metodo: string = msg.method
+  const params = msg.params ?? {}
+  const versao = versaoPedida(req, msg)
+
+  if (!VERSOES_MCP.includes(versao as typeof VERSOES_MCP[number])) {
+    return rpcErro(id, RPC_INVALIDO, `Versão de protocolo não suportada: ${versao}`, { supported: VERSOES_MCP }, 400)
+  }
+
+  const problema = conferirCabecalhos(req, versao, metodo, params)
+  if (problema) return rpcErro(id, RPC_CABECALHO, problema, undefined, 400)
+
+  if (await ipBloqueado(ip)) {
+    await logIpDenial(null, ip, '/mcp', req.method, 'IP bloqueado em suspicious_ips', req.headers.get('user-agent'))
+    return rpcErro(id, RPC_INTERNO, 'IP bloqueado', undefined, 403)
+  }
+
+  // Notificações não têm resposta: 202 e pronto.
+  if (metodo.startsWith('notifications/')) return new Response(null, { status: 202, headers: corsHeaders })
+  if (ehNotificacao) return new Response(null, { status: 202, headers: corsHeaders })
+
+  if (metodo === 'ping') return rpcOk(id, {})
+
+  if (metodo === 'initialize') {
+    // `initialize` também exige chave: este servidor é multi-tenant e a chave é
+    // o que diz QUAL workspace o cliente enxerga.
+    const auth = await authenticate(req)
+    if (!auth.ctx) {
+      if (auth.reason === 'unauthorized') await registrarFalhaDeAuth(ip)
+      return respostaNaoAutorizado(id, auth.reason)
+    }
+    const negociada = VERSOES_MCP.includes(versao as typeof VERSOES_MCP[number]) ? versao : VERSAO_PADRAO
+    await audit(auth.ctx, null, 'ok', null, { op: 'initialize', versao: negociada })
+    return rpcOk(id, {
+      protocolVersion: negociada,
+      capabilities: { tools: { listChanged: false } },
+      serverInfo: SERVIDOR_MCP,
+      instructions: INSTRUCOES_MCP,
+    })
+  }
+
+  if (metodo !== 'tools/list' && metodo !== 'tools/call') {
+    return rpcErro(id, RPC_SEM_METODO, `Método não encontrado: ${metodo}`, undefined, 404)
+  }
+
+  const auth = await authenticate(req)
+  if (!auth.ctx) {
+    if (auth.reason === 'unauthorized') await registrarFalhaDeAuth(ip)
+    return respostaNaoAutorizado(id, auth.reason)
+  }
+  const ctx = auth.ctx
+  const barrado = await guard(req, ctx, '/mcp', ip)
+  if (barrado) {
+    // guard devolve o envelope REST; aqui a resposta precisa ser JSON-RPC.
+    const corpo = await barrado.json().catch(() => ({ error: 'forbidden' }))
+    return rpcErro(id, RPC_INTERNO, String((corpo as any)?.error || 'recusado'), corpo, barrado.status)
+  }
+
+  if (metodo === 'tools/list') {
+    // A chave só enxerga as tools dos escopos que ela tem — listar o que o
+    // cliente não pode chamar só gera erro depois.
+    const visiveis = TOOLS.filter((t) => ctx.scopes.includes(t.scope))
+    await audit(ctx, null, 'ok', null, { op: 'tools/list', total: visiveis.length })
+    return rpcOk(id, { tools: visiveis.map(toolMcp) })
+  }
+
+  // tools/call
+  const nome = params?.name
+  const args = params?.arguments ?? {}
+  if (!nome || typeof nome !== 'string') {
+    return rpcErro(id, RPC_PARAMS, 'params.name é obrigatório')
+  }
+  const tool = TOOLS.find((t) => t.name === nome)
+  if (!tool) {
+    await audit(ctx, nome, 'error', 'tool_not_found')
+    return rpcErro(id, RPC_PARAMS, `Tool desconhecida: ${nome}`)
+  }
+  if (!ctx.scopes.includes(tool.scope)) {
+    await audit(ctx, nome, 'error', 'forbidden_scope')
+    return rpcOk(id, erroDeTool(`Esta chave de API não tem o escopo "${tool.scope}", exigido por ${nome}.`))
+  }
+  const invalido = invalidInput(args || {}, tool.inputSchema)
+  if (invalido) {
+    await audit(ctx, nome, 'error', `invalid_input:${invalido}`)
+    return rpcOk(id, erroDeTool(`Argumentos inválidos para ${nome}: ${invalido}.`))
+  }
+  try {
+    const resultado = await tool.handler(args || {}, ctx)
+    await audit(ctx, nome, 'ok', null, { args })
+    return rpcOk(id, resultadoDeTool(resultado))
+  } catch (e: any) {
+    const m = e?.message || 'erro ao executar a tool'
+    await audit(ctx, nome, 'error', m, { args })
+    // Falha de execução é resultado com isError, não erro de protocolo: assim o
+    // modelo do outro lado lê a mensagem e pode se corrigir.
+    return rpcOk(id, erroDeTool(m))
+  }
+}
+
+function respostaNaoAutorizado(id: IdRpc, motivo?: string) {
+  return new Response(
+    JSON.stringify({ jsonrpc: '2.0', id, error: { code: RPC_INVALIDO, message: motivo === 'mcp_disabled' ? 'MCP desabilitado para este workspace' : 'Chave de API ausente ou inválida' } }),
+    {
+      status: 401,
+      headers: {
+        ...corsHeaders,
+        'Content-Type': 'application/json',
+        'WWW-Authenticate': 'Bearer realm="EisenFlow MCP"',
+      },
+    },
+  )
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: corsHeaders })
   const url = new URL(req.url)
@@ -687,8 +971,17 @@ serve(async (req) => {
   const ip = clientIp(req)
 
   if (path === '/mcp/health' && req.method === 'GET') {
-    return json({ ok: true, service: 'hermes-mcp', version: 1 })
+    return json({
+      ok: true,
+      service: 'hermes-mcp',
+      version: 1,
+      mcp: { endpoint: url.origin + url.pathname.replace(/\/health$/, ''), protocolVersions: VERSOES_MCP },
+    })
   }
+
+  // O ENDPOINT MCP é a raiz da function: é este endereço que se cola em
+  // qualquer cliente. As rotas REST antigas continuam logo abaixo.
+  if (path === '/mcp') return tratarMcp(req, ip)
 
   if ((path !== '/mcp/tools/list' && path !== '/mcp/tools/call') || req.method !== 'POST') {
     return err(404, 'not_found', { path: url.pathname })

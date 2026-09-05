@@ -116,31 +116,69 @@ export default function IntegrationsMcpPage() {
             <CardHeader>
               <CardTitle className="font-display">Como conectar</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 text-sm">
+            <CardContent className="space-y-4 text-sm">
               <div>
-                <Label className="text-xs uppercase text-muted-foreground">URL base</Label>
+                <Label className="text-xs uppercase text-muted-foreground">Endereço do servidor MCP</Label>
                 <div className="mt-1 flex items-center gap-2">
                   <code className="flex-1 rounded bg-muted px-2 py-1 font-mono text-xs break-all">{MCP_BASE_URL}</code>
-                  <Button size="sm" variant="ghost" onClick={() => copy(MCP_BASE_URL, 'URL copiada')}>
+                  <Button size="sm" variant="ghost" onClick={() => copy(MCP_BASE_URL, 'Endereço copiado')}>
                     <Copy className="h-4 w-4" />
                   </Button>
                 </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  É este endereço que se cola em qualquer cliente MCP. Transporte Streamable HTTP,
+                  JSON-RPC 2.0; versões de protocolo aceitas: 2025-03-26 a 2026-07-28.
+                </p>
               </div>
-              <div>
-                <Label className="text-xs uppercase text-muted-foreground">Header de autenticação</Label>
-                <code className="mt-1 block rounded bg-muted px-2 py-1 font-mono text-xs">x-api-key: &lt;sua_chave&gt;</code>
-              </div>
-              <div>
-                <Label className="text-xs uppercase text-muted-foreground">Exemplo</Label>
-                <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 font-mono text-xs">{`curl -X POST ${MCP_BASE_URL}/mcp/tools/list \\
-  -H 'x-api-key: SUA_CHAVE' \\
-  -H 'content-type: application/json' -d '{}'
 
-curl -X POST ${MCP_BASE_URL}/mcp/tools/call \\
-  -H 'x-api-key: SUA_CHAVE' \\
-  -H 'content-type: application/json' \\
-  -d '{"name":"create_task","arguments":{"title":"Reunião","urgency":4,"importance":4}}'`}</pre>
+              <div>
+                <Label className="text-xs uppercase text-muted-foreground">Autenticação</Label>
+                <code className="mt-1 block rounded bg-muted px-2 py-1 font-mono text-xs">
+                  Authorization: Bearer &lt;sua_chave&gt;
+                </code>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  O header <code className="font-mono">x-api-key</code> também é aceito, para quem já
+                  usava as rotas antigas. Prefira o Bearer: é o único campo que a maioria dos
+                  clientes MCP oferece.
+                </p>
               </div>
+
+              <div>
+                <Label className="text-xs uppercase text-muted-foreground">Cliente MCP (config)</Label>
+                <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 font-mono text-xs">{`{
+  "mcpServers": {
+    "eisenflow": {
+      "type": "http",
+      "url": "${MCP_BASE_URL}",
+      "headers": { "Authorization": "Bearer SUA_CHAVE" }
+    }
+  }
+}`}</pre>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Serve para o Hermes, para clientes que leem esse formato e, em ferramentas como o
+                  n8n, basta informar a URL e o header.
+                </p>
+              </div>
+
+              <div>
+                <Label className="text-xs uppercase text-muted-foreground">Conferir pela linha de comando</Label>
+                <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 font-mono text-xs">{`curl -X POST ${MCP_BASE_URL} \\
+  -H 'Authorization: Bearer SUA_CHAVE' \\
+  -H 'content-type: application/json' \\
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+
+curl -X POST ${MCP_BASE_URL} \\
+  -H 'Authorization: Bearer SUA_CHAVE' \\
+  -H 'content-type: application/json' \\
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"create_task",
+       "arguments":{"title":"Reunião","urgency":4,"importance":4}}}'`}</pre>
+              </div>
+
+              <p className="text-xs text-muted-foreground">
+                As rotas antigas <code className="font-mono">/mcp/tools/list</code> e{' '}
+                <code className="font-mono">/mcp/tools/call</code> continuam funcionando para quem já
+                as usa — mas não são MCP, e nenhum cliente MCP fala com elas.
+              </p>
             </CardContent>
           </Card>
         )}
