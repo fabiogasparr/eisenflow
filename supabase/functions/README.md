@@ -1,7 +1,7 @@
 # Edge Functions (Deno) — EisenFlow no Supabase self-hosted
 
-Backend do EisenFlow depois da reversão do Appwrite (05/09/2026). As melhorias
-feitas no porte Appwrite (`functions/*`, node) foram absorvidas aqui; o
+Backend do EisenFlow, self-hosted (05/09/2026). As melhorias da auditoria de
+03–05/09 estão absorvidas aqui; o
 diretório `functions/` pode ser descartado.
 
 No self-hosted **não existe `supabase functions deploy`**: copie este diretório
@@ -102,3 +102,7 @@ segredo.
 \* obrigatória só se o Google Calendar for usado.
 
 `LOVABLE_API_KEY` não existe mais.
+
+## Diagnóstico
+
+`ai-health` (JWT ou `x-internal-secret`): confere se o edge-runtime alcança o OmniRoute e se a chave `AI_API_KEY` é aceita, sem gastar token. Devolve a URL base, um resumo da chave (nunca inteira), quantos modelos o gateway lista e os modelos configurados por finalidade. É o primeiro lugar para olhar quando o Chat IA responde "ocorreu um erro".

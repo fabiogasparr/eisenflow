@@ -14,7 +14,7 @@
  *
  * Os lembretes automáticos por tarefa (due_d1, due_1h, due_now, start_now)
  * continuam sendo produzidos pelos triggers do Postgres
- * (sync_task_auto_reminders / expand_task_reminder) — no Appwrite isso tinha
+ * (sync_task_auto_reminders / expand_task_reminder) — na versão anterior do backend isso tinha
  * sido absorvido aqui por falta de triggers; no Supabase volta para o banco.
  *
  * MUDANÇA: passou a exigir chamada interna (era aberta).

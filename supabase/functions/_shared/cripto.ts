@@ -3,7 +3,7 @@
  *
  * As migrations antigas tinham `encrypt_token`/`decrypt_token` em pgcrypto com a
  * chave-mestra literal 'REPLACE_WITH_VAULT_KEY' deixada no código (ver
- * MIGRATION.md, "Três defeitos do schema original"). A cifra passa a acontecer
+ * ARQUITETURA.md, "Três defeitos do schema original"). A cifra passa a acontecer
  * aqui, em WebCrypto do Deno — zero dependência nova, e a chave nunca entra no
  * banco. Porte de functions/_shared/cripto.js (node:crypto -> crypto.subtle).
  *

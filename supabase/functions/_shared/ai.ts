@@ -20,9 +20,47 @@ import { HttpError } from './http.ts';
 
 const DEFAULT_OMNIROUTE = 'https://omniroute.kz3solucoes.cloud/v1';
 
-const PROVIDER = Deno.env.get('AI_PROVIDER') || 'omniroute';
-const KEY = Deno.env.get('AI_API_KEY') || '';
-const BASE = (Deno.env.get('AI_BASE_URL') || (PROVIDER === 'omniroute' ? DEFAULT_OMNIROUTE : '')).replace(/\/+$/, '');
+/**
+ * Variável de ambiente colada num painel chega, com frequência, com aspas em
+ * volta, espaço no fim ou quebra de linha — e uma chave "sk-abc" vira
+ * '"sk-abc"', que o OmniRoute recusa com 401 "Invalid API key". Este é o
+ * único lugar onde a chave é lida, então é aqui que ela é saneada.
+ */
+function limpar(v: string | undefined): string {
+  return (v ?? '').trim().replace(/^['"]+|['"]+$/g, '').trim();
+}
+
+const PROVIDER = limpar(Deno.env.get('AI_PROVIDER')) || 'omniroute';
+const KEY = limpar(Deno.env.get('AI_API_KEY'));
+const BASE = (limpar(Deno.env.get('AI_BASE_URL')) || (PROVIDER === 'omniroute' ? DEFAULT_OMNIROUTE : '')).replace(/\/+$/, '');
+
+/** Cabeçalhos de autenticação. OmniRoute e OpenAI leem `Authorization: Bearer`; `x-api-key` é redundância barata para gateways que preferem esse nome. */
+const AUTH = (): Record<string, string> => ({ Authorization: `Bearer ${KEY}`, 'x-api-key': KEY });
+
+/** Como a chave aparece em diagnósticos: nunca inteira. */
+export function resumoDaChave(): string {
+  if (!KEY) return '(vazia)';
+  return `${KEY.slice(0, 6)}…${KEY.slice(-4)} (${KEY.length} caracteres)`;
+}
+
+/**
+ * Confere, sem gastar tokens, se o gateway aceita a chave: GET /models.
+ * É o que a function `ai-health` devolve para o painel de diagnóstico.
+ */
+export async function verificarAcesso(): Promise<{ ok: boolean; status: number; base: string; chave: string; modelos?: number; erro?: string }> {
+  const base = BASE || '(não definida)';
+  if (!KEY) return { ok: false, status: 0, base, chave: resumoDaChave(), erro: 'AI_API_KEY não configurada' };
+  try {
+    const res = await fetch(urlDe('/models'), { headers: AUTH() });
+    const texto = await res.text();
+    if (!res.ok) return { ok: false, status: res.status, base, chave: resumoDaChave(), erro: texto.slice(0, 300) };
+    let modelos: number | undefined;
+    try { modelos = (JSON.parse(texto).data ?? []).length; } catch { /* resposta não-JSON: só o status importa */ }
+    return { ok: true, status: res.status, base, chave: resumoDaChave(), modelos };
+  } catch (e) {
+    return { ok: false, status: 0, base, chave: resumoDaChave(), erro: `sem conexão com ${base}: ${(e as Error).message}` };
+  }
+}
 
 // deno-lint-ignore no-explicit-any
 type Json = any;
@@ -100,6 +138,11 @@ export async function chat({ messages, tools, temperature = 0.2, proposito = 'co
 function erroProvider(status: number, texto: string): HttpError {
   if (status === 429) return new HttpError('Limite de requisições de IA excedido. Tente novamente em alguns segundos.', 429);
   if (status === 402) return new HttpError('Créditos de IA insuficientes.', 402);
+  // 401/403 aqui NUNCA é do usuário do app: é o gateway recusando a chave do
+  // servidor. Dizer isso poupa uma tarde de depuração no lugar errado.
+  if (status === 401 || status === 403) {
+    return new HttpError(`O OmniRoute (${BASE}) recusou a chave AI_API_KEY ${resumoDaChave()}. Confira a chave no painel do OmniRoute e na variável do edge-runtime.`, 502);
+  }
   return new HttpError(`IA (${PROVIDER}) HTTP ${status}: ${texto.slice(0, 300)}`, 502);
 }
 
@@ -111,7 +154,7 @@ async function openai({ messages, tools, temperature, model, toolChoice }: Requi
 
   const res = await fetch(urlDe('/chat/completions'), {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${KEY}` },
+    headers: { 'Content-Type': 'application/json', ...AUTH() },
     body: JSON.stringify({ model, messages, temperature, ...(tools?.length ? { tools, tool_choice } : {}) }),
   });
   if (!res.ok) throw erroProvider(res.status, await res.text());
@@ -212,10 +255,10 @@ export async function transcrever(audio: Uint8Array, opts: TranscreverOpts = {})
 
   const res = await fetch(urlDe('/audio/transcriptions'), {
     method: 'POST',
-    headers: { Authorization: `Bearer ${KEY}` }, // sem Content-Type: o FormData define o boundary
+    headers: AUTH(), // sem Content-Type: o FormData define o boundary
     body: fd,
   });
-  if (!res.ok) throw new HttpError(`Transcrição falhou (HTTP ${res.status}): ${(await res.text()).slice(0, 200)}`, 502);
+  if (!res.ok) throw erroProvider(res.status, await res.text());
 
   const data = await res.json();
   const texto = String(data.text || '').trim();

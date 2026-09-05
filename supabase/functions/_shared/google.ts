@@ -209,7 +209,7 @@ export async function chamarGoogle(accessToken: string, caminho: string, opcoes:
 // --------------------------------------------------------------- auditoria
 /**
  * Trilha em google_token_audit_log. Nunca lança: a tabela veio de uma migration
- * que talvez não tenha rodado (MIGRATION.md) — o fluxo principal continua.
+ * que talvez não tenha rodado (ARQUITETURA.md) — o fluxo principal continua.
  */
 export async function auditar({ userId, tenantId, acao, req = null }: { userId: string; tenantId?: string | null; acao: string; req?: Request | null }): Promise<void> {
   try {

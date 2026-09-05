@@ -94,7 +94,7 @@ ALTER TABLE public.user_preferences
   ALTER COLUMN language SET DEFAULT 'pt-BR';
 
 -- A PK é `id` (= auth.users.id) porque é assim que o front Supabase-nativo
--- (src/hooks/useTimezone.ts) consulta. O porte Appwrite chamava a mesma coisa
+-- (src/hooks/useTimezone.ts) consulta. A versão anterior do backend chamava a mesma coisa
 -- de `user_id`; a coluna gerada abaixo aceita as duas grafias sem duplicar dado.
 ALTER TABLE public.user_preferences
   ADD COLUMN IF NOT EXISTS user_id uuid GENERATED ALWAYS AS (id) STORED;

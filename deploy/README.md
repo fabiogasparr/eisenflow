@@ -2,7 +2,7 @@
 
 Tudo do EisenFlow roda no Coolify de `coolify.kz3solucoes.cloud`: banco, auth,
 API, storage, Edge Functions, WhatsApp e o próprio front. Nada fica no Lovable,
-no Supabase Cloud ou no Appwrite.
+no Supabase Cloud nem em nenhum outro BaaS.
 
 ```
 eisenflow.jornadaconectada.com ──► [Coolify: app "eisenflow" — nginx + build Vite do GitHub]
@@ -68,6 +68,7 @@ Google Cloud Console → OAuth client (Web) → redirect
 
 - `https://supabase-eisenflow.kz3solucoes.cloud/auth/v1/health` → `{"name":"GoTrue"...}`
 - `https://supabase-eisenflow.kz3solucoes.cloud/functions/v1/classify-task` sem token → 401 (function no ar, exigindo JWT)
+- `ai-health` (logado no app, ou `curl -H 'x-internal-secret: …' …/functions/v1/ai-health`) → `ok: true` e a contagem de modelos do OmniRoute; se vier `ok: false`, a resposta diz se é chave recusada, URL errada ou gateway fora
 - Cadastro no app cria tenant pessoal sozinho (trigger `handle_new_user_tenant`)
 - *Conectar WhatsApp* devolve QR; parear; mandar "oi" para si mesmo → a IA responde
 - `SELECT jobname, schedule FROM cron.job;` no Postgres → 7 jobs `ef-*`

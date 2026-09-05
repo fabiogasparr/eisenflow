@@ -1,26 +1,31 @@
-# EisenFlow — arquitetura self-hosted e histórico das migrações
+# EisenFlow — arquitetura self-hosted
 
-O EisenFlow nasceu no Lovable com backend Supabase Cloud. Em 03/09/2026 foi
-portado para o Appwrite self-hosted; em 05/09/2026 a decisão foi revertida:
-**o backend é Supabase self-hosted numa stack dedicada no Coolify**, e o front
-é publicado no Coolify a partir do GitHub. Nada fica no Lovable nem no Appwrite.
+Tudo do EisenFlow roda na VPS, no Coolify de `coolify.kz3solucoes.cloud`:
+
+| Camada | Onde |
+|---|---|
+| Front (Vite + React) | app Coolify construído do GitHub (`Dockerfile`, nginx) — `eisenflow.jornadaconectada.com` |
+| Banco, Auth, API, Storage, Realtime | stack Supabase dedicada (`supabase-eisenflow.kz3solucoes.cloud`) |
+| Lógica de servidor | Edge Functions Deno em `supabase/functions/`, no edge-runtime da stack |
+| Agendamentos | pg_cron + pg_net no próprio Postgres, chamando as functions pela rede interna |
+| WhatsApp | Evolution GO dedicado (`evo-eisenflow.kz3solucoes.cloud`) |
+| IA | OmniRoute (`omniroute.kz3solucoes.cloud/v1`, protocolo OpenAI) |
 
 Como implantar: `deploy/README.md`. As functions: `supabase/functions/README.md`.
 As migrations: `supabase/migrations/README.md`.
 
-## O que sobreviveu da passagem pelo Appwrite
+## O que a auditoria de setembro/2026 corrigiu
 
-A passagem não foi perdida: ela foi a auditoria mais profunda que o projeto já
-teve, e tudo que ela corrigiu foi portado de volta para o mundo Supabase.
+O projeto nasceu no Lovable. A revisão completa do código encontrou e corrigiu:
 
-| Encontrado no porte para o Appwrite | Onde está agora |
+| Problema | Correção |
 |---|---|
-| `whatsapp-send` era um endpoint aberto (qualquer um disparava mensagem) | exige `x-internal-secret` ou JWT do dono da instância |
-| `whatsapp-webhook` aceitava qualquer POST | segredo na query + conferência do `instanceToken` |
+| `whatsapp-send` era um endpoint aberto (qualquer um disparava mensagem por qualquer instância) | exige `x-internal-secret` ou JWT do dono da instância |
+| `whatsapp-webhook` aceitava qualquer POST como se fosse da Evolution | segredo na query + conferência do `instanceToken` do corpo |
 | `tenant-whatsapp-verify-phone` deixava qualquer autenticado registrar telefone em qualquer tenant | exige membro do tenant |
 | `dispatch-reminders` marcava o envio depois de entregar (queda no meio reenviava) | `UPDATE … WHERE status='pending' RETURNING` — reserva atômica |
 | `generate-recurring-tasks` duplicava ocorrências para sempre e perdia o `tenant_id` | corrigido |
-| `hermes-mcp` não aplicava rate limit nem whitelist de verdade | RPCs atômicas `check_rate_limit` / `is_ip_allowed` |
+| `hermes-mcp` não aplicava rate limit nem whitelist de IP de verdade | RPCs atômicas `check_rate_limit` / `is_ip_allowed` |
 | Google Calendar mandava o access_token da sessão cru na URL (`state=`) | `state` assinado por HMAC; a function monta a URL de consent |
 | Google Calendar amarrado só ao usuário | `(user_id, tenant_id)`: cada tenant conecta a própria conta Google |
 | Tokens do Google com dois esquemas de cifra e chave literal no SQL | AES-256-GCM na function, chave em variável de ambiente |
@@ -31,14 +36,6 @@ teve, e tudo que ela corrigiu foi portado de volta para o mundo Supabase.
 | Lovable AI Gateway (proprietário) | OmniRoute self-hosted, modelo por finalidade, transcrição de áudio |
 | Evolution API v2 (Baileys) | Evolution GO dedicado — API diferente: token por instância, sem assinatura de webhook |
 
-## Por que Supabase self-hosted e não Appwrite
-
-O código original é Supabase-nativo: 58 migrations SQL com triggers, funções e
-RLS que o Postgres executa sozinho. No Appwrite, cada trigger virou código de
-aplicação e cada policy virou permissão por documento gravada na criação —
-funciona, mas todo ponto onde a titularidade de um registro muda vira um lugar
-onde a segurança quebra em silêncio. Voltar ao Postgres devolve isso ao banco.
-
 ## Diferenças do self-hosted em relação ao Supabase Cloud
 
 - **Edge Functions**: não há `supabase functions deploy`; os arquivos vão para
@@ -48,6 +45,11 @@ onde a segurança quebra em silêncio. Voltar ao Postgres devolve isso ao banco.
 - **Agendamentos**: pg_cron + pg_net chamam as functions pela URL interna do
   Kong, com `x-internal-secret`; URL e segredo vêm de `app.settings.*` no
   Postgres (o script grava).
-- **`auth.users`** é do GoTrue: migration nenhuma altera essa tabela (a antiga
-  que fazia isso foi corrigida).
+- **`auth.users`** é do GoTrue: migration nenhuma altera essa tabela.
 - **Chave de cifra** (`app.settings.encryption_key`) é um GUC do database, não o Vault.
+
+## Diagnóstico
+
+Quando o Chat IA responde "ocorreu um erro", chame a function `ai-health`
+(logado no app, ou com `x-internal-secret`): ela diz se o problema é chave
+recusada pelo OmniRoute, URL errada ou gateway fora do ar — sem expor a chave.

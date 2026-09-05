@@ -28,7 +28,7 @@
  *    APLICADOS aqui — as tabelas e as funções SQL existiam (migrations de
  *    02/09) mas nenhuma function as consultava; os src/middleware/*.ts do
  *    front são só cortesia de UI. Tudo é FAIL-OPEN: se a migration de
- *    segurança não rodou (MIGRATION.md registra que talvez nunca tenha
+ *    segurança não rodou (ARQUITETURA.md registra que talvez nunca tenha
  *    rodado), a ausência da tabela/função não derruba o MCP.
  *  - API key inválida conta ponto contra o IP (report_suspicious_ip); a partir
  *    de 20 falhas o IP é bloqueado por 1h.
