@@ -47,6 +47,9 @@ fi
 source "$ENV_ARQ"
 
 psql_() { docker exec -i "$DB" psql -v ON_ERROR_STOP=1 -U postgres -d postgres -q "$@"; }
+# ALTER DATABASE ... SET exige superusuario, e no Supabase self-hosted quem e
+# superusuario e o supabase_admin — o postgres leva "permission denied".
+psql_su() { docker exec -i "$DB" psql -v ON_ERROR_STOP=1 -U supabase_admin -d postgres -q "$@"; }
 
 migrations() {
   echo "── migrations"
@@ -70,7 +73,7 @@ SQL
 
   echo "── app.settings.*"
   # Dentro da rede da stack o Kong é alcançável pelo nome do container.
-  psql_ <<SQL
+  psql_su <<SQL
 ALTER DATABASE postgres SET app.settings.functions_url = 'http://$KONG:8000/functions/v1';
 ALTER DATABASE postgres SET app.settings.internal_secret = '$INTERNAL_FUNCTION_SECRET';
 ALTER DATABASE postgres SET app.settings.encryption_key = '$ENCRYPTION_KEY';

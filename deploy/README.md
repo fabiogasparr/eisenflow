@@ -25,13 +25,17 @@ Terminal do Coolify, sem clicar em nada:
 ```bash
 cd /root && rm -rf eisenflow && git clone --depth 1 https://github.com/fabiogasparr/eisenflow.git && cd eisenflow
 cat > deploy/coolify/.env <<'EOF'
-COOLIFY_TOKEN=<Coolify → Keys & Tokens → API tokens, com escrita>
+COOLIFY_TOKEN='<Coolify → Keys & Tokens → API tokens, permissão Root>'   # entre aspas: o token tem "|"
 RESEND_API_KEY=<SMTP do GoTrue>
 EVOLUTION_API_KEY=<GLOBAL_API_KEY do Evo-Go-EisenFlow>
 AI_API_KEY=<chave do OmniRoute>
 EOF
 deploy/coolify/criar-stack.sh
 ```
+
+Antes disso, ligue a API: Coolify → *Settings* → *Advanced* → **API access: Enabled**
+e, em *Allowed API IPs*, `127.0.0.1,172.16.1.1` (o gateway da rede do Coolify — é
+com esse IP que a requisição feita do host chega ao container).
 
 O script cria a stack e o app, cadastra domínios e variáveis, gera os segredos
 do projeto e dispara os deploys. Rode-o de novo depois que a stack subir (ele

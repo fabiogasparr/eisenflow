@@ -21,8 +21,13 @@ AQUI="$(cd "$(dirname "$0")" && pwd)"
 ENV_ARQ="$AQUI/.env"
 [ -f "$ENV_ARQ" ] || { echo "✗ crie $ENV_ARQ com COOLIFY_TOKEN=... (veja o cabeçalho deste script)"; exit 1; }
 chmod 600 "$ENV_ARQ"
-# shellcheck disable=SC1090
-source "$ENV_ARQ"
+# Le o .env sem executar nada: o token do Coolify tem o formato "3|xxxx" e o
+# `source` tentaria rodar o que vem depois da barra, matando o script aqui.
+while IFS='=' read -r _k _v; do
+  case "$_k" in ''|\#*) continue ;; esac
+  _v="${_v%\"}"; _v="${_v#\"}"; _v="${_v%\'}"; _v="${_v#\'}"
+  export "$_k=$_v"
+done < "$ENV_ARQ"
 : "${COOLIFY_TOKEN:?COOLIFY_TOKEN ausente em $ENV_ARQ}"
 
 # Gera o que é do projeto, uma vez só, e persiste — trocar depois invalida
@@ -32,7 +37,9 @@ gerar INTERNAL_FUNCTION_SECRET 32
 gerar EVOLUTION_WEBHOOK_SECRET 24
 gerar GOOGLE_TOKENS_ENCRYPTION_KEY 32
 
-COOLIFY_URL="${COOLIFY_URL:-http://localhost:8000}"
+# 127.0.0.1 e nao "localhost": localhost resolve para ::1 e a requisicao chega
+# ao container com um IP de origem IPv6 que a allowlist da API do Coolify recusa.
+COOLIFY_URL="${COOLIFY_URL:-http://127.0.0.1:8000}"
 NOME_STACK="${NOME_STACK:-supabase-eisenflow}"
 DOMINIO_API="${DOMINIO_API:-supabase-eisenflow.kz3solucoes.cloud}"
 DOMINIO_FRONT="${DOMINIO_FRONT:-eisenflow.jornadaconectada.com}"
@@ -49,8 +56,8 @@ api() { # api METODO CAMINHO [JSON]
 jqq() { python3 -c "import sys,json; d=json.load(sys.stdin); print($1)" 2>/dev/null; }
 
 echo "── descobrindo projeto e servidor"
-SERVER_UUID="$(api GET /servers | jqq "d[0]['uuid']")"
-PROJ_UUID="$(api GET /projects | jqq "[p['uuid'] for p in d if p['name']=='$PROJETO_NOME'][0]")"
+SERVER_UUID="$(api GET /servers | jqq "d[0]['uuid']" || true)"
+PROJ_UUID="$(api GET /projects | jqq "[p['uuid'] for p in d if p['name']=='$PROJETO_NOME'][0]" || true)"
 [ -n "$SERVER_UUID" ] && [ -n "$PROJ_UUID" ] || { echo "✗ token sem permissão ou projeto '$PROJETO_NOME' não existe"; api GET /projects; exit 1; }
 echo "  servidor $SERVER_UUID · projeto $PROJ_UUID"
 
@@ -59,7 +66,7 @@ echo "── serviço $NOME_STACK"
 SVC_UUID="$(api GET /services | jqq "[s['uuid'] for s in d if s['name']=='$NOME_STACK'][0]" || true)"
 if [ -z "$SVC_UUID" ]; then
   RESP="$(api POST /services "{\"type\":\"supabase\",\"name\":\"$NOME_STACK\",\"description\":\"Supabase dedicado ao EisenFlow\",\"project_uuid\":\"$PROJ_UUID\",\"environment_name\":\"production\",\"server_uuid\":\"$SERVER_UUID\",\"instant_deploy\":false}")"
-  SVC_UUID="$(echo "$RESP" | jqq "d['uuid']")"
+  SVC_UUID="$(echo "$RESP" | jqq "d['uuid']" || true)"
   [ -n "$SVC_UUID" ] || { echo "✗ não criou o serviço:"; echo "$RESP"; exit 1; }
   echo "  criado: $SVC_UUID"
 else
@@ -133,8 +140,8 @@ echo "── app $NOME_APP (front)"
 ANON="$(api GET "/services/$SVC_UUID/envs" | jqq "[e['value'] for e in d if e['key'] in ('SERVICE_SUPABASEANON_KEY','ANON_KEY')][0]" || true)"
 APP_UUID="$(api GET /applications | jqq "[a['uuid'] for a in d if a['name']=='$NOME_APP'][0]" || true)"
 if [ -z "$APP_UUID" ]; then
-  RESP="$(api POST /applications/public "{\"project_uuid\":\"$PROJ_UUID\",\"server_uuid\":\"$SERVER_UUID\",\"environment_name\":\"production\",\"git_repository\":\"$REPO\",\"git_branch\":\"main\",\"build_pack\":\"dockerfile\",\"ports_exposed\":\"80\",\"name\":\"$NOME_APP\",\"domains\":\"https://$DOMINIO_FRONT\",\"instant_deploy\":false}")"
-  APP_UUID="$(echo "$RESP" | jqq "d['uuid']")"
+  RESP="$(api POST /applications/public "{\"project_uuid\":\"$PROJ_UUID\",\"server_uuid\":\"$SERVER_UUID\",\"environment_name\":\"production\",\"git_repository\":\"$REPO\",\"git_branch\":\"main\",\"build_pack\":\"dockerfile\",\"name\":\"$NOME_APP\",\"domains\":\"https://$DOMINIO_FRONT\",\"instant_deploy\":false}")"
+  APP_UUID="$(echo "$RESP" | jqq "d['uuid']" || true)"
   [ -n "$APP_UUID" ] || { echo "✗ não criou o app:"; echo "$RESP"; exit 1; }
   echo "  criado: $APP_UUID"
 else
