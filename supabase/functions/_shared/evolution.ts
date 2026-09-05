@@ -74,7 +74,13 @@ const adminCall = (method: string, path: string, body?: Json) => call(method, pa
 export interface InstanciaCriada { id: string; token: string; name?: string }
 export interface InstanciaListada { id?: string; name?: string; token?: string; jid?: string; [k: string]: Json }
 export interface StatusInstancia { Connected?: boolean; LoggedIn?: boolean; Name?: string }
-export interface QrInstancia { Qrcode?: string; Code?: string }
+/**
+ * ATENÇÃO ÀS MAIÚSCULAS: /instance/status devolve o struct Go em PascalCase
+ * (`Connected`, `LoggedIn`), mas /instance/qr devolve `{qrcode, code}` em
+ * minúsculas. Ler `Qrcode` ali dá undefined — e o app mostra "sem QR" com o
+ * QR na mão. `evolution.qr` normaliza para minúsculas aceitando as duas formas.
+ */
+export interface QrInstancia { qrcode?: string; code?: string }
 
 export interface ConnectOpts {
   webhookUrl?: string;
@@ -119,8 +125,11 @@ export const evolution = {
       subscribe, immediate, ...(phone ? { phone } : {}),
     }, token),
 
-  /** Qrcode é data-URI PNG; o QR rotaciona (~60s o 1º, ~20s os demais). */
-  qr: (token: string): Promise<QrInstancia> => call('GET', '/instance/qr', undefined, token),
+  /** `qrcode` é data-URI PNG; o QR rotaciona (~60s o 1º, ~20s os demais). */
+  qr: async (token: string): Promise<QrInstancia> => {
+    const r = await call('GET', '/instance/qr', undefined, token);
+    return { qrcode: r?.qrcode ?? r?.Qrcode ?? undefined, code: r?.code ?? r?.Code ?? undefined };
+  },
 
   /** Pareamento por código de 8 dígitos, alternativa ao QR. */
   pair: (token: string, phone: string): Promise<{ PairingCode?: string }> =>

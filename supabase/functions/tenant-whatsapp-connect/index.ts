@@ -44,6 +44,18 @@ serve(async (req) => {
     const nome: string = conn?.instance_name || nomeDaInstancia(tenantId);
     const { token, id } = await garantirInstancia(nome, conn, 'tenant-whatsapp-connect');
 
+    // Grava ANTES de conectar: o evento QRCode chega em cima do connect e o
+    // whatsapp-webhook resolve a conexão pelo instance_token/instance_name.
+    // Sem a linha no banco, o primeiro QR é descartado.
+    await db.from('tenant_whatsapp_connections').upsert({
+      tenant_id: tenantId,
+      created_by: conn?.created_by || user.id,
+      instance_name: nome,
+      instance_token: token,
+      instance_id: id,
+      status: 'connecting',
+    }, { onConflict: 'tenant_id' });
+
     await evolution.connect(token, { webhookUrl: webhookUrl(), immediate: true });
 
     const estado = await evolution.status(token).catch(() => null);
@@ -51,11 +63,19 @@ serve(async (req) => {
     if (!estado?.LoggedIn) {
       try {
         const qr = await evolution.qr(token);
-        qrCode = qr?.Qrcode || null;
+        qrCode = qr?.qrcode || null;
       } catch (e) {
         console.log(`tenant-whatsapp-connect: QR indisponível no momento (${(e as Error).message})`);
       }
     }
+
+    // Não apagar um QR que o webhook tenha gravado enquanto buscávamos o nosso.
+    const { data: atual } = await db
+      .from('tenant_whatsapp_connections')
+      .select('qr_code')
+      .eq('tenant_id', tenantId)
+      .maybeSingle();
+    qrCode = qrCode || atual?.qr_code || null;
 
     const status = estado?.LoggedIn && estado?.Connected ? 'connected' : (qrCode ? 'qr_pending' : 'disconnected');
     const { error } = await db.from('tenant_whatsapp_connections').upsert({

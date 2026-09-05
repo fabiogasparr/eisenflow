@@ -89,7 +89,7 @@ serve(async (req) => {
       // Busca o QR corrente — o anterior provavelmente já expirou.
       try {
         const qr = await evolution.qr(conn.instance_token);
-        if (qr?.Qrcode && qr.Qrcode !== conn.qr_code) patch.qr_code = qr.Qrcode;
+        if (qr?.qrcode && qr.qrcode !== conn.qr_code) patch.qr_code = qr.qrcode;
       } catch (e) {
         console.log(`whatsapp-status: QR indisponível (${(e as Error).message})`);
       }

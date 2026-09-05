@@ -10,7 +10,7 @@ export interface WhatsAppConnection {
   user_id: string;
   instance_name: string;
   phone_number: string | null;
-  status: 'disconnected' | 'qr_pending' | 'connected';
+  status: 'disconnected' | 'connecting' | 'qr_pending' | 'connected';
   qr_code: string | null;
   reminders_enabled: boolean;
   daily_report_enabled: boolean;
@@ -95,13 +95,14 @@ export function useWhatsApp() {
     },
   });
 
-  // Poll for status changes when QR is pending - calls whatsapp-status to check Evolution API
+  // Poll while the pairing is in flight. whatsapp-status refaz o GET /instance/qr
+  // e regrava qr_code, então o polling também é o que traz o QR quando ele não
+  // veio na primeira chamada — por isso invalidamos a query a cada resposta, e
+  // não só quando o status vira 'connected'.
   const checkStatus = useCallback(async () => {
     try {
-      const data = await invoke<{ status?: string }>('whatsapp-status');
-      if (data?.status === 'connected') {
-        queryClient.invalidateQueries({ queryKey: ['whatsapp-connection'] });
-      }
+      await invoke<{ status?: string }>('whatsapp-status');
+      queryClient.invalidateQueries({ queryKey: ['whatsapp-connection'] });
     } catch (e) {
       console.error('Status check failed:', e);
     }
@@ -122,7 +123,8 @@ export function useWhatsApp() {
   }, []);
 
   useEffect(() => {
-    if (connectionQuery.data?.status === 'qr_pending') {
+    const emAndamento = connectionQuery.data?.status;
+    if (emAndamento === 'qr_pending' || emAndamento === 'connecting') {
       startPolling();
     } else {
       stopPolling();

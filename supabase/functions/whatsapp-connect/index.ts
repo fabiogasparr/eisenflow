@@ -49,6 +49,24 @@ serve(async (req) => {
     const nome: string = conn?.instance_name || nomeDaInstancia(user.id);
     const { token, id } = await garantirInstancia(nome, conn, 'whatsapp-connect');
 
+    // A LINHA PRECISA EXISTIR ANTES DO connect. O Evolution GO dispara o evento
+    // QRCode em cima da chamada, e o whatsapp-webhook resolve a conexão por
+    // instance_token/instance_name — se a gravação só acontecesse no fim desta
+    // function, o primeiro QR chegava a um banco onde a instância ainda não
+    // existia ("nenhuma conexão corresponde à instância — ignorando") e se
+    // perdia.
+    await db.from('whatsapp_connections').upsert(
+      {
+        user_id: user.id,
+        instance_name: nome,
+        instance_token: token,
+        instance_id: id,
+        status: 'connecting',
+        ...(timezone && !conn ? { timezone } : {}),
+      },
+      { onConflict: 'user_id' },
+    );
+
     // Conectar e registrar o webhook é a MESMA chamada aqui. `immediate: true`
     // devolve na hora em vez de bloquear esperando o pareamento.
     await evolution.connect(token, { webhookUrl: webhookUrl(), immediate: true });
@@ -60,12 +78,21 @@ serve(async (req) => {
     if (!estado?.LoggedIn) {
       try {
         const qr = await evolution.qr(token);
-        qrCode = qr?.Qrcode || null; // data-URI PNG, pronto para <img src>
+        qrCode = qr?.qrcode || null; // data-URI PNG, pronto para <img src>
       } catch (e) {
         // Sem QR agora não é fatal: o evento QRCode do webhook grava o próximo.
         console.log(`whatsapp-connect: QR indisponível no momento (${(e as Error).message})`);
       }
     }
+
+    // O webhook pode ter gravado um QR mais novo enquanto buscávamos o nosso.
+    // Só sobrescrevemos quando temos algo em mãos.
+    const { data: atual } = await db
+      .from('whatsapp_connections')
+      .select('qr_code')
+      .eq('user_id', user.id)
+      .maybeSingle();
+    qrCode = qrCode || atual?.qr_code || null;
 
     const status = estado?.LoggedIn && estado?.Connected ? 'connected' : (qrCode ? 'qr_pending' : 'disconnected');
     const dados = {

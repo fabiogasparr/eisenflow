@@ -47,7 +47,7 @@ export function WhatsAppQRCode() {
   }
 
   // QR pending - show QR code
-  if (connection.status === 'qr_pending' && connection.qr_code) {
+  if ((connection.status === 'qr_pending' || connection.status === 'connecting') && connection.qr_code) {
     return (
       <div className="flex flex-col items-center gap-4 py-4">
         <Badge variant="secondary" className="gap-1.5">
@@ -75,6 +75,41 @@ export function WhatsAppQRCode() {
         >
           {t('Cancelar', 'Cancel')}
         </Button>
+      </div>
+    );
+  }
+
+  // Pareamento em andamento, mas o QR ainda não chegou. Antes isto caía no
+  // bloco "Conectado" logo abaixo — o app dizia que o WhatsApp estava ligado
+  // sem nada ter sido pareado.
+  if (connection.status !== 'connected') {
+    return (
+      <div className="flex flex-col items-center gap-4 py-6">
+        <Badge variant="secondary" className="gap-1.5">
+          <Loader2 className="h-3 w-3 animate-spin" />
+          {t('Gerando o QR code...', 'Generating the QR code...')}
+        </Badge>
+        <p className="text-sm text-muted-foreground text-center max-w-xs">
+          {t(
+            'O código aparece aqui em alguns segundos. Ele expira rápido e é trocado sozinho — deixe esta tela aberta.',
+            'The code shows up here in a few seconds. It expires quickly and rotates on its own — keep this screen open.',
+          )}
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => connect.mutate()}
+            disabled={connect.isPending}
+            className="gap-2"
+          >
+            {connect.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <RefreshCw className="h-3 w-3" />}
+            {t('Tentar de novo', 'Try again')}
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => disconnect.mutate()} disabled={disconnect.isPending}>
+            {t('Cancelar', 'Cancel')}
+          </Button>
+        </div>
       </div>
     );
   }
