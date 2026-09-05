@@ -7,6 +7,7 @@ import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { useToast } from '@/hooks/use-toast';
 import { Zap } from 'lucide-react';
+import { avisoDeErro } from '@/lib/erros';
 
 export default function Auth() {
   const [isLogin, setIsLogin] = useState(true);
@@ -35,9 +36,12 @@ export default function Auth() {
         });
       }
     } catch (error: any) {
+      // O contexto importa: o mesmo "não consegui falar com o servidor" tem
+      // significados diferentes entrando e criando conta.
+      const aviso = avisoDeErro(error, isLogin ? t('login') : t('signup'));
       toast({
-        title: 'Error',
-        description: error.message,
+        title: aviso.titulo,
+        description: aviso.descricao,
         variant: 'destructive',
       });
     } finally {

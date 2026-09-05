@@ -1,6 +1,6 @@
-import { useEffect, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useCanalRealtime } from '@/lib/realtime';
 import { useAuth } from '@/hooks/useAuth';
 import type { Task, Quadrant, CreateTaskInput } from '@/types/task';
 import { useToast } from '@/hooks/use-toast';
@@ -12,23 +12,23 @@ export function useTasks(syncTaskToCalendar?: (task: Task) => void) {
   const { toast } = useToast();
   const { activeTenantId } = useTenantContext();
 
-  // Realtime: auto-refresh quadrants when tasks change (e.g. via WhatsApp webhook)
-  useEffect(() => {
-    if (!user) return undefined;
-    const channel = supabase
-      .channel(`tasks-realtime-${user.id}`)
-      .on(
+  // Realtime: auto-refresh quadrants when tasks change (e.g. via WhatsApp webhook).
+  // O tópico precisa ser exclusivo desta instância: useTasks é chamado por
+  // vários componentes da mesma tela (Index, useReminders, FocusMode...) e o
+  // supabase-js devolve o MESMO canal para tópicos repetidos — o segundo
+  // chamador caía em "cannot add postgres_changes callbacks after subscribe()".
+  useCanalRealtime(
+    user ? `tasks-realtime-${user.id}` : null,
+    (canal) =>
+      canal.on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'tasks', filter: `created_by=eq.${user.id}` },
+        { event: '*', schema: 'public', table: 'tasks', filter: `created_by=eq.${user!.id}` },
         () => {
-          queryClient.invalidateQueries({ queryKey: ['tasks', user.id] });
+          queryClient.invalidateQueries({ queryKey: ['tasks', user!.id] });
         }
-      )
-      .subscribe();
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, queryClient]);
+      ),
+    [queryClient]
+  );
 
   const tasksQuery = useQuery({
     queryKey: ['tasks', user?.id],

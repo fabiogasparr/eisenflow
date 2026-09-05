@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import type { ToastActionElement, ToastProps } from "@/components/ui/toast";
+import { avisoDeErro, ehFalhaDeRede, registrarFalhaDeRede } from "@/lib/erros";
 
 const TOAST_LIMIT = 1;
 const TOAST_REMOVE_DELAY = 1000000;
@@ -134,7 +135,43 @@ function dispatch(action: Action) {
 
 type Toast = Omit<ToasterToast, "id">;
 
+/**
+ * Toda a aplicação avisava o usuário com `title: 'Error'` e a mensagem crua da
+ * exceção — "Failed to fetch", "duplicate key value violates...". São 40+
+ * pontos de chamada; em vez de reescrever um por um (e deixar os próximos
+ * escaparem), a tradução acontece aqui, na porta de entrada do toast.
+ * Quem quiser um texto próprio continua livre para passá-lo: só normalizamos
+ * títulos genéricos e descrições que reconhecemos como erro técnico.
+ */
+const TITULOS_GENERICOS = ["error", "erro", "falha", "failed"];
+
+function humanizar(props: Toast): Toast {
+  if (props.variant !== "destructive") return props;
+
+  const descricao = typeof props.description === "string" ? props.description : "";
+  if (!descricao) return props;
+
+  const tituloGenerico =
+    typeof props.title !== "string" ||
+    TITULOS_GENERICOS.includes(props.title.trim().toLowerCase());
+
+  const aviso = avisoDeErro(descricao);
+  const reconhecido = aviso.descricao !== descricao;
+
+  if (ehFalhaDeRede(descricao)) registrarFalhaDeRede();
+
+  // Nada reconhecido e título próprio: deixa como o autor escreveu.
+  if (!reconhecido && !tituloGenerico) return props;
+
+  return {
+    ...props,
+    title: tituloGenerico ? aviso.titulo : props.title,
+    description: reconhecido ? aviso.descricao : descricao,
+  };
+}
+
 function toast({ ...props }: Toast) {
+  props = humanizar(props);
   const id = genId();
 
   const update = (props: ToasterToast) =>

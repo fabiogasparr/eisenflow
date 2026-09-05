@@ -1,6 +1,6 @@
-import { useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
+import { useCanalRealtime } from '@/lib/realtime';
 
 export type ReminderKind = 'due_d1' | 'due_1h' | 'due_now' | 'start_now' | 'start_5min' | 'custom';
 export type ReminderChannel = 'in_app' | 'browser' | 'whatsapp_personal' | 'whatsapp_tenant' | 'email';
@@ -78,20 +78,21 @@ export function useTaskReminders(taskId: string | undefined) {
     onSuccess: () => qc.invalidateQueries({ queryKey: ['task-reminders', taskId] }),
   });
 
-  // Realtime: refresh on any task_reminders or scheduled_reminders change for this task
-  useEffect(() => {
-    if (!taskId) return;
-    const ch = supabase
-      .channel(`task-reminders-${taskId}`)
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'task_reminders', filter: `task_id=eq.${taskId}` }, () => {
-        qc.invalidateQueries({ queryKey: ['task-reminders', taskId] });
-      })
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_reminders', filter: `task_id=eq.${taskId}` }, () => {
-        qc.invalidateQueries({ queryKey: ['scheduled-reminders', taskId] });
-      })
-      .subscribe();
-    return () => { supabase.removeChannel(ch); };
-  }, [taskId, qc]);
+  // Realtime: refresh on any task_reminders or scheduled_reminders change for this task.
+  // Tópico exclusivo por instância — dois cartões abertos com o mesmo taskId
+  // reaproveitavam o canal já assinado e o `.on()` estourava.
+  useCanalRealtime(
+    taskId ? `task-reminders-${taskId}` : null,
+    (canal) =>
+      canal
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'task_reminders', filter: `task_id=eq.${taskId}` }, () => {
+          qc.invalidateQueries({ queryKey: ['task-reminders', taskId] });
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'scheduled_reminders', filter: `task_id=eq.${taskId}` }, () => {
+          qc.invalidateQueries({ queryKey: ['scheduled-reminders', taskId] });
+        }),
+    [qc]
+  );
 
   return { reminders: query.data ?? [], isLoading: query.isLoading, upsert, remove, toggle };
 }

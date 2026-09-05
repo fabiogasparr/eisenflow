@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
+import { useCanalRealtime } from '@/lib/realtime';
 import { useAuth } from './useAuth';
 import { useToast } from './use-toast';
 
@@ -35,17 +36,21 @@ export function useNotifications() {
     };
 
     fetchNotifications();
+  }, [user]);
 
-    // Realtime subscription
-    const channel = supabase
-      .channel('user-notifications')
-      .on(
+  // Realtime: tópico exclusivo por instância — 'user-notifications' era um nome
+  // fixo, então uma segunda montagem do hook reaproveitava um canal já assinado
+  // e o `.on()` estourava, derrubando a aplicação inteira.
+  useCanalRealtime(
+    user ? `user-notifications-${user.id}` : null,
+    (canal) =>
+      canal.on(
         'postgres_changes',
         {
           event: 'INSERT',
           schema: 'public',
           table: 'notifications',
-          filter: `user_id=eq.${user.id}`,
+          filter: `user_id=eq.${user!.id}`,
         },
         (payload) => {
           const newNotif = payload.new as unknown as DbNotification;
@@ -60,13 +65,9 @@ export function useNotifications() {
             } catch {}
           }
         }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [user, toast]);
+      ),
+    [toast]
+  );
 
   const markAsRead = useCallback(async (id: string) => {
     setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));

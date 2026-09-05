@@ -26,20 +26,33 @@ import OrganizationPage from "./pages/OrganizationPage";
 import CompletedTasks from "./pages/CompletedTasks";
 import IntegrationsMcpPage from "./pages/IntegrationsMcpPage";
 import NotFound from "./pages/NotFound";
+import ErrorBoundary from "@/components/ErrorBoundary";
+import AvisoDeConexao from "@/components/AvisoDeConexao";
+import AvisoDoLinkDeEmail from "@/components/AvisoDoLinkDeEmail";
 
 const queryClient = new QueryClient();
 
+function Carregando() {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-background">
+      <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+    </div>
+  );
+}
+
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
-  if (loading) return <div className="flex min-h-screen items-center justify-center"><div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" /></div>;
+  if (loading) return <Carregando />;
   if (!user) return <Navigate to="/auth" replace />;
-  return <>{children}</>;
+  return <ErrorBoundary>{children}</ErrorBoundary>;
 }
 
 function PublicRoute({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
   const [searchParams] = useSearchParams();
-  if (loading) return null;
+  // Antes devolvia null: enquanto a sessão era resolvida a tela ficava preta,
+  // e se getSession() falhasse por rede ela ficava preta para sempre.
+  if (loading) return <Carregando />;
   const redirect = searchParams.get('redirect') || '/';
   if (user) return <Navigate to={redirect} replace />;
   return <>{children}</>;
@@ -74,23 +87,30 @@ const AppRoutes = () => (
 );
 
 const App = () => (
-  <QueryClientProvider client={queryClient}>
-    <ThemeProvider>
-      <LanguageProvider>
-        <AuthProvider>
-          <TenantProvider>
-          <TooltipProvider>
-            <Toaster />
-            <Sonner />
-            <BrowserRouter>
-              <AppRoutes />
-            </BrowserRouter>
-          </TooltipProvider>
-          </TenantProvider>
-        </AuthProvider>
-      </LanguageProvider>
-    </ThemeProvider>
-  </QueryClientProvider>
+  // O ErrorBoundary externo é a última rede de segurança: sem ele, uma exceção
+  // em qualquer provider ou efeito desmontava a árvore e o usuário via só uma
+  // página preta, sem uma linha explicando o que aconteceu.
+  <ErrorBoundary>
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <TenantProvider>
+              <TooltipProvider>
+                <AvisoDeConexao />
+                <Toaster />
+                <Sonner />
+                <BrowserRouter>
+                  <AvisoDoLinkDeEmail />
+                  <AppRoutes />
+                </BrowserRouter>
+              </TooltipProvider>
+            </TenantProvider>
+          </AuthProvider>
+        </LanguageProvider>
+      </ThemeProvider>
+    </QueryClientProvider>
+  </ErrorBoundary>
 );
 
 export default App;
