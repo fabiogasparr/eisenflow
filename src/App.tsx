@@ -26,6 +26,9 @@ import OrganizationPage from "./pages/OrganizationPage";
 import CompletedTasks from "./pages/CompletedTasks";
 import IntegrationsMcpPage from "./pages/IntegrationsMcpPage";
 import NotFound from "./pages/NotFound";
+import Inicio from "./pages/publico/Inicio";
+import Privacidade from "./pages/publico/Privacidade";
+import Termos from "./pages/publico/Termos";
 import ErrorBoundary from "@/components/ErrorBoundary";
 import AvisoDeConexao from "@/components/AvisoDeConexao";
 import AvisoDoLinkDeEmail from "@/components/AvisoDoLinkDeEmail";
@@ -68,6 +71,13 @@ const AppRoutes = () => (
         o mandaria para a home antes de ele conseguir digitar a nova senha. */}
     <Route path="/auth/recovery" element={<ResetPassword />} />
     <Route path="/invite/:code" element={<JoinTeamPage />} />
+    {/* Páginas públicas: acessíveis com ou sem sessão. A verificação do Google
+        exige uma home que descreva o app e links de política e termos que
+        funcionem para quem nunca entrou. Por isso ficam fora de PublicRoute
+        (que redireciona quem já está logado) e de ProtectedRoute. */}
+    <Route path="/inicio" element={<Inicio />} />
+    <Route path="/privacidade" element={<Privacidade />} />
+    <Route path="/termos" element={<Termos />} />
     <Route path="/" element={<ProtectedRoute><Index /></ProtectedRoute>} />
     <Route path="/metrics" element={<ProtectedRoute><Metrics /></ProtectedRoute>} />
     <Route path="/completed" element={<ProtectedRoute><CompletedTasks /></ProtectedRoute>} />

@@ -107,6 +107,14 @@ export default function Auth() {
                 {t('forgotPassword')}
               </Link>
             )}
+            <div className="flex gap-4 pt-2 text-xs text-muted-foreground">
+              <Link to="/privacidade" className="hover:text-foreground transition-colors">
+                Privacidade
+              </Link>
+              <Link to="/termos" className="hover:text-foreground transition-colors">
+                Termos
+              </Link>
+            </div>
           </CardFooter>
         </form>
       </Card>

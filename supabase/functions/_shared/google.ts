@@ -39,8 +39,13 @@ const MARGEM_REFRESH_MS = 5 * 60 * 1000;
  * `userinfo.email`; o e-mail já vem no id_token, então foi dispensado.
  */
 export const ESCOPOS = [
+  // Ler e escrever os eventos que correspondem às tarefas.
   'https://www.googleapis.com/auth/calendar.events',
-  'https://www.googleapis.com/auth/calendar.readonly',
+  // Só a LISTA de agendas, para o usuário escolher onde as tarefas aparecem.
+  // Era `calendar.readonly`, que dá leitura de tudo em todas as agendas — o
+  // app nunca precisou disso (calendar.events já lê evento) e escopo a mais
+  // é superfície a mais na verificação do Google e risco a mais para o usuário.
+  'https://www.googleapis.com/auth/calendar.calendarlist.readonly',
 ].join(' ');
 
 export function credenciais(): { client_id: string; client_secret: string } {
