@@ -83,7 +83,7 @@ export function AppHeader({ onSearch, onFocusMode, onCreateTask }: AppHeaderProp
                 ) : (
                   <Building2 className="h-4 w-4 text-muted-foreground" />
                 )}
-                <span className="truncate flex-1">{tenant.name}</span>
+                <span className="min-w-0 flex-1 truncate">{tenant.name}</span>
                 {activeTenant?.id === tenant.id && (
                   <Check className="h-3.5 w-3.5 text-primary shrink-0" />
                 )}

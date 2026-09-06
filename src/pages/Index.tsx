@@ -181,7 +181,7 @@ export default function Index() {
                     >
                       <div className="flex items-center gap-2">
                         <span className="text-sm">{config.emoji}</span>
-                        <p className="text-sm font-medium leading-tight truncate flex-1">
+                        <p className="min-w-0 flex-1 truncate text-sm font-medium leading-tight">
                           {task.title}
                         </p>
                       </div>

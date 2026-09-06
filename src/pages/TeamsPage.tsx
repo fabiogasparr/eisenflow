@@ -421,9 +421,9 @@ function TeamDetailSheet({ team, onClose }: { team: Team | null; onClose: () => 
                           <div key={invite.id} className="rounded-lg border p-3 space-y-2">
                             <div className="flex items-center gap-2 text-xs">
                               {invite.invited_email ? (
-                                <span className="flex-1 truncate">{invite.invited_email}</span>
+                                <span className="min-w-0 flex-1 truncate">{invite.invited_email}</span>
                               ) : (
-                                <span className="flex-1 truncate text-muted-foreground font-mono text-[11px]">
+                                <span className="min-w-0 flex-1 truncate text-muted-foreground font-mono text-[11px]">
                                   {getInviteUrl(invite.invite_code).replace(/^https?:\/\//, '')}
                                 </span>
                               )}

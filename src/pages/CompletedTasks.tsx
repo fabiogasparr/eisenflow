@@ -246,7 +246,7 @@ export default function CompletedTasks() {
                 return (
                   <div key={q} className="flex items-center gap-2 text-xs">
                     <span>{cfg.emoji}</span>
-                    <span className="flex-1 truncate text-muted-foreground">
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
                       {t(cfg.labelKey as any)}
                     </span>
                     <span className="font-semibold">{stats.byQuadrant[q]}</span>

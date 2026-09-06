@@ -64,7 +64,7 @@ export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps)
       <div ref={setNodeRef} style={style} className="relative overflow-hidden rounded-lg">
         <div className="flex items-center gap-2 bg-destructive/10 border border-destructive/30 rounded-lg p-2.5">
           <Trash2 className="h-4 w-4 text-destructive shrink-0" />
-          <p className="text-xs font-medium text-destructive flex-1 truncate">
+          <p className="min-w-0 flex-1 truncate text-xs font-medium text-destructive">
             {language === 'pt-BR' ? 'Deletar?' : 'Delete?'}
           </p>
           <button
@@ -120,7 +120,14 @@ export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps)
         }}
         onClick={() => !isSwiping && !dismissed && onClick?.(task)}
       >
-        <div className="flex items-center gap-2">
+        {/* min-w-0 nos dois: sem ele o `truncate` NUNCA dispara. Item de flex
+            nasce com `min-width: auto`, então o parágrafo não encolhe abaixo do
+            texto inteiro e empurra o cartão para fora do quadrante — medido em
+            produção: cartão de 690px dentro de um quadrante de 584px, vazando
+            119px que o `overflow-hidden` do quadrante escondia. O efeito era o
+            título entrar por baixo da borda e as etiquetas de data e GCal
+            sumirem da tela. */}
+        <div className="flex min-w-0 items-center gap-2">
           <button
             {...attributes}
             {...listeners}
@@ -129,7 +136,7 @@ export function TaskCard({ task, onClick, onComplete, onDelete }: TaskCardProps)
           >
             <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
           </button>
-          <p className={`text-sm font-medium leading-tight truncate flex-1 ${
+          <p className={`min-w-0 flex-1 truncate text-sm font-medium leading-tight ${
             isCompleted ? 'line-through text-muted-foreground' : ''
           }`}>
             {task.title}
