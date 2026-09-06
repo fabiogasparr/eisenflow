@@ -240,28 +240,91 @@ export interface TranscreverOpts { mimeType?: string; nomeArquivo?: string; idio
  * compromisso": o webhook pega o .ogg da Evolution, transcreve aqui, e o texto
  * segue pelo mesmo caminho de uma mensagem escrita.
  *
- * Não passa por chat/completions — usa o endpoint de transcrição, compatível
- * com o da OpenAI, que o OmniRoute expõe com Whisper por trás.
+ * DOIS CAMINHOS, NESTA ORDEM:
+ *
+ *  1. TRANSCRICAO_BASE_URL — um servidor Whisper nosso (faster-whisper em
+ *     Docker, API compatível com a da OpenAI). É o padrão porque o áudio não
+ *     sai da máquina e não há custo por uso.
+ *  2. O gateway de IA (AI_BASE_URL), como reserva.
+ *
+ * A reserva existe porque o local roda em CPU compartilhada: se ele estiver
+ * fora, sobrecarregado ou sem modelo, o recado da pessoa não pode simplesmente
+ * sumir. Se os dois falharem, o erro conta o que aconteceu em cada um — sem
+ * isso, "HTTP 500" não diz qual dos dois quebrou.
  */
-export async function transcrever(audio: Uint8Array, opts: TranscreverOpts = {}): Promise<string> {
-  if (!KEY) throw new HttpError('AI_API_KEY não configurada', 500);
+const TRANSCRICAO_LOCAL = {
+  base: (Deno.env.get('TRANSCRICAO_BASE_URL') || '').replace(/\/+$/, ''),
+  chave: Deno.env.get('TRANSCRICAO_API_KEY') || '',
+  modelo: Deno.env.get('TRANSCRICAO_MODELO') || 'whisper-1',
+};
 
+/** FormData é consumido no fetch; cada tentativa precisa do seu. */
+function corpoDaTranscricao(audio: Uint8Array, modelo: string, opts: TranscreverOpts): FormData {
   const fd = new FormData();
   fd.append('file', new Blob([audio], { type: opts.mimeType || 'audio/ogg' }), opts.nomeArquivo || 'audio.ogg');
-  fd.append('model', MODELOS.transcrever);
+  fd.append('model', modelo);
   // Dizer o idioma melhora bastante a precisão e corta latência do Whisper.
   fd.append('language', opts.idioma || 'pt');
   fd.append('response_format', 'json');
+  return fd;
+}
 
-  const res = await fetch(urlDe('/audio/transcriptions'), {
+async function tentarTranscrever(
+  url: string,
+  chave: string,
+  modelo: string,
+  audio: Uint8Array,
+  opts: TranscreverOpts,
+): Promise<string> {
+  const res = await fetch(url, {
     method: 'POST',
-    headers: AUTH(), // sem Content-Type: o FormData define o boundary
-    body: fd,
+    headers: { Authorization: `Bearer ${chave}` }, // sem Content-Type: o FormData define o boundary
+    body: corpoDaTranscricao(audio, modelo, opts),
   });
   if (!res.ok) throw erroProvider(res.status, await res.text());
-
   const data = await res.json();
   const texto = String(data.text || '').trim();
   if (!texto) throw new HttpError('A transcrição voltou vazia', 502);
   return texto;
+}
+
+export async function transcrever(audio: Uint8Array, opts: TranscreverOpts = {}): Promise<string> {
+  const falhas: string[] = [];
+
+  if (TRANSCRICAO_LOCAL.base) {
+    try {
+      return await tentarTranscrever(
+        `${TRANSCRICAO_LOCAL.base}/audio/transcriptions`,
+        TRANSCRICAO_LOCAL.chave,
+        TRANSCRICAO_LOCAL.modelo,
+        audio,
+        opts,
+      );
+    } catch (e) {
+      const m = (e as Error).message;
+      console.error(`transcrever: servidor local falhou (${m})`);
+      falhas.push(`local: ${m}`);
+    }
+  }
+
+  if (KEY) {
+    try {
+      return await tentarTranscrever(
+        urlDe('/audio/transcriptions'),
+        KEY,
+        MODELOS.transcrever,
+        audio,
+        opts,
+      );
+    } catch (e) {
+      falhas.push(`gateway: ${(e as Error).message}`);
+    }
+  } else {
+    falhas.push('gateway: AI_API_KEY não configurada');
+  }
+
+  if (!TRANSCRICAO_LOCAL.base && !KEY) {
+    throw new HttpError('Nenhum serviço de transcrição configurado', 500);
+  }
+  throw new HttpError(`Transcrição indisponível — ${falhas.join(' | ')}`, 502);
 }
