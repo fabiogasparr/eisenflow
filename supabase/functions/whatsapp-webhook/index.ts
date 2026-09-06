@@ -241,12 +241,24 @@ async function tratarMensagem(ev: EventoMensagem, tabela: string, conn: Row) {
       : await processarComIA({ texto, userId, imagens, tz });
   }
 
-  // Responde no chat de origem (com self_only é o próprio número do dono).
-  const destino = ev.telefone || conn.phone_number;
+  // Responde no chat de origem, pelo JID COMPLETO. Mandar só os dígitos fazia o
+  // Evolution assumir `@s.whatsapp.net`; quando o chat é um LID ele saía
+  // procurando um telefone inexistente e devolvia
+  // "failed to get user info ... to fill LID cache".
+  const destino = ev.chatJid || ev.telefone || conn.phone_number;
+  let respondido = false;
   if (resposta && destino) {
-    await evolution.sendText(conn.instance_token, destino, resposta);
+    try {
+      await evolution.sendText(conn.instance_token, destino, resposta);
+      respondido = true;
+    } catch (e) {
+      // A tarefa já foi criada neste ponto. Falhar aqui não pode desfazer isso
+      // nem virar erro do webhook — o Evolution reentregaria a mensagem e, sem
+      // a deduplicação, viria tarefa repetida.
+      console.error(`whatsapp-webhook: resposta não saiu para ${destino}: ${(e as Error).message}`);
+    }
   }
-  return { ok: true, replied: !!resposta };
+  return { ok: true, replied: respondido };
 }
 
 /** Bytes da mídia: base64 do próprio evento (WEBHOOK_FILES) ou download. */

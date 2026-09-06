@@ -270,6 +270,8 @@ interface EventoBase {
 export interface EventoMensagem extends EventoBase {
   tipo: 'mensagem';
   mensagemId?: string;
+  /** JID COMPLETO do chat, com sufixo — é para cá que a resposta volta. */
+  chatJid?: string;
   chat?: string;
   telefone: string;
   remetente?: string;
@@ -325,6 +327,10 @@ export function parseWebhook(payload: Json): EventoWebhook {
       ...base, tipo: 'mensagem',
       mensagemId: info.ID,
       chat: info.Chat,                       // ex.: 5511999999999@s.whatsapp.net
+      // O JID inteiro importa: pode ser `...@s.whatsapp.net` OU `...@lid`.
+      // Responder só com os dígitos faz o servidor assumir @s.whatsapp.net e,
+      // quando o chat é um LID, ele procura um telefone que não existe.
+      chatJid: info.Chat,
       telefone: soDigitos(info.Chat),
       remetente: info.Sender,
       daMinhaConta: !!info.IsFromMe,
