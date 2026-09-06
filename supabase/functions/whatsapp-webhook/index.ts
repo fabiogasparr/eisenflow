@@ -165,8 +165,22 @@ async function tratarMensagem(ev: EventoMensagem, tabela: string, conn: Row) {
   const meuNumero = soDigitos(conn.phone_number);
   if (aceitaDe === 'self_only') {
     // Só a conversa comigo mesmo: mensagem minha E no meu próprio chat.
-    if (!ev.daMinhaConta || (meuNumero && ev.telefone !== meuNumero)) {
-      console.log(`whatsapp-webhook: ignorado (self_only) de=${ev.telefone}`);
+    //
+    // O WhatsApp está migrando para LID e entrega a MESMA conversa ora pelo
+    // telefone (5511943246689), ora pelo identificador de privacidade
+    // (108108688928998) — visto nos dois formatos no mesmo dia, no log. Comparar
+    // só com o telefone gravado descartava metade das mensagens, sem nenhum
+    // aviso para o usuário.
+    //
+    // Por isso a identidade do dono é um CONJUNTO: o telefone que conhecemos e
+    // o remetente da própria mensagem. Numa conversa comigo mesmo o chat é o
+    // próprio remetente, seja qual for o formato; falando com outra pessoa o
+    // chat é ela, e a mensagem continua sendo recusada.
+    const remetente = soDigitos(ev.remetente);
+    const souEu = [meuNumero, remetente].filter(Boolean);
+    const comigoMesmo = souEu.length === 0 || souEu.includes(ev.telefone);
+    if (!ev.daMinhaConta || !comigoMesmo) {
+      console.log(`whatsapp-webhook: ignorado (self_only) chat=${ev.telefone} eu=[${souEu.join(',')}]`);
       return { ok: true, ignored: 'self_only' };
     }
   }
@@ -207,9 +221,17 @@ async function tratarMensagem(ev: EventoMensagem, tabela: string, conn: Row) {
       imagens.push(await dataUrlDaImagem(ev, conn));
     }
   } catch (e) {
-    console.error(`whatsapp-webhook: mídia falhou: ${(e as Error).message}`);
+    const motivo = (e as Error).message || '';
+    console.error(`whatsapp-webhook: mídia falhou: ${motivo}`);
+    // "sem credencial" e "modelo inválido" são configuração do gateway, não um
+    // problema do áudio que a pessoa gravou. Mandar "manda de novo" nesse caso
+    // é jogar o usuário num laço: por mais que ele regrave, nunca vai funcionar.
+    const transcricaoIndisponivel =
+      /no credentials|invalid transcription model|HTTP 5\d\d/i.test(motivo);
     resposta = ehAudio
-      ? '⚠️ Não consegui ouvir esse áudio. Pode mandar de novo ou escrever?'
+      ? transcricaoIndisponivel
+        ? '⚠️ A transcrição de áudio não está disponível agora (o serviço de IA não respondeu). Me manda por escrito que eu registro na hora.'
+        : '⚠️ Não consegui ouvir esse áudio. Pode mandar de novo ou escrever?'
       : '⚠️ Não consegui baixar a imagem do WhatsApp. Tente reenviar.';
   }
 
