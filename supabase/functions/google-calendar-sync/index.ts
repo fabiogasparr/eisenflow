@@ -34,7 +34,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { admin, requireTenantMember, requireUser, tenantPadraoDe } from '../_shared/supabase.ts';
-import { acessoValido, buscarConexao, chamarGoogle, GoogleApiError } from '../_shared/google.ts';
+import { acessoValido, buscarConexao, chamarGoogle, GoogleApiError, inicioFim } from '../_shared/google.ts';
 import { HttpError, erro, json, lerCorpo, preflight, respostaErro } from '../_shared/http.ts';
 
 // deno-lint-ignore no-explicit-any
@@ -43,22 +43,6 @@ type Row = Record<string, any>;
 const FUSO = 'America/Sao_Paulo'; // igual ao original; o app é BR
 const UMA_HORA = 60 * 60 * 1000;
 const UM_DIA = 24 * UMA_HORA;
-
-/** Bloco start/end do evento, no formato do Google. Porte direto do original. */
-function inicioFim(startDateTime: string, endDateTime: string | undefined, allDay: boolean) {
-  if (allDay) {
-    const dia = new Date(startDateTime).toISOString().slice(0, 10);
-    const seguinte = new Date(new Date(dia).getTime() + UM_DIA).toISOString().slice(0, 10);
-    return { start: { date: dia }, end: { date: seguinte } };
-  }
-  return {
-    start: { dateTime: startDateTime, timeZone: FUSO },
-    end: {
-      dateTime: endDateTime || new Date(new Date(startDateTime).getTime() + UMA_HORA).toISOString(),
-      timeZone: FUSO,
-    },
-  };
-}
 
 const eventos = (calendarId: string) => `/calendars/${encodeURIComponent(calendarId)}/events`;
 
@@ -111,7 +95,7 @@ serve(async (req) => {
 
       const evento = await chamarGoogle(accessToken, eventos(calendarId), {
         method: 'POST',
-        body: JSON.stringify({ summary, description: description || '', ...inicioFim(startDateTime, endDateTime, !!allDay) }),
+        body: JSON.stringify({ summary, description: description || '', ...inicioFim(startDateTime, endDateTime, !!allDay, FUSO) }),
       }, conexao);
 
       await marcarSincronizado();
@@ -126,7 +110,7 @@ serve(async (req) => {
       const patch: Row = {};
       if (summary) patch.summary = summary;
       if (description !== undefined) patch.description = description;
-      if (startDateTime) Object.assign(patch, inicioFim(startDateTime, endDateTime, !!allDay));
+      if (startDateTime) Object.assign(patch, inicioFim(startDateTime, endDateTime, !!allDay, FUSO));
 
       const evento = await chamarGoogle(accessToken, `${eventos(calendarId)}/${encodeURIComponent(eventId)}`, {
         method: 'PATCH', body: JSON.stringify(patch),
@@ -222,7 +206,7 @@ serve(async (req) => {
         const corpo = {
           summary: prefixo + t.title,
           description: t.description || '',
-          ...inicioFim(inicio, new Date(new Date(inicio).getTime() + UMA_HORA).toISOString(), allDay),
+          ...inicioFim(inicio, new Date(new Date(inicio).getTime() + UMA_HORA).toISOString(), allDay, FUSO),
         };
 
         try {

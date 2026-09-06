@@ -29,7 +29,13 @@ Deno.serve(async (req: Request) => {
     // @ts-ignore: API do edge-runtime
     const worker = await EdgeRuntime.userWorkers.create({
       servicePath: `${FUNCTIONS_DIR}/${nome}`,
-      memoryLimitMb: 150,
+      // LIMITES — não baixe estes números sem medir antes.
+      // O padrão do supabase/docker (150 MB / 60 s) matava o whatsapp-webhook no
+      // meio do trabalho: um áudio passa por download + transcrição + IA com
+      // function calling + escrita no banco + Google Calendar + resposta pelo
+      // Evolution. O worker morria com "early termination has been triggered",
+      // a mensagem sumia sem erro visível e o usuário só via o silêncio.
+      memoryLimitMb: 512,
       workerTimeoutMs: 5 * 60 * 1000,
       noModuleCache: false,
       envVars: Object.entries(Deno.env.toObject()),

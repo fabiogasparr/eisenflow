@@ -5,7 +5,7 @@
  * /andamento, /urgente, /delegar, /membros, /relatorio, /ajuda.
  * Mantido tal e qual — é o plano B quando a IA está fora do ar.
  */
-import { admin } from '../_shared/supabase.ts';
+import { admin, tenantPadraoDe } from '../_shared/supabase.ts';
 import { relatorioDiario, relatorioSemanal } from '../_shared/relatorios.ts';
 import { type Row, atualizarTarefa, tarefasDoUsuario, membrosDoTime, EMOJI_QUADRANTE, EMOJI_STATUS } from './dados.ts';
 import { delegar } from './ia.ts';
@@ -22,7 +22,13 @@ export async function processarComando(mensagem: string, userId: string): Promis
 
   if (cmd === '/nova' || cmd === '/new') {
     if (!args) return '⚠️ Use: /nova Título da tarefa';
-    const { error } = await db.from('tasks').insert({ title: args, created_by: userId, quadrant: 'do', status: 'pending' });
+    // tenant_id: sem ele a tarefa nasce fora de qualquer workspace e some dos
+    // relatórios e da sincronização, que consultam por tenant.
+    const tenantId = await tenantPadraoDe(userId);
+    const { error } = await db.from('tasks').insert({
+      title: args, created_by: userId, quadrant: 'do', status: 'pending',
+      ...(tenantId ? { tenant_id: tenantId } : {}),
+    });
     if (error) throw error;
     return `✅ Tarefa criada: *${args}*`;
   }

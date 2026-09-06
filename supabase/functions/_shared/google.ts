@@ -18,7 +18,7 @@
  * Env: GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_TOKENS_ENCRYPTION_KEY,
  *      GOOGLE_STATE_SECRET, PUBLIC_FUNCTIONS_URL
  */
-import { admin } from './supabase.ts';
+import { admin, tenantPadraoDe } from './supabase.ts';
 import { cifrar, decifrar } from './cripto.ts';
 import { HttpError, clientIp } from './http.ts';
 
@@ -232,4 +232,136 @@ export async function auditar({ userId, tenantId, acao, req = null }: { userId: 
       await admin().from('google_token_audit_log').insert(dados);
     }
   } catch { /* auditoria é best-effort */ }
+}
+
+// ------------------------------------------------- tarefa -> evento (1 tarefa)
+/**
+ * Bloco start/end no formato do Google, no fuso do usuário.
+ *
+ * Era privado do google-calendar-sync. Subiu para cá porque agora existe um
+ * SEGUNDO caminho que cria evento — o assistente do WhatsApp — e duas cópias
+ * dessa conversão divergiriam no primeiro ajuste.
+ *
+ * O dia do evento "de dia inteiro" é calculado NO FUSO do usuário: a versão
+ * antiga usava toISOString(), que é UTC, e jogava tudo que acontece depois das
+ * 21h de Brasília para o dia seguinte na agenda.
+ */
+export function inicioFim(
+  startDateTime: string,
+  endDateTime: string | undefined,
+  allDay: boolean,
+  fuso = 'America/Sao_Paulo',
+) {
+  const UMA_HORA = 60 * 60 * 1000;
+  if (allDay) {
+    const inicio = new Date(startDateTime);
+    const dia = inicio.toLocaleDateString('en-CA', { timeZone: fuso });
+    const seguinte = new Date(inicio.getTime() + 24 * UMA_HORA).toLocaleDateString('en-CA', { timeZone: fuso });
+    return { start: { date: dia }, end: { date: seguinte } };
+  }
+  return {
+    start: { dateTime: startDateTime, timeZone: fuso },
+    end: {
+      dateTime: endDateTime || new Date(new Date(startDateTime).getTime() + UMA_HORA).toISOString(),
+      timeZone: fuso,
+    },
+  };
+}
+
+export interface TarefaSincronizavel {
+  id: string;
+  title: string;
+  description?: string | null;
+  due_date?: string | null;
+  created_at?: string | null;
+  google_event_id?: string | null;
+  status?: string | null;
+}
+
+export interface ResultadoSync {
+  ok: boolean;
+  /** id do evento no Google, quando deu certo. */
+  eventId?: string;
+  /** true = evento novo; false = evento existente atualizado. */
+  criado?: boolean;
+  /** por que não sincronizou — vira texto para o usuário. */
+  motivo?: string;
+  /** o consentimento no Google caiu; só reconectando resolve. */
+  precisaReconectar?: boolean;
+}
+
+/**
+ * Empurra UMA tarefa para o Google Calendar usando a service role — sem JWT de
+ * usuário, porque quem chama é o webhook do WhatsApp (a autorização ali é a
+ * instância pareada, não um token do front).
+ *
+ * NUNCA lança. O Google é um destino secundário: a tarefa já está gravada no
+ * EisenFlow e uma falha aqui não pode derrubar o webhook nem apagar o que foi
+ * criado. O motivo volta como texto para o assistente contar ao usuário.
+ *
+ * Mantém o MESMO mapeamento do action 'sync-tasks' (prefixo ✅/❌ por status,
+ * 1h de duração, dia inteiro quando não há prazo) para que as duas rotas
+ * produzam eventos idênticos.
+ */
+export async function sincronizarTarefaNoGoogle(
+  userId: string,
+  tarefa: TarefaSincronizavel,
+  tenantId: string | null = null,
+  fuso = 'America/Sao_Paulo',
+): Promise<ResultadoSync> {
+  try {
+    const tid = tenantId || (await tenantPadraoDe(userId));
+    if (!tid) return { ok: false, motivo: 'usuário sem workspace' };
+
+    const doc = await buscarConexao(tid, userId);
+    if (!doc) return { ok: false, motivo: 'Google Calendar não conectado' };
+    if (doc.is_revoked) return { ok: false, motivo: 'acesso ao Google revogado', precisaReconectar: true };
+    if (doc.sync_enabled === false) return { ok: false, motivo: 'sincronização desligada' };
+
+    const { accessToken, calendarId } = await acessoValido(doc);
+
+    const semPrazo = !tarefa.due_date;
+    const inicio = tarefa.due_date || tarefa.created_at || new Date().toISOString();
+    const prefixo = tarefa.status === 'completed' ? '✅ ' : tarefa.status === 'eliminated' ? '❌ ' : '';
+    const corpo = {
+      summary: prefixo + tarefa.title,
+      description: tarefa.description || '',
+      ...inicioFim(inicio, new Date(new Date(inicio).getTime() + 3600e3).toISOString(), semPrazo, fuso),
+    };
+
+    const rota = `/calendars/${encodeURIComponent(calendarId)}/events`;
+
+    if (tarefa.google_event_id) {
+      await chamarGoogle(accessToken, `${rota}/${encodeURIComponent(tarefa.google_event_id)}`, {
+        method: 'PATCH', body: JSON.stringify(corpo),
+      }, doc);
+      return { ok: true, eventId: tarefa.google_event_id, criado: false };
+    }
+
+    const evento = await chamarGoogle(accessToken, rota, { method: 'POST', body: JSON.stringify(corpo) }, doc);
+    if (!evento?.id) return { ok: false, motivo: 'o Google não devolveu o id do evento' };
+
+    await admin().from('tasks').update({ google_event_id: evento.id }).eq('id', tarefa.id);
+    return { ok: true, eventId: evento.id, criado: true };
+  } catch (e) {
+    const msg = (e as Error).message || String(e);
+    console.error(`google: sincronizarTarefaNoGoogle(${tarefa.id}) falhou — ${msg}`);
+    return { ok: false, motivo: msg, precisaReconectar: (e as HttpError).codigo === 'google_reconnect_required' };
+  }
+}
+
+/** Apaga o evento da tarefa. Best-effort, igual ao delete-event do front. */
+export async function removerEventoDaTarefa(userId: string, eventId: string, tenantId: string | null = null): Promise<boolean> {
+  try {
+    const tid = tenantId || (await tenantPadraoDe(userId));
+    if (!tid) return false;
+    const doc = await buscarConexao(tid, userId);
+    if (!doc || doc.is_revoked) return false;
+    const { accessToken, calendarId } = await acessoValido(doc);
+    await chamarGoogle(accessToken, `/calendars/${encodeURIComponent(calendarId)}/events/${encodeURIComponent(eventId)}`, { method: 'DELETE' }, doc);
+    return true;
+  } catch (e) {
+    const gs = (e as GoogleApiError).googleStatus;
+    return gs === 404 || gs === 410;
+  }
 }

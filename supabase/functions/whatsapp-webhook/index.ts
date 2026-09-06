@@ -217,6 +217,13 @@ async function tratarMensagem(ev: EventoMensagem, tabela: string, conn: Row) {
       const bytes = await bytesDaMidia(ev, conn);
       texto = await transcrever(bytes, { idioma: 'pt', mimeType: ev.midia?.mimetype || 'audio/ogg' });
       console.log(`whatsapp-webhook: áudio transcrito (${texto.length} caracteres)`);
+      // Transcrição vazia não é conversa: mandar "" para a IA fazia ela responder
+      // "Mensagem recebida! Como posso ajudar?" — o usuário achava que tinha
+      // agendado alguma coisa e não tinha nascido tarefa nenhuma.
+      if (!texto.trim()) {
+        console.error('whatsapp-webhook: transcrição voltou vazia');
+        resposta = '🎤 Recebi seu áudio mas não consegui entender nada nele. Pode gravar de novo mais perto do microfone, ou me mandar por escrito?';
+      }
     } else if (ehImagem) {
       imagens.push(await dataUrlDaImagem(ev, conn));
     }

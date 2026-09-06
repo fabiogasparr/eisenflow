@@ -91,6 +91,20 @@ functions() {
   if [ ! -f "$VOL_FUNCS/main/index.ts" ]; then
     echo "  ! não há main/index.ts no volume — usando o roteador do repo"
     mkdir -p "$VOL_FUNCS/main" && cp "$AQUI/main-router.ts" "$VOL_FUNCS/main/index.ts"
+  else
+    # O roteador do volume é preservado (pode ter ajuste local), mas os LIMITES
+    # não são negociáveis: com os 150 MB / 60 s que vêm do supabase/docker o
+    # whatsapp-webhook morre no meio ("early termination has been triggered") e
+    # a mensagem do usuário some sem deixar erro. Já aconteceu em produção;
+    # sobrevive a um redeploy, mas voltaria numa reinstalação da stack.
+    limites_ok=1
+    grep -q 'memoryLimitMb: *512' "$VOL_FUNCS/main/index.ts" || limites_ok=0
+    grep -q 'workerTimeoutMs: *5 \* 60 \* 1000' "$VOL_FUNCS/main/index.ts" || limites_ok=0
+    if [ "$limites_ok" = 0 ]; then
+      cp "$VOL_FUNCS/main/index.ts" "$VOL_FUNCS/main/index.ts.bak.$(date +%Y%m%d%H%M%S)"
+      sed -i -E 's/memoryLimitMb: *[0-9]+/memoryLimitMb: 512/; s/workerTimeoutMs: *[^,]+/workerTimeoutMs: 5 * 60 * 1000/' "$VOL_FUNCS/main/index.ts"
+      echo "  ✓ limites do roteador corrigidos (512 MB / 5 min)"
+    fi
   fi
   docker restart "$EDGE" >/dev/null && echo "  $EDGE reiniciado"
   sleep 3

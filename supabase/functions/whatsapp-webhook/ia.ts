@@ -9,10 +9,13 @@
 import { admin } from '../_shared/supabase.ts';
 import { chat, imagePart, type Tool } from '../_shared/ai.ts';
 import { evolution } from '../_shared/evolution.ts';
+import { removerEventoDaTarefa, sincronizarTarefaNoGoogle, type TarefaSincronizavel } from '../_shared/google.ts';
+import { tenantPadraoDe } from '../_shared/supabase.ts';
 import {
   type Row,
   atualizarTarefa, tarefasDoUsuario, membrosDoTime, perfilDe, historico, salvarMensagem,
   podarHistorico, formatarQuando, listarTarefas, ROTULO_QUADRANTE, ROTULO_STATUS,
+  calendarioDoPrompt, interpretarPrazo,
 } from './dados.ts';
 
 const idx = (n: unknown) => (Number(n) || 0) - 1;
@@ -30,7 +33,7 @@ export const TOOLS: Tool[] = [
           quadrant: { type: 'string', enum: ['do', 'schedule', 'delegate', 'eliminate'], description: 'do=urgente+importante, schedule=importante, delegate=urgente, eliminate=nem urgente nem importante' },
           urgency: { type: 'number', description: '1-5' },
           importance: { type: 'number', description: '1-5' },
-          due_date: { type: 'string', description: 'Prazo em ISO 8601, ex: 2026-03-20T00:00:00Z' },
+          due_date: { type: 'string', description: 'Data e HORA do compromisso em ISO 8601 COM O FUSO DO USUÁRIO, ex: 2026-03-20T14:30:00-03:00. Nunca use "Z". Use a tabela de datas do prompt para converter "terça", "semana que vem" etc.' },
         },
         required: ['title'], additionalProperties: false,
       },
@@ -77,6 +80,22 @@ export const TOOLS: Tool[] = [
   },
   { type: 'function', function: { name: 'list_task_reminders', description: 'Listar os lembretes ativos de uma tarefa', parameters: { type: 'object', properties: { task_index: { type: 'number' } }, required: ['task_index'], additionalProperties: false } } },
   { type: 'function', function: { name: 'remove_task_reminder', description: 'Cancelar um lembrete específico de uma tarefa', parameters: { type: 'object', properties: { task_index: { type: 'number' }, reminder_index: { type: 'number', description: 'Índice 1-based da lista de list_task_reminders' } }, required: ['task_index', 'reminder_index'], additionalProperties: false } } },
+  {
+    type: 'function',
+    function: {
+      name: 'ask_for_details',
+      description: 'Perguntar ao usuário a informação que FALTA para agendar corretamente. Use SEMPRE que o título, a data ou o horário não estiverem claros, em vez de criar a tarefa com dados inventados.',
+      parameters: {
+        type: 'object',
+        properties: {
+          question: { type: 'string', description: 'A pergunta, curta e direta, em português. Ex: "Que horas é a reunião com o Rogério na terça?"' },
+          missing: { type: 'array', items: { type: 'string', enum: ['title', 'date', 'time', 'participants', 'other'] }, description: 'O que está faltando.' },
+          understood: { type: 'string', description: 'O que você JÁ entendeu, para confirmar com o usuário. Ex: "reunião com o Rogério, terça (08/09)".' },
+        },
+        required: ['question'], additionalProperties: false,
+      },
+    },
+  },
   { type: 'function', function: { name: 'chat_response', description: 'Responder ao usuário quando nenhuma ação de tarefa é necessária', parameters: { type: 'object', properties: { message: { type: 'string' } }, required: ['message'], additionalProperties: false } } },
 ];
 
@@ -165,7 +184,34 @@ export interface ContextoTool {
   tarefas: Row[];
   membros: Row[];
   tz: string;
+  /** Workspace do usuário: é por (user_id, tenant_id) que a conta Google está ligada. */
+  tenantId?: string | null;
 }
+
+/**
+ * Títulos que a IA inventa quando não entendeu nada — "Compromisso", "Reunião",
+ * "Tarefa". Criar isso é pior do que não criar: entope a matriz com linhas que
+ * o usuário não reconhece e não sabe editar. Aqui viram pergunta.
+ */
+const TITULOS_VAGOS = /^(compromisso|reuni[ãa]o|tarefa|evento|atividade|agendamento|lembrete|encontro|anota[çc][ãa]o|nova tarefa|sem t[íi]tulo)\s*$/i;
+
+/**
+ * Empurra a tarefa para o Google e devolve a linha que vai na resposta do
+ * WhatsApp. O usuário PRECISA saber se entrou nas duas agendas ou só numa —
+ * antes disso a resposta dizia "✅ Tarefa criada" e o Google ficava vazio sem
+ * nenhum aviso.
+ */
+async function linhaDoGoogle(ctx: ContextoTool, tarefa: Row): Promise<string> {
+  const r = await sincronizarTarefaNoGoogle(ctx.userId, tarefa as TarefaSincronizavel, ctx.tenantId ?? null, ctx.tz);
+  if (r.ok) return '📅 Também entrou na sua Google Agenda.';
+  if (r.motivo === 'Google Calendar não conectado') return '📅 _Google Agenda não conectada — conecte em Integrações para sincronizar._';
+  if (r.precisaReconectar) return '⚠️ _Sua conta Google precisa ser reconectada (Integrações) — o evento não foi criado lá._';
+  if (r.motivo === 'sincronização desligada') return '';
+  return '⚠️ _Não consegui criar o evento na Google Agenda desta vez._';
+}
+
+/** Junta as linhas não vazias — evita "\n\n" solto quando não há aviso do Google. */
+const bloco = (...partes: (string | null | undefined)[]) => partes.filter((p) => p && p.trim()).join('\n');
 
 export async function executarTool(nome: string, args: Row, ctx: ContextoTool): Promise<string> {
   const { userId, tarefas, membros, tz } = ctx;
@@ -174,17 +220,45 @@ export async function executarTool(nome: string, args: Row, ctx: ContextoTool): 
 
   switch (nome) {
     case 'create_task': {
+      const titulo = String(args.title || '').trim();
+      if (!titulo) return '❓ Qual é o nome dessa tarefa?';
+      // Rede de segurança do lado do servidor: mesmo mandado no prompt, o modelo
+      // às vezes cria "Compromisso" quando não entendeu o áudio. Pergunta em vez.
+      if (TITULOS_VAGOS.test(titulo)) {
+        return `❓ Entendi que você quer marcar algo, mas não peguei o que é. Me diz assim: *o quê*, *com quem* e *quando* — por exemplo "reunião com o Rogério terça às 9h".`;
+      }
+
+      const prazo = interpretarPrazo(args.due_date, tz);
+      if (args.due_date && !prazo.iso) {
+        return `❓ Não entendi a data de *${titulo}*. Pode me dizer o dia e a hora? (ex: "terça às 9h")`;
+      }
+      // Data sem hora: o compromisso cairia num horário inventado. Pergunta.
+      if (prazo.iso && !prazo.temHora) {
+        const dia = new Date(prazo.iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: tz });
+        return `❓ *${titulo}* em ${dia} — que horas?`;
+      }
+
       const dados: Row = {
-        title: args.title, created_by: userId,
-        quadrant: args.quadrant || 'do', status: 'pending',
+        title: titulo, created_by: userId,
+        quadrant: args.quadrant || (prazo.iso ? 'schedule' : 'do'), status: 'pending',
       };
+      // tenant_id faltava: a tarefa nascia órfã de workspace e ficava de fora de
+      // tudo que é consultado por tenant (relatórios, sync, painéis da equipe).
+      if (ctx.tenantId) dados.tenant_id = ctx.tenantId;
       if (args.description) dados.description = args.description;
       if (args.urgency) dados.urgency = args.urgency;
       if (args.importance) dados.importance = args.importance;
-      if (args.due_date) dados.due_date = args.due_date;
-      const { error } = await db.from('tasks').insert(dados);
+      if (prazo.iso) dados.due_date = prazo.iso;
+
+      const { data: criada, error } = await db.from('tasks').insert(dados).select('*').single();
       if (error) throw error;
-      return `✅ Tarefa criada: *${args.title}*`;
+
+      // Sincroniza SEMPRE, com ou sem prazo — é o mesmo comportamento do app
+      // (useTasks.createTask chama syncTaskToCalendar para toda tarefa). Sem
+      // prazo o Google recebe um evento de dia inteiro.
+      const quando = prazo.iso ? `🗓️ ${formatarQuando(new Date(prazo.iso), tz)}` : '';
+      const google = await linhaDoGoogle(ctx, criada);
+      return bloco(`✅ Tarefa criada: *${titulo}*`, quando, google);
     }
 
     case 'list_tasks':
@@ -193,6 +267,8 @@ export async function executarTool(nome: string, args: Row, ctx: ContextoTool): 
     case 'complete_task': {
       const t = tarefa(); if (!t) return '❌ Tarefa não encontrada';
       await atualizarTarefa(t.id, { status: 'completed', completed_at: new Date().toISOString() });
+      // O evento no Google ganha o ✅ no título, como no sync do front.
+      if (t.google_event_id) await sincronizarTarefaNoGoogle(userId, { ...t, status: 'completed' } as TarefaSincronizavel, ctx.tenantId ?? null, tz);
       return `✅ Tarefa concluída: *${t.title}*`;
     }
 
@@ -212,18 +288,32 @@ export async function executarTool(nome: string, args: Row, ctx: ContextoTool): 
       const t = tarefa(); if (!t) return '❌ Tarefa não encontrada';
       // O original marca 'eliminated' em vez de apagar — a tarefa some da lista sem perder histórico.
       await atualizarTarefa(t.id, { status: 'eliminated' });
+      // Na agenda, porém, "eliminada" tem que sumir: um evento riscado continua
+      // ocupando o horário e aparecendo no celular do usuário.
+      if (t.google_event_id) {
+        await removerEventoDaTarefa(userId, t.google_event_id, ctx.tenantId ?? null);
+        await atualizarTarefa(t.id, { google_event_id: null });
+      }
       return `🗑️ Tarefa eliminada: *${t.title}*`;
     }
 
     case 'update_task': {
       const t = tarefa(); if (!t) return '❌ Tarefa não encontrada';
       const mudanca: Row = {};
-      for (const campo of ['title', 'description', 'quadrant', 'urgency', 'importance', 'due_date']) {
+      for (const campo of ['title', 'description', 'quadrant', 'urgency', 'importance']) {
         if (args[campo]) mudanca[campo] = args[campo];
+      }
+      if (args.due_date) {
+        const p = interpretarPrazo(args.due_date, tz);
+        if (!p.iso) return `❓ Não entendi a nova data de *${t.title}*. Qual dia e que horas?`;
+        mudanca.due_date = p.iso;
       }
       if (!Object.keys(mudanca).length) return '⚠️ Nenhum campo para atualizar.';
       await atualizarTarefa(t.id, mudanca);
-      return `✏️ Tarefa atualizada: *${t.title}*`;
+      const atualizada = { ...t, ...mudanca };
+      const aviso = await linhaDoGoogle(ctx, atualizada);
+      return bloco(`✏️ Tarefa atualizada: *${atualizada.title}*`,
+        mudanca.due_date ? `🗓️ ${formatarQuando(new Date(mudanca.due_date), tz)}` : '', aviso);
     }
 
     case 'delegate_task': {
@@ -239,8 +329,12 @@ export async function executarTool(nome: string, args: Row, ctx: ContextoTool): 
 
     case 'schedule_task': {
       const t = tarefa(); if (!t) return '❌ Tarefa não encontrada';
-      await atualizarTarefa(t.id, { due_date: args.due_date, quadrant: 'schedule' });
-      return `📅 Tarefa agendada para ${new Date(args.due_date).toLocaleDateString('pt-BR')}: *${t.title}*`;
+      const p = interpretarPrazo(args.due_date, tz);
+      if (!p.iso) return `❓ Não entendi a data. Para quando devo agendar *${t.title}*?`;
+      if (!p.temHora) return `❓ *${t.title}* em ${new Date(p.iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', timeZone: tz })} — que horas?`;
+      await atualizarTarefa(t.id, { due_date: p.iso, quadrant: 'schedule' });
+      const aviso = await linhaDoGoogle(ctx, { ...t, due_date: p.iso });
+      return bloco(`📅 *${t.title}* agendada`, `🗓️ ${formatarQuando(new Date(p.iso), tz)}`, aviso);
     }
 
     case 'add_task_reminder': {
@@ -251,7 +345,10 @@ export async function executarTool(nome: string, args: Row, ctx: ContextoTool): 
 
       if (quando === 'custom') {
         if (!args.custom_datetime) return '⚠️ Informe a data/hora do lembrete (custom_datetime).';
-        em = new Date(args.custom_datetime); rotulo = 'na data escolhida';
+        // Mesma armadilha do due_date: "me lembra às 8h" virava 8h UTC = 5h no Brasil.
+        const p = interpretarPrazo(args.custom_datetime, tz);
+        if (!p.iso) return '⚠️ Não entendi a data/hora do lembrete. Pode repetir?';
+        em = new Date(p.iso); rotulo = 'na data escolhida';
       } else if (quando === 'at_start') {
         if (!t.started_at) return '⚠️ A tarefa não tem início agendado. Defina o início antes de usar at_start.';
         em = new Date(t.started_at); rotulo = 'no início';
@@ -319,6 +416,12 @@ export async function executarTool(nome: string, args: Row, ctx: ContextoTool): 
       return `🚫 Lembrete cancelado para *${t.title}*.`;
     }
 
+    case 'ask_for_details': {
+      const entendi = String(args.understood || '').trim();
+      const pergunta = String(args.question || '').trim() || 'Pode me dar mais detalhes?';
+      return bloco(entendi ? `Entendi: _${entendi}_` : '', `❓ ${pergunta}`);
+    }
+
     case 'chat_response':
       return args.message || '🤔 Não entendi. Pode reformular?';
 
@@ -371,20 +474,23 @@ export async function delegar(tarefa: Row, destino: Row, userId: string): Promis
 }
 
 // ──────────────────────────────────────────────────────────── conversa
-function promptSistema(tarefas: Row[], membros: Row[]): string {
+function promptSistema(tarefas: Row[], membros: Row[], tz: string): string {
+  // Datas SEMPRE no fuso do usuário. Sem timeZone aqui, o Deno formata em UTC e
+  // o modelo lê "23:00 de 06/09" onde o usuário tem "20:00 de 06/09".
+  const dataHora = (v: string) => new Date(v).toLocaleString('pt-BR', { timeZone: tz, dateStyle: 'short', timeStyle: 'short' });
   const contextoTarefas = tarefas.length
     ? tarefas.map((t, i) => {
         const p = [`${i + 1}. "${t.title}" [${ROTULO_STATUS[t.status] || t.status}] [${ROTULO_QUADRANTE[t.quadrant] || t.quadrant}]`];
-        if (t.due_date) p.push(`Prazo: ${new Date(t.due_date).toLocaleString('pt-BR')}`);
-        if (t.started_at) p.push(`Início: ${new Date(t.started_at).toLocaleString('pt-BR')}`);
+        if (t.due_date) p.push(`Prazo: ${dataHora(t.due_date)}`);
+        if (t.started_at) p.push(`Início: ${dataHora(t.started_at)}`);
         return p.join(' ');
       }).join('\n')
     : 'Nenhuma tarefa pendente.';
 
-  const hoje = new Date().toLocaleDateString('pt-BR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-
-  return `Você é um assistente de produtividade via WhatsApp. Hoje é ${hoje}.
+  return `Você é um assistente de produtividade via WhatsApp.
 O usuário gerencia tarefas usando a Matriz de Eisenhower (quadrantes: do, schedule, delegate, eliminate).
+
+${calendarioDoPrompt(tz)}
 
 TAREFAS ATUAIS DO USUÁRIO:
 ${contextoTarefas}
@@ -400,8 +506,18 @@ REGRAS:
 - Para criar tarefas, escolha o quadrante adequado com base no contexto.
 - Seja conciso e amigável nas respostas. Use emojis de forma moderada.
 - Responda sempre em português brasileiro.
-- Se a mensagem for ambígua, peça esclarecimento via chat_response.
+- Se a mensagem for ambígua, peça esclarecimento via ask_for_details.
 - Quando o usuário enviar imagens (prints, fotos, recibos, anotações), faça OCR + análise visual e crie automaticamente as tarefas relevantes via create_task. Se houver várias tarefas na imagem, chame create_task várias vezes. Resuma ao final usando chat_response.
+
+AGENDAMENTO — NUNCA INVENTE, PERGUNTE:
+- Tudo que for criado com data e hora vai ao MESMO TEMPO para a matriz do EisenFlow e para a Google Agenda do usuário. Um dado errado aqui aparece no celular dele.
+- Só chame create_task quando você tiver, no mínimo: (a) um TÍTULO específico (o que é / com quem) e (b) DIA e HORA, se for compromisso.
+- Título proibido: "Compromisso", "Reunião", "Tarefa", "Evento", "Atividade" sozinhos. Se o usuário não disse o que é, use ask_for_details.
+- Faltou o dia? Faltou a hora? Não deu para entender o áudio? → ask_for_details, dizendo no campo "understood" o que você já entendeu, e perguntando SÓ o que falta. Uma pergunta por vez.
+- Quando o usuário responder a sua pergunta na mensagem seguinte, junte com o que já estava no histórico e AÍ crie a tarefa.
+- Datas: use a tabela "PRÓXIMOS DIAS" acima. "terça que vem"/"quarta que vem" = a próxima ocorrência daquele dia da semana; se hoje já é esse dia, é o da semana seguinte.
+- due_date SEMPRE em ISO 8601 com o offset do usuário, ex: 2026-09-08T09:00:00-03:00. NUNCA use "Z" e nunca converta para UTC.
+- "de manhã" sem hora = pergunte a hora. Não chute 9h.
 
 LEMBRETES (você TEM essa capacidade):
 - Você pode criar, listar e cancelar lembretes para tarefas com as tools add_task_reminder, list_task_reminders e remove_task_reminder.
@@ -434,8 +550,8 @@ export async function processarComIA({ texto, userId, imagens = [], tz = 'Americ
     }
   }
 
-  const [tarefas, membros, conversa] = await Promise.all([
-    tarefasDoUsuario(userId, 20), membrosDoTime(userId), historico(userId),
+  const [tarefas, membros, conversa, tenantId] = await Promise.all([
+    tarefasDoUsuario(userId, 20), membrosDoTime(userId), historico(userId), tenantPadraoDe(userId),
   ]);
 
   const textoHistorico = imagens.length
@@ -456,7 +572,7 @@ export async function processarComIA({ texto, userId, imagens = [], tz = 'Americ
       temperature: 0.3,
       tools: TOOLS,
       messages: [
-        { role: 'system', content: promptSistema(tarefas, membros) },
+        { role: 'system', content: promptSistema(tarefas, membros, tz) },
         // Os marcadores __pending_reminder__ são estado interno, não contexto de conversa.
         ...conversa
           .filter((m) => !(m.role === 'system' && String(m.content).startsWith('__pending_reminder')))
@@ -469,7 +585,7 @@ export async function processarComIA({ texto, userId, imagens = [], tz = 'Americ
     return '⚠️ Erro ao processar sua mensagem. Use /ajuda para ver comandos disponíveis.';
   }
 
-  const ctx: ContextoTool = { userId, tarefas, membros, tz };
+  const ctx: ContextoTool = { userId, tarefas, membros, tz, tenantId };
   let resposta = '';
 
   if (resultado.toolCalls?.length) {

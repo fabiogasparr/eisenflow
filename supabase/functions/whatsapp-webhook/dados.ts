@@ -111,3 +111,93 @@ export function formatarQuando(d: Date, tz = 'America/Sao_Paulo'): string {
   else rel = d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: tz });
   return `${rel} (${data}) às ${hora}`;
 }
+
+// ------------------------------------------------------------------- prazos
+/**
+ * Deslocamento do fuso NAQUELE instante ("-03:00"). Feito com Intl porque o
+ * horário de verão muda o offset e uma constante mentiria metade do ano.
+ */
+export function offsetDoFuso(quando: Date, tz: string): string {
+  try {
+    const parte = new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'longOffset' })
+      .formatToParts(quando).find((p) => p.type === 'timeZoneName')?.value || '';
+    const m = parte.match(/GMT([+-]\d{2}:\d{2})/);
+    if (m) return m[1];
+    if (/^GMT$/.test(parte)) return '+00:00';
+  } catch { /* Intl sem ICU: cai no padrão */ }
+  return '-03:00';
+}
+
+export interface Prazo { iso: string | null; temHora: boolean; original: string }
+
+/**
+ * Normaliza o que a IA devolveu em due_date para um instante ABSOLUTO correto.
+ *
+ * O problema que isto resolve: o modelo escrevia "2026-09-08T09:00:00Z" quando
+ * o usuário disse "terça às 9h". Gravado assim, o compromisso caía às 6h da
+ * manhã no Brasil — e o usuário via a hora errada na agenda sem entender por quê.
+ *
+ * Ninguém marca reunião por WhatsApp em UTC: o horário dito é SEMPRE de relógio
+ * de parede, no fuso da pessoa. Então:
+ *   - com offset explícito (-03:00) ....... respeitamos, é o que pedimos no prompt;
+ *   - terminando em Z ..................... reinterpretamos a hora como local;
+ *   - sem fuso nenhum ..................... aplicamos o fuso do usuário;
+ *   - só a data, sem hora ................. 09:00 local e temHora=false, para o
+ *                                           assistente perguntar o horário.
+ */
+export function interpretarPrazo(valor: unknown, tz = 'America/Sao_Paulo'): Prazo {
+  const bruto = String(valor ?? '').trim();
+  const vazio: Prazo = { iso: null, temHora: false, original: bruto };
+  if (!bruto) return vazio;
+
+  const soData = bruto.match(/^(\d{4}-\d{2}-\d{2})$/);
+  if (soData) {
+    const base = new Date(`${soData[1]}T12:00:00Z`);
+    const iso = `${soData[1]}T09:00:00${offsetDoFuso(base, tz)}`;
+    return { iso: new Date(iso).toISOString(), temHora: false, original: bruto };
+  }
+
+  const m = bruto.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}(?::\d{2})?)(?:\.\d+)?(Z|[+-]\d{2}:?\d{2})?$/);
+  if (!m) {
+    const solto = new Date(bruto);
+    return isNaN(solto.getTime()) ? vazio : { iso: solto.toISOString(), temHora: true, original: bruto };
+  }
+
+  const [, data, hora, fuso] = m;
+  const relogio = hora.length === 5 ? `${hora}:00` : hora;
+
+  if (fuso && fuso !== 'Z') {
+    const normal = fuso.length === 5 ? `${fuso.slice(0, 3)}:${fuso.slice(3)}` : fuso;
+    return { iso: new Date(`${data}T${relogio}${normal}`).toISOString(), temHora: true, original: bruto };
+  }
+
+  // Sem fuso, ou com Z: a hora escrita é a hora que a pessoa falou. Local.
+  const offset = offsetDoFuso(new Date(`${data}T12:00:00Z`), tz);
+  return { iso: new Date(`${data}T${relogio}${offset}`).toISOString(), temHora: true, original: bruto };
+}
+
+/**
+ * "Hoje" e os próximos dias JÁ NO FUSO DO USUÁRIO, para o prompt.
+ *
+ * A versão anterior mandava `new Date().toLocaleDateString('pt-BR')` sem fuso —
+ * ou seja, a data do servidor, em UTC. Depois das 21h de Brasília o modelo era
+ * informado do dia seguinte, e todo "amanhã", "terça", "semana que vem" saía
+ * com um dia de erro. Era a causa de compromissos aparecerem na semana errada.
+ */
+export function calendarioDoPrompt(tz = 'America/Sao_Paulo', dias = 21): string {
+  const agora = new Date();
+  const fmt = (d: Date) =>
+    `${d.toLocaleDateString('en-CA', { timeZone: tz })} (${d.toLocaleDateString('pt-BR', { weekday: 'long', timeZone: tz })})`;
+  const hora = agora.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit', timeZone: tz });
+
+  const linhas: string[] = [];
+  for (let i = 1; i <= dias; i++) {
+    const d = new Date(agora.getTime() + i * 864e5);
+    linhas.push(`  ${i === 1 ? 'amanhã' : `+${i}d`}: ${fmt(d)}`);
+  }
+  return [
+    `AGORA: ${fmt(agora)}, ${hora} — fuso ${tz} (offset ${offsetDoFuso(agora, tz)}).`,
+    'PRÓXIMOS DIAS (use esta tabela, não calcule de cabeça):',
+    ...linhas,
+  ].join('\n');
+}
