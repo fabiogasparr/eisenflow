@@ -191,6 +191,31 @@ export async function garantirInstancia(
 }
 
 /**
+ * Numero da propria instancia, a partir do JID que o servidor guarda.
+ *
+ * ESTA E A UNICA FONTE CONFIAVEL. O webhook tentava deduzir o numero do dono
+ * a partir do `Sender` da primeira mensagem propria — e no WhatsApp atual esse
+ * campo vem como LID (`<id>@lid`), um identificador de privacidade que NAO e
+ * telefone. Foi assim que a conexao ficou gravada com "108108688928998" em vez
+ * de "5511943246689", e a partir dai toda mensagem era descartada.
+ *
+ * `jid` chega como `5511943246689:14@s.whatsapp.net` — o `:14` e o numero do
+ * aparelho pareado; soDigitos corta no ':' e no '@'.
+ */
+export async function numeroDaInstancia(nome: string): Promise<string | null> {
+  try {
+    const todas = await evolution.listInstances();
+    const achada = (Array.isArray(todas) ? todas : []).find((i) => i?.name === nome);
+    const jid = String(achada?.jid || '');
+    if (!jid || jid.includes('@lid')) return null;
+    const numero = soDigitos(jid);
+    return numero.length >= 10 ? numero : null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * O servidor devolve `data:audio/ogg; codecs=opus;base64,AAA...` — data-URL, não
  * base64 puro. Cortar até a PRIMEIRA vírgula não basta quando o mime tem vírgula
  * (`codecs=opus` não tem, mas `; codecs="opus, vorbis"` teria): corta na última

@@ -46,10 +46,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { admin, ehConflito } from '../_shared/supabase.ts';
-import {
-  evolution, parseWebhook, webhookAutorizado, dataUrlParaBytes, bytesParaDataUrl, soDigitos,
-  type EventoConexao, type EventoMensagem, type EventoQrCode,
-} from '../_shared/evolution.ts';
+import { bytesParaDataUrl, dataUrlParaBytes, evolution, numeroDaInstancia, parseWebhook, soDigitos, type EventoConexao, type EventoMensagem, type EventoQrCode, webhookAutorizado } from '../_shared/evolution.ts';
 import { transcrever } from '../_shared/ai.ts';
 import { json, lerCorpo, preflight, respostaErro } from '../_shared/http.ts';
 import { type Row } from './dados.ts';
@@ -174,10 +171,14 @@ async function tratarMensagem(ev: EventoMensagem, tabela: string, conn: Row) {
     }
   }
 
-  // O Evolution GO não expõe o dono da instância; a primeira mensagem própria
-  // revela o número e a gente aproveita para preencher o cadastro.
-  if (!conn.phone_number && ev.daMinhaConta && ev.remetente) {
-    const numero = soDigitos(ev.remetente);
+  // NUNCA deduzir o número do dono a partir do `Sender` da mensagem: no
+  // WhatsApp atual esse campo vem como LID (`<id>@lid`), um identificador de
+  // privacidade que não é telefone. Era o que gravava lixo como
+  // "108108688928998" no lugar de "5511943246689" — e, com o número errado,
+  // o filtro self_only descartava TODAS as mensagens, inclusive as do próprio
+  // aparelho pareado. O número certo vem do JID que o Evolution guarda.
+  if (!conn.phone_number) {
+    const numero = await numeroDaInstancia(conn.instance_name);
     if (numero) {
       await db.from(PESSOAL).update({ phone_number: numero }).eq('id', conn.id);
       conn.phone_number = numero;

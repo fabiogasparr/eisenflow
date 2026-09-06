@@ -29,7 +29,7 @@
  */
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
 import { admin, requireUser } from '../_shared/supabase.ts';
-import { evolution, soDigitos, webhookUrl, type StatusInstancia } from '../_shared/evolution.ts';
+import { evolution, numeroDaInstancia, soDigitos, type StatusInstancia, webhookUrl } from '../_shared/evolution.ts';
 import { erro, json, preflight, respostaErro } from '../_shared/http.ts';
 
 /** { Connected, LoggedIn } (Go) -> o `status` string que o schema e o front usam. */
@@ -42,10 +42,19 @@ function traduzirStatus(estado: StatusInstancia | null, statusAtual: string): st
 }
 
 /** O telefone da conta pareada mora no `jid` da instância (rota administrativa). */
+/**
+ * Uma fonte só para o número do dono — `numeroDaInstancia`, que descarta JID em
+ * formato LID. Antes daqui saía o número certo, mas o webhook tinha um caminho
+ * paralelo que gravava o LID; agora os dois passam pelo mesmo lugar.
+ */
 async function buscarTelefone(instanceId: string | null, nome: string): Promise<string | null> {
+  const direto = await numeroDaInstancia(nome);
+  if (direto) return direto;
+  if (!instanceId) return null;
   const todas = await evolution.listInstances().catch(() => []);
-  const inst = (Array.isArray(todas) ? todas : []).find((i) => (instanceId && i?.id === instanceId) || i?.name === nome);
-  return inst?.jid ? soDigitos(inst.jid) : null;
+  const inst = (Array.isArray(todas) ? todas : []).find((i) => i?.id === instanceId);
+  const jid = String(inst?.jid || '');
+  return jid && !jid.includes('@lid') ? soDigitos(jid) : null;
 }
 
 serve(async (req) => {
